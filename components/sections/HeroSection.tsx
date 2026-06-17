@@ -10,7 +10,7 @@ export const HeroSection: React.FC = () => {
     <section className="relative min-h-[85vh] flex items-center justify-center overflow-hidden">
         {/* Background Image with Overlay */}
         <div className="absolute inset-0 z-0">
-          <div className="absolute inset-0 bg-gradient-to-r from-surface via-surface/15 to-surface/40 z-10" />
+          <div className="absolute inset-0 bg-gradient-to-r from-surface via-surface/5 z-10" />
           <Image
             alt="State-of-the-art dental clinic interior"
             fill

@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { ScrollReveal } from "../ui/ScrollReveal";
+import { BeforeAfterSlider } from "../ui/BeforeAfterSlider";
 
 export const GalleryPreview: React.FC = () => {
   const images = [
@@ -16,15 +17,29 @@ export const GalleryPreview: React.FC = () => {
       alt: "Welcoming Reception Area",
       label: "Welcoming Reception Area",
     },
+    
+  ];
+
+  const beforeAfterCases = [
     {
-      url: "https://lh3.googleusercontent.com/aida-public/AB6AXuBRUwB3TaZwnvpE78QdkzmPmmJhzOkSsqxuue_2FEeSVDH84oYX-7zzgmEJY_eE3lVbHTF3lxG0GeJDfT8yAaKp2US2av01XHf9azzoaAl6HDCmcg9YVwWIK5SoxN6qPLBOGJa-Tv3H8yf6ACeeg2mBxm9e3waV8WtE2OUJhGHymjon3UMkANNFO6O4gLKBGI36e6NIZIBYyhNKxgf-Og9caoZL8I_79EkZ0qw4s7rXmoo4QYrnurCk5uvBM_t5sxrouTQGuKeSCyg",
-      alt: "Expert Clinical Team",
-      label: "Expert Clinical Team",
+      label: "Smile Makeover",
+      before: "/before_smile.png",
+      after: "/after_smile.png",
     },
     {
-      url: "https://lh3.googleusercontent.com/aida-public/AB6AXuDJUqE4bg4yv4cXfVPOjV_rsjmnoA1iOKcYZV4XSlPkc1L7zMr99zb6hKsv5mmgr_pju9PEv30bpr0jBft2iz_Eq3S0jU08wOvnIerB-uDMA5LTY68EkJil2_qsNmbGiaqhpvG5TlO1wX_LLxlpYSylrq8KemcSRM1I7h0TL5kfRCohyXdRZyAhf7HDoT92WDJ7dNJxVZQ3lw3wnha6XXQRcrn9XTxF0Dk7aOmPodbXmM6qS7pEPYAtpVaNPgi1oY1yYgHmwdKDJvk",
-      alt: "Transformative Results",
-      label: "Transformative Results",
+      label: "Teeth Whitening",
+      before: "/before_teeth.png",
+      after: "/after_teeth.png",
+    },
+    {
+      label: "Orthodontics",
+      before: "/before_braces.png",
+      after: "/after_braces.png",
+    },
+    {
+      label: "Dental Implant",
+      before: "/before_implant.png",
+      after: "/after_implant.png",
     },
   ];
 
@@ -36,7 +51,7 @@ export const GalleryPreview: React.FC = () => {
           <div className="max-w-2xl">
             <ScrollReveal delay={100} duration={700}>
               <h2 className="text-3xl md:text-4xl font-bold text-on-surface mb-3 tracking-tight">
-                Clinic Tour & Patient Smiles
+                Clinic Tour &amp; Patient Smiles
               </h2>
             </ScrollReveal>
             <ScrollReveal delay={250} duration={700}>
@@ -57,7 +72,7 @@ export const GalleryPreview: React.FC = () => {
         </div>
 
         {/* 2x2 Grid of Images */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-16">
           {images.map((image, index) => (
             <ScrollReveal key={index} delay={index * 150} duration={850} distance="30px">
               <div
@@ -75,6 +90,46 @@ export const GalleryPreview: React.FC = () => {
                   <span className="text-white font-semibold text-sm md:text-base">
                     {image.label}
                   </span>
+                </div>
+              </div>
+            </ScrollReveal>
+          ))}
+        </div>
+
+        {/* Before / After Slider Section */}
+        <ScrollReveal delay={100} duration={700}>
+          <div className="mb-8 text-center">
+            <span className="inline-block text-xs font-semibold tracking-widest uppercase text-primary-container bg-secondary-container px-4 py-1.5 rounded-full mb-3">
+              Real Results
+            </span>
+            <h3 className="text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
+              Before &amp; After Transformations
+            </h3>
+            <p className="text-on-surface-variant text-sm mt-2">
+              Drag the slider to reveal the difference our treatments make.
+            </p>
+          </div>
+        </ScrollReveal>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {beforeAfterCases.map((item, index) => (
+            <ScrollReveal key={index} delay={index * 200} duration={900} distance="30px">
+              <div className="flex flex-col gap-3">
+                {/* Label */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-on-surface">{item.label}</span>
+                  <span className="flex-1 h-px bg-outline-variant/40" />
+                </div>
+                {/* Slider */}
+                <div className="h-72 md:h-80 w-full rounded-xl overflow-hidden shadow-level-2 border border-outline-variant/10">
+                  <BeforeAfterSlider
+                    beforeSrc={item.before}
+                    afterSrc={item.after}
+                    beforeAlt={`${item.label} - Before`}
+                    afterAlt={`${item.label} - After`}
+                    initialPosition={50}
+                    className="h-full"
+                  />
                 </div>
               </div>
             </ScrollReveal>
