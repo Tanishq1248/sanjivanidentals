@@ -2,6 +2,7 @@ import React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { ScrollReveal } from "../ui/ScrollReveal";
 
 export const GalleryPreview: React.FC = () => {
   const images = [
@@ -33,43 +34,50 @@ export const GalleryPreview: React.FC = () => {
         {/* Section Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6">
           <div className="max-w-2xl">
-            <h2 className="text-3xl md:text-4xl font-bold text-on-surface mb-3 tracking-tight">
-              Clinic Tour & Patient Smiles
-            </h2>
-            <p className="text-on-surface-variant leading-relaxed text-sm md:text-base">
-              Step inside our state-of-the-art facility and see the results of our clinical excellence.
-            </p>
+            <ScrollReveal delay={100} duration={700}>
+              <h2 className="text-3xl md:text-4xl font-bold text-on-surface mb-3 tracking-tight">
+                Clinic Tour & Patient Smiles
+              </h2>
+            </ScrollReveal>
+            <ScrollReveal delay={250} duration={700}>
+              <p className="text-on-surface-variant leading-relaxed text-sm md:text-base">
+                Step inside our state-of-the-art facility and see the results of our clinical excellence.
+              </p>
+            </ScrollReveal>
           </div>
-          <Link
-            href="/gallery"
-            className="shrink-0 bg-surface-container-lowest text-primary border border-outline-variant hover:border-primary/50 hover:bg-secondary-container/20 transition-all duration-300 rounded-lg px-6 py-2.5 font-semibold text-sm active:scale-95 flex items-center justify-center gap-1.5"
-          >
-            <span>View Full Gallery</span>
-            <ArrowRight className="w-5 h-5" />
-          </Link>
+          <ScrollReveal delay={350} duration={700} distance="15px" className="shrink-0 w-full md:w-auto">
+            <Link
+              href="/gallery"
+              className="w-full bg-surface-container-lowest text-primary border border-outline-variant hover:border-primary/50 hover:bg-secondary-container/20 transition-all duration-300 rounded-lg px-6 py-2.5 font-semibold text-sm active:scale-95 flex items-center justify-center gap-1.5"
+            >
+              <span>View Full Gallery</span>
+              <ArrowRight className="w-5 h-5" />
+            </Link>
+          </ScrollReveal>
         </div>
 
         {/* 2x2 Grid of Images */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {images.map((image, index) => (
-            <div
-              key={index}
-              className="relative w-full h-64 md:h-80 overflow-hidden rounded-xl border border-outline-variant/10 shadow-sm group"
-            >
-              <Image
-                src={image.url}
-                alt={image.alt}
-                fill
-                className="object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
-                sizes="(max-width: 768px) 100vw, 50vw"
-              />
-              {/* Hover Overlay */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
-                <span className="text-white font-semibold text-sm md:text-base">
-                  {image.label}
-                </span>
+            <ScrollReveal key={index} delay={index * 150} duration={850} distance="30px">
+              <div
+                className="relative w-full h-64 md:h-80 overflow-hidden rounded-xl border border-outline-variant/10 shadow-sm group"
+              >
+                <Image
+                  src={image.url}
+                  alt={image.alt}
+                  fill
+                  className="object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                />
+                {/* Hover Overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+                  <span className="text-white font-semibold text-sm md:text-base">
+                    {image.label}
+                  </span>
+                </div>
               </div>
-            </div>
+            </ScrollReveal>
           ))}
         </div>
       </div>

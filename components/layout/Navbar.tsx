@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Stethoscope, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { Button } from "../ui/Button";
 
 export const Navbar: React.FC = () => {
@@ -45,8 +46,15 @@ export const Navbar: React.FC = () => {
       <div className="flex justify-between items-center h-20 px-6 max-w-[1200px] mx-auto">
         {/* Brand */}
         <Link href="/" className="font-semibold text-2xl text-primary flex items-center gap-2 active:scale-95 transition-transform">
-          <Stethoscope className="w-8 h-8 text-primary" />
-          <span>DentaPure</span>
+          <Image
+            src="/sanjivanilogo.png"
+            alt="Sanjivani Dental Clinic Logo"
+            width={36}
+            height={36}
+            className="w-12 h-10 object-contain"
+            priority
+          />
+          <span>Sanjivani Dental CLinic</span>
         </Link>
 
         {/* Navigation Links (Desktop) */}

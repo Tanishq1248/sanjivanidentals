@@ -2,7 +2,8 @@
 
 import React from "react";
 import Link from "next/link";
-import { Stethoscope, Bell, UserCircle, PhoneCall } from "lucide-react";
+import Image from "next/image";
+import { Bell, UserCircle, PhoneCall } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 const navLinks = [
@@ -20,7 +21,14 @@ export const BookingNavbar: React.FC = () => {
       <div className="max-w-[1200px] mx-auto flex items-center justify-between h-16 px-6">
         {/* Logo */}
         <Link href="/" className="font-bold text-xl text-primary flex items-center gap-2">
-          <Stethoscope className="w-6 h-6 text-primary" />
+          <Image
+            src="/sanjivanilogo.png"
+            alt="Sanjivani Dental Clinic Logo"
+            width={36}
+            height={36}
+            className="w-12 h-10 object-contain"
+            priority
+          />
           <span>DentaPure</span>
         </Link>
 
@@ -55,7 +63,7 @@ export const BookingNavbar: React.FC = () => {
           >
             <UserCircle className="w-5 h-5" />
           </button>
-          <Link href="tel:+11234567890">
+          <Link href="tel:+917775089777">
             <button className="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors cursor-pointer">
               <PhoneCall className="w-4 h-4" />
               Emergency Call

@@ -232,8 +232,8 @@ export default function BookingPage() {
                   </div>
                   <div>
                     <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-1">Phone</p>
-                    <a href="tel:+11234567890" className="text-sm text-on-surface font-medium hover:text-primary transition-colors">
-                      +1 234 567 890
+                    <a href="tel:+917775089777" className="text-sm text-on-surface font-medium hover:text-primary transition-colors">
+                      77750 89777
                     </a>
                   </div>
                 </div>
@@ -246,7 +246,7 @@ export default function BookingPage() {
                   <div>
                     <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-1">WhatsApp</p>
                     <a
-                      href="https://wa.me/11234567890"
+                      href="https://wa.me/917775089777"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-primary font-semibold hover:underline flex items-center gap-1"

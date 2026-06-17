@@ -44,7 +44,11 @@ export const Footer: React.FC = () => {
           <div className="flex items-start gap-2 text-on-surface-variant text-sm">
             <Phone className="w-5 h-5 text-primary-container shrink-0 mt-0.5" />
             <span>
-              <strong>1800-DENTAL</strong>
+              <strong>
+                <a href="tel:+917775089777" className="hover:text-primary transition-colors">
+                  77750 89777
+                </a>
+              </strong>
               <br />
               Emergency line available 24/7
             </span>

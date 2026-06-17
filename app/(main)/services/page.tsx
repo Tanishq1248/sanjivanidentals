@@ -96,7 +96,7 @@ export default function ServicesPage() {
     },
     {
       question: "What should I do in a dental emergency?",
-      answer: "Call our emergency line immediately at 1800-DENTAL. We offer same-day emergency appointments. If a tooth is knocked out, keep it moist and bring it with you. For severe pain, apply a cold compress and take over-the-counter pain relief.",
+      answer: "Call our emergency line immediately at 77750 89777. We offer same-day emergency appointments. If a tooth is knocked out, keep it moist and bring it with you. For severe pain, apply a cold compress and take over-the-counter pain relief.",
     },
     {
       question: "Are cosmetic procedures painful?",
@@ -174,9 +174,9 @@ export default function ServicesPage() {
               <p className="text-white/80 text-sm leading-relaxed mb-6">
                 Dental emergencies don&apos;t wait. Neither do we. Same-day appointments available for urgent dental needs.
               </p>
-              <div className="flex items-center gap-2 mb-2 text-sm font-semibold">
-                <Phone className="w-4 h-4" /><span>1800-DENTAL</span>
-              </div>
+              <a href="tel:+917775089777" className="flex items-center gap-2 mb-2 text-sm font-semibold hover:underline">
+                <Phone className="w-4 h-4" /><span>77750 89777</span>
+              </a>
               <div className="flex items-center gap-2 text-sm text-white/70 mb-6">
                 <Clock className="w-4 h-4" /><span>Available 24/7</span>
               </div>
