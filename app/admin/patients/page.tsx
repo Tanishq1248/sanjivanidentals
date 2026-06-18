@@ -15,6 +15,7 @@ import {
   X,
   CheckCircle2,
   Phone,
+  Menu,
 } from "lucide-react";
 
 /* ─── WhatsApp SVG Icon ─── */
@@ -64,8 +65,52 @@ const seedPatients: Patient[] = [
   { id: "P-9310", name: "Laura Peterson",  phone: "+1 (555) 931-0400", email: "l.peterson@email.com",age: "51", lastVisit: "May 28, 2024", condition: "Dental Implants",    notes: "Post-op check required",         avatarColor: "bg-teal-500" },
 ];
 
-/* ─── Empty form ─── */
 const emptyForm = { name: "", phone: "", email: "", age: "", lastVisit: "", condition: "", notes: "" };
+
+/* ─── Sidebar ─── */
+function Sidebar({ onClose }: { onClose?: () => void }) {
+  return (
+    <aside className="w-full h-full bg-white flex flex-col">
+      <div className="px-5 py-5 border-b border-outline-variant/20 flex items-center justify-between">
+        <Link href="/" className="flex items-center gap-2" onClick={onClose}>
+          <Stethoscope className="w-6 h-6 text-primary" />
+          <div>
+            <p className="font-bold text-base text-primary leading-tight">DentaPure</p>
+            <p className="text-[10px] text-on-surface-variant font-medium leading-tight">Clinical Excellence</p>
+          </div>
+        </Link>
+        {onClose && (
+          <button onClick={onClose} className="md:hidden p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant">
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
+      <nav className="flex flex-col gap-1 px-3 py-6 flex-grow">
+        <Link
+          href="/admin"
+          onClick={onClose}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-secondary hover:bg-surface-container-low hover:text-on-surface"
+        >
+          <CalendarDays className="w-4 h-4 shrink-0" />
+          Appointments
+        </Link>
+        <Link
+          href="/admin/patients"
+          onClick={onClose}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors bg-secondary-container text-primary"
+        >
+          <Users className="w-4 h-4 shrink-0" />
+          Patients
+        </Link>
+      </nav>
+      <div className="px-3 py-5 border-t border-outline-variant/20">
+        <button className="w-full bg-primary text-white text-sm font-semibold py-2.5 px-4 rounded-lg hover:bg-primary/90 transition-colors cursor-pointer">
+          Contact Support
+        </button>
+      </div>
+    </aside>
+  );
+}
 
 /* ─── Patients Page ─── */
 export default function PatientsPage() {
@@ -74,8 +119,9 @@ export default function PatientsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showForm, setShowForm] = useState(false);
 
-  /* ── Helpers ── */
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
@@ -87,11 +133,7 @@ export default function PatientsPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingId) {
-      setPatients((prev) =>
-        prev.map((p) =>
-          p.id === editingId ? { ...p, ...form } : p
-        )
-      );
+      setPatients((prev) => prev.map((p) => p.id === editingId ? { ...p, ...form } : p));
       showToast("Patient details updated!");
       setEditingId(null);
     } else {
@@ -104,20 +146,22 @@ export default function PatientsPage() {
       showToast("Patient added successfully!");
     }
     setForm(emptyForm);
+    setShowForm(false);
   };
 
   const handleEdit = (p: Patient) => {
     setEditingId(p.id);
     setForm({ name: p.name, phone: p.phone, email: p.email, age: p.age, lastVisit: p.lastVisit, condition: p.condition, notes: p.notes });
+    setShowForm(true);
   };
 
   const handleDelete = (id: string) => {
     setPatients((prev) => prev.filter((p) => p.id !== id));
-    if (editingId === id) { setEditingId(null); setForm(emptyForm); }
+    if (editingId === id) { setEditingId(null); setForm(emptyForm); setShowForm(false); }
     showToast("Patient removed.");
   };
 
-  const handleCancel = () => { setEditingId(null); setForm(emptyForm); };
+  const handleCancel = () => { setEditingId(null); setForm(emptyForm); setShowForm(false); };
 
   const filtered = patients.filter(
     (p) =>
@@ -130,52 +174,41 @@ export default function PatientsPage() {
   return (
     <div className="min-h-screen flex bg-[#f2f5f8] font-sans">
 
-      {/* ═══ SIDEBAR ═══ */}
-      <aside className="w-[200px] shrink-0 bg-white border-r border-outline-variant/20 flex flex-col sticky top-0 h-screen shadow-sm">
-        {/* Logo */}
-        <div className="px-6 py-5 border-b border-outline-variant/20">
-          <Link href="/" className="flex items-center gap-2">
-            <Stethoscope className="w-6 h-6 text-primary" />
-            <div>
-              <p className="font-bold text-base text-primary leading-tight">DentaPure</p>
-              <p className="text-[10px] text-on-surface-variant font-medium leading-tight">Clinical Excellence</p>
-            </div>
-          </Link>
-        </div>
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
 
-        {/* Nav */}
-        <nav className="flex flex-col gap-1 px-3 py-6 flex-grow">
-          <Link
-            href="/admin"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-secondary hover:bg-surface-container-low hover:text-on-surface"
-          >
-            <CalendarDays className="w-4 h-4 shrink-0" />
-            Appointments
-          </Link>
-          <Link
-            href="/admin/patients"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors bg-secondary-container text-primary"
-          >
-            <Users className="w-4 h-4 shrink-0" />
-            Patients
-          </Link>
-        </nav>
-
-        {/* Support */}
-        <div className="px-3 py-5 border-t border-outline-variant/20">
-          <button className="w-full bg-primary text-white text-sm font-semibold py-2.5 px-4 rounded-lg hover:bg-primary/90 transition-colors cursor-pointer">
-            Contact Support
-          </button>
-        </div>
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:flex w-[200px] shrink-0 border-r border-outline-variant/20 sticky top-0 h-screen shadow-sm flex-col">
+        <Sidebar />
       </aside>
+
+      {/* Mobile Sidebar Drawer */}
+      <div
+        className={`fixed inset-y-0 left-0 z-50 w-[220px] shadow-level-2 transition-transform duration-300 md:hidden ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <Sidebar onClose={() => setSidebarOpen(false)} />
+      </div>
 
       {/* ═══ MAIN ═══ */}
       <div className="flex-1 flex flex-col min-w-0">
 
         {/* Top Bar */}
-        <header className="bg-white border-b border-outline-variant/20 px-8 py-4 flex items-center justify-between gap-4 sticky top-0 z-20 shadow-sm">
-          <h1 className="text-xl font-bold text-primary shrink-0">Patient Management</h1>
-          <div className="relative flex-1 max-w-sm">
+        <header className="bg-white border-b border-outline-variant/20 px-4 md:px-8 py-4 flex items-center gap-3 sticky top-0 z-20 shadow-sm">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="md:hidden p-2 rounded-lg hover:bg-surface-variant text-primary shrink-0"
+            aria-label="Open menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
+          <h1 className="text-lg md:text-xl font-bold text-primary shrink-0">Patient Management</h1>
+
+          <div className="relative flex-1 max-w-sm hidden sm:block ml-2">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
             <input
               type="text"
@@ -185,12 +218,13 @@ export default function PatientsPage() {
               className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-outline-variant/40 bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-on-surface-variant/60"
             />
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="text-right hidden sm:block">
+
+          <div className="flex items-center gap-2 md:gap-3 shrink-0 ml-auto">
+            <div className="text-right hidden lg:block">
               <p className="text-sm font-semibold text-on-surface leading-tight">Dr. Julian Moore</p>
               <p className="text-xs text-on-surface-variant">Senior Orthodontist</p>
             </div>
-            <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-secondary-container shrink-0">
+            <div className="relative w-9 h-9 md:w-10 md:h-10 rounded-full overflow-hidden border-2 border-secondary-container shrink-0">
               <Image
                 src="https://lh3.googleusercontent.com/aida/AP1WRLsuPHdERu4ervQ8YoyI2Fc4jec6pdmw_Mai4SlVJ8ZHoc20S2IC9iyEQEhFAV_vnSnAI5_ZxGeg8_XUbAJqi6IwsgA6kdZJjCQjZ3avoEgikDGiq3bcRK-jei3-5Jur8PY3okS_i6q8kmOgsq4FgnSdFNL-O4DqkW5GXb-pTZ5tX6QWKI_CAK7tGW0EOvn01UxAKBZL5R1ZrnIdCnAcomSL7jbbCuszIvu8fWl5zlkL4du7Hbw0uJfRZg"
                 alt="Dr. Julian Moore"
@@ -202,40 +236,54 @@ export default function PatientsPage() {
           </div>
         </header>
 
-        <main className="flex-1 p-8">
+        {/* Mobile Search */}
+        <div className="sm:hidden px-4 pt-3 pb-1 bg-[#f2f5f8]">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search patients..."
+              className="w-full pl-9 pr-4 py-2.5 text-sm rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-on-surface-variant/60"
+            />
+          </div>
+        </div>
+
+        <main className="flex-1 p-4 md:p-8">
 
           {/* Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
-            <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-5 flex items-center justify-between">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 md:mb-8">
+            <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-4 md:p-5 flex items-center justify-between">
               <div>
                 <p className="text-xs text-on-surface-variant font-medium mb-1">Total Patients</p>
-                <p className="text-3xl font-bold text-on-surface">{patients.length}</p>
+                <p className="text-2xl md:text-3xl font-bold text-on-surface">{patients.length}</p>
                 <div className="flex items-center gap-1 text-emerald-600 text-xs font-semibold mt-0.5">
                   <TrendingUp className="w-3 h-3" /><span>+12% this month</span>
                 </div>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-secondary-container flex items-center justify-center">
-                <Users className="w-6 h-6 text-primary" />
+              <div className="w-11 h-11 rounded-xl bg-secondary-container flex items-center justify-center shrink-0">
+                <Users className="w-5 h-5 text-primary" />
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-5 flex items-center justify-between">
+            <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-4 md:p-5 flex items-center justify-between">
               <div>
                 <p className="text-xs text-on-surface-variant font-medium mb-1">New This Month</p>
-                <p className="text-3xl font-bold text-on-surface">24</p>
+                <p className="text-2xl md:text-3xl font-bold text-on-surface">24</p>
                 <p className="text-xs text-on-surface-variant mt-0.5">Registered recently</p>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-[#ede9fe] flex items-center justify-center">
-                <UserPlus className="w-6 h-6 text-purple-600" />
+              <div className="w-11 h-11 rounded-xl bg-[#ede9fe] flex items-center justify-center shrink-0">
+                <UserPlus className="w-5 h-5 text-purple-600" />
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-5 flex items-center justify-between">
+            <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-4 md:p-5 flex items-center justify-between">
               <div>
                 <p className="text-xs text-on-surface-variant font-medium mb-1">WhatsApp Reachable</p>
-                <p className="text-3xl font-bold text-on-surface">{patients.filter(p => p.phone).length}</p>
+                <p className="text-2xl md:text-3xl font-bold text-on-surface">{patients.filter(p => p.phone).length}</p>
                 <p className="text-xs text-on-surface-variant mt-0.5">With phone numbers</p>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-[#dcfce7] flex items-center justify-center">
-                <WhatsAppIcon className="w-6 h-6 text-green-600" />
+              <div className="w-11 h-11 rounded-xl bg-[#dcfce7] flex items-center justify-center shrink-0">
+                <WhatsAppIcon className="w-5 h-5 text-green-600" />
               </div>
             </div>
           </div>
@@ -243,135 +291,158 @@ export default function PatientsPage() {
           {/* Main grid */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
 
-            {/* ── Patient Table ── */}
+            {/* Patient Table / Cards */}
             <div className="xl:col-span-8 bg-white rounded-xl border border-outline-variant/10 shadow-sm overflow-hidden">
-              <div className="px-6 pt-5 pb-4 border-b border-outline-variant/10 flex items-center justify-between">
+              <div className="px-4 md:px-6 pt-5 pb-4 border-b border-outline-variant/10 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-bold text-on-surface">Patient Registry</h2>
                   <p className="text-xs text-on-surface-variant mt-0.5">{filtered.length} patient{filtered.length !== 1 ? "s" : ""} found</p>
                 </div>
                 <button
-                  onClick={() => { handleCancel(); }}
-                  className="flex items-center gap-1.5 text-sm text-primary font-semibold px-3 py-1.5 rounded-lg border border-primary/30 hover:bg-secondary-container transition-colors cursor-pointer"
+                  onClick={() => { handleCancel(); setShowForm(true); }}
+                  className="flex items-center gap-1.5 text-sm text-primary font-semibold px-3 py-1.5 rounded-lg border border-primary/30 hover:bg-secondary-container transition-colors cursor-pointer shrink-0"
                 >
                   <UserPlus className="w-4 h-4" />
-                  Add New
+                  <span className="hidden sm:inline">Add New</span>
                 </button>
               </div>
 
-              <div className="overflow-x-auto">
-                {filtered.length === 0 ? (
-                  <div className="py-16 text-center text-on-surface-variant">
-                    <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm font-medium">No patients found</p>
-                    <p className="text-xs mt-1">Try a different search or add a new patient</p>
-                  </div>
-                ) : (
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-outline-variant/10 bg-surface-container-low/50">
-                        <th className="text-left px-5 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Patient</th>
-                        <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Contact</th>
-                        <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Condition</th>
-                        <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Last Visit</th>
-                        <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtered.map((p) => (
-                        <tr
-                          key={p.id}
-                          className={`border-b border-outline-variant/10 last:border-0 transition-colors ${editingId === p.id ? "bg-secondary-container/20" : "hover:bg-surface-container-low/40"}`}
-                        >
-                          {/* Patient */}
-                          <td className="px-5 py-3.5">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-9 h-9 rounded-full ${p.avatarColor} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
-                                {getInitials(p.name)}
+              {filtered.length === 0 ? (
+                <div className="py-16 text-center text-on-surface-variant">
+                  <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm font-medium">No patients found</p>
+                  <p className="text-xs mt-1">Try a different search or add a new patient</p>
+                </div>
+              ) : (
+                <>
+                  {/* Desktop Table */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-outline-variant/10 bg-surface-container-low/50">
+                          <th className="text-left px-5 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Patient</th>
+                          <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Contact</th>
+                          <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Condition</th>
+                          <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Last Visit</th>
+                          <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map((p) => (
+                          <tr
+                            key={p.id}
+                            className={`border-b border-outline-variant/10 last:border-0 transition-colors ${editingId === p.id ? "bg-secondary-container/20" : "hover:bg-surface-container-low/40"}`}
+                          >
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-9 h-9 rounded-full ${p.avatarColor} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                                  {getInitials(p.name)}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-semibold text-on-surface leading-tight">{p.name}</p>
+                                  <p className="text-xs text-on-surface-variant">#{p.id}{p.age ? ` · Age ${p.age}` : ""}</p>
+                                </div>
                               </div>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <p className="text-xs font-medium text-on-surface">{p.phone}</p>
+                              <p className="text-xs text-on-surface-variant truncate max-w-[140px]">{p.email}</p>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-secondary-container text-primary">
+                                {p.condition || "—"}
+                              </span>
+                              {p.notes && <p className="text-xs text-on-surface-variant mt-1 max-w-[140px] truncate">{p.notes}</p>}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <p className="text-xs font-medium text-on-surface whitespace-nowrap">{p.lastVisit || "—"}</p>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-1.5">
+                                <a href={buildWhatsAppUrl(p.phone, p.name)} target="_blank" rel="noopener noreferrer"
+                                  title={`WhatsApp ${p.name}`}
+                                  className="w-8 h-8 rounded-lg bg-[#dcfce7] hover:bg-green-200 flex items-center justify-center transition-colors cursor-pointer group">
+                                  <WhatsAppIcon className="w-4 h-4 text-green-600" />
+                                </a>
+                                <a href={`tel:${p.phone.replace(/\D/g, "")}`} title={`Call ${p.name}`}
+                                  className="w-8 h-8 rounded-lg bg-secondary-container hover:bg-primary/10 flex items-center justify-center transition-colors cursor-pointer">
+                                  <Phone className="w-3.5 h-3.5 text-primary" />
+                                </a>
+                                <button onClick={() => handleEdit(p)} title="Edit"
+                                  className="w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center transition-colors cursor-pointer">
+                                  <Pencil className="w-3.5 h-3.5 text-on-surface-variant hover:text-primary" />
+                                </button>
+                                <button onClick={() => handleDelete(p.id)} title="Delete"
+                                  className="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center transition-colors cursor-pointer">
+                                  <Trash2 className="w-3.5 h-3.5 text-on-surface-variant hover:text-red-500" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile Card List */}
+                  <div className="md:hidden divide-y divide-outline-variant/10">
+                    {filtered.map((p) => (
+                      <div
+                        key={p.id}
+                        className={`px-4 py-4 ${editingId === p.id ? "bg-secondary-container/20" : ""}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`w-10 h-10 rounded-full ${p.avatarColor} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                            {getInitials(p.name)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-1">
                               <div>
                                 <p className="text-sm font-semibold text-on-surface leading-tight">{p.name}</p>
                                 <p className="text-xs text-on-surface-variant">#{p.id}{p.age ? ` · Age ${p.age}` : ""}</p>
                               </div>
+                              <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-secondary-container text-primary whitespace-nowrap shrink-0">
+                                {p.condition || "—"}
+                              </span>
                             </div>
-                          </td>
-
-                          {/* Contact */}
-                          <td className="px-4 py-3.5">
-                            <p className="text-xs font-medium text-on-surface">{p.phone}</p>
-                            <p className="text-xs text-on-surface-variant truncate max-w-[140px]">{p.email}</p>
-                          </td>
-
-                          {/* Condition */}
-                          <td className="px-4 py-3.5">
-                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-secondary-container text-primary">
-                              {p.condition || "—"}
-                            </span>
-                            {p.notes && (
-                              <p className="text-xs text-on-surface-variant mt-1 max-w-[140px] truncate">{p.notes}</p>
-                            )}
-                          </td>
-
-                          {/* Last Visit */}
-                          <td className="px-4 py-3.5">
-                            <p className="text-xs font-medium text-on-surface whitespace-nowrap">{p.lastVisit || "—"}</p>
-                          </td>
-
-                          {/* Actions */}
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-1.5">
-                              {/* WhatsApp */}
-                              <a
-                                href={buildWhatsAppUrl(p.phone, p.name)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title={`Send WhatsApp message to ${p.name}`}
-                                className="w-8 h-8 rounded-lg bg-[#dcfce7] hover:bg-green-200 flex items-center justify-center transition-colors cursor-pointer group"
-                              >
-                                <WhatsAppIcon className="w-4 h-4 text-green-600 group-hover:text-green-700" />
+                            <div className="mt-1.5 space-y-0.5">
+                              <p className="text-xs text-on-surface">{p.phone}</p>
+                              <p className="text-xs text-on-surface-variant truncate">{p.email}</p>
+                              {p.lastVisit && <p className="text-xs text-on-surface-variant">Last visit: {p.lastVisit}</p>}
+                            </div>
+                            {/* Mobile Actions */}
+                            <div className="flex items-center gap-2 mt-2.5">
+                              <a href={buildWhatsAppUrl(p.phone, p.name)} target="_blank" rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-xs font-semibold text-green-700 bg-[#dcfce7] px-2.5 py-1.5 rounded-lg">
+                                <WhatsAppIcon className="w-3.5 h-3.5" /> WhatsApp
                               </a>
-
-                              {/* Call */}
-                              <a
-                                href={`tel:${p.phone.replace(/\D/g, "")}`}
-                                title={`Call ${p.name}`}
-                                className="w-8 h-8 rounded-lg bg-secondary-container hover:bg-primary/10 flex items-center justify-center transition-colors cursor-pointer group"
-                              >
-                                <Phone className="w-3.5 h-3.5 text-primary group-hover:text-primary" />
+                              <a href={`tel:${p.phone.replace(/\D/g, "")}`}
+                                className="flex items-center gap-1 text-xs font-semibold text-primary bg-secondary-container px-2.5 py-1.5 rounded-lg">
+                                <Phone className="w-3.5 h-3.5" /> Call
                               </a>
-
-                              {/* Edit */}
-                              <button
-                                onClick={() => handleEdit(p)}
-                                title="Edit patient"
-                                className="w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center transition-colors cursor-pointer group"
-                              >
-                                <Pencil className="w-3.5 h-3.5 text-on-surface-variant group-hover:text-primary" />
+                              <button onClick={() => handleEdit(p)}
+                                className="w-7 h-7 rounded-lg hover:bg-surface-container flex items-center justify-center">
+                                <Pencil className="w-3.5 h-3.5 text-on-surface-variant" />
                               </button>
-
-                              {/* Delete */}
-                              <button
-                                onClick={() => handleDelete(p.id)}
-                                title="Delete patient"
-                                className="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center transition-colors cursor-pointer group"
-                              >
-                                <Trash2 className="w-3.5 h-3.5 text-on-surface-variant group-hover:text-red-500" />
+                              <button onClick={() => handleDelete(p.id)}
+                                className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center">
+                                <Trash2 className="w-3.5 h-3.5 text-red-400" />
                               </button>
                             </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* ── Add / Edit Form ── */}
-            <div className="xl:col-span-4">
-              <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm sticky top-24">
-                {/* Form header */}
-                <div className="px-6 pt-5 pb-4 border-b border-outline-variant/10 flex items-center justify-between">
+            {/* Add / Edit Form */}
+            {/* Desktop: always visible in grid. Mobile: shown as modal-like sheet when showForm=true */}
+            <div className={`xl:col-span-4 ${showForm ? "block" : "hidden xl:block"}`}>
+              <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm xl:sticky xl:top-24">
+                <div className="px-4 md:px-6 pt-5 pb-4 border-b border-outline-variant/10 flex items-center justify-between">
                   <div>
                     <h2 className="text-base font-bold text-on-surface">
                       {editingId ? "Edit Patient" : "Add New Patient"}
@@ -380,125 +451,80 @@ export default function PatientsPage() {
                       {editingId ? `Editing #${editingId}` : "Fill in the patient details below"}
                     </p>
                   </div>
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${editingId ? "bg-amber-100" : "bg-secondary-container"}`}>
-                    {editingId
-                      ? <Pencil className="w-4 h-4 text-amber-600" />
-                      : <UserPlus className="w-5 h-5 text-primary" />
-                    }
+                  <div className="flex items-center gap-2">
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${editingId ? "bg-amber-100" : "bg-secondary-container"}`}>
+                      {editingId
+                        ? <Pencil className="w-4 h-4 text-amber-600" />
+                        : <UserPlus className="w-5 h-5 text-primary" />
+                      }
+                    </div>
+                    {/* Close button on mobile */}
+                    <button onClick={handleCancel} className="xl:hidden p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant">
+                      <X className="w-5 h-5" />
+                    </button>
                   </div>
                 </div>
 
-                <form onSubmit={handleSubmit} className="px-6 py-5 flex flex-col gap-3.5">
-                  {/* Name */}
+                <form onSubmit={handleSubmit} className="px-4 md:px-6 py-5 flex flex-col gap-3.5">
                   <div>
                     <label htmlFor="patient-name" className="block text-xs font-semibold text-on-surface-variant mb-1.5">Full Name *</label>
-                    <input
-                      id="patient-name"
-                      type="text" name="name" value={form.name ?? ""} onChange={handleChange}
-                      placeholder="e.g. Jane Smith" required
-                      autoComplete="off"
-                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                    />
+                    <input id="patient-name" type="text" name="name" value={form.name ?? ""} onChange={handleChange}
+                      placeholder="e.g. Jane Smith" required autoComplete="off"
+                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
                   </div>
-
-                  {/* Phone */}
                   <div>
                     <label htmlFor="patient-phone" className="block text-xs font-semibold text-on-surface-variant mb-1.5">WhatsApp / Phone *</label>
-                    <input
-                      id="patient-phone"
-                      type="tel" name="phone" value={form.phone ?? ""} onChange={handleChange}
-                      placeholder="+1 (555) 000-0000" required
-                      autoComplete="off"
-                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                    />
+                    <input id="patient-phone" type="tel" name="phone" value={form.phone ?? ""} onChange={handleChange}
+                      placeholder="+1 (555) 000-0000" required autoComplete="off"
+                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
                   </div>
-
-                  {/* Email */}
                   <div>
                     <label htmlFor="patient-email" className="block text-xs font-semibold text-on-surface-variant mb-1.5">Email Address</label>
-                    <input
-                      id="patient-email"
-                      type="email" name="email" value={form.email ?? ""} onChange={handleChange}
-                      placeholder="jane@example.com"
-                      autoComplete="off"
-                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                    />
+                    <input id="patient-email" type="email" name="email" value={form.email ?? ""} onChange={handleChange}
+                      placeholder="jane@example.com" autoComplete="off"
+                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
                   </div>
-
-                  {/* Age + Last Visit in a row */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label htmlFor="patient-age" className="block text-xs font-semibold text-on-surface-variant mb-1.5">Age</label>
-                      <input
-                        id="patient-age"
-                        type="number" name="age" value={form.age ?? ""} onChange={handleChange}
+                      <input id="patient-age" type="number" name="age" value={form.age ?? ""} onChange={handleChange}
                         placeholder="e.g. 34" min="1" max="120"
-                        className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                      />
+                        className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
                     </div>
                     <div>
                       <label htmlFor="patient-last-visit" className="block text-xs font-semibold text-on-surface-variant mb-1.5">Last Visit</label>
-                      <input
-                        id="patient-last-visit"
-                        type="date" name="lastVisit" value={form.lastVisit ?? ""} onChange={handleChange}
-                        className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                      />
+                      <input id="patient-last-visit" type="date" name="lastVisit" value={form.lastVisit ?? ""} onChange={handleChange}
+                        className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
                     </div>
                   </div>
-
-                  {/* Condition */}
                   <div>
                     <label htmlFor="patient-condition" className="block text-xs font-semibold text-on-surface-variant mb-1.5">Treatment / Condition</label>
-                    <input
-                      id="patient-condition"
-                      type="text" name="condition" value={form.condition ?? ""} onChange={handleChange}
-                      placeholder="e.g. Root Canal, Whitening"
-                      autoComplete="off"
-                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                    />
+                    <input id="patient-condition" type="text" name="condition" value={form.condition ?? ""} onChange={handleChange}
+                      placeholder="e.g. Root Canal, Whitening" autoComplete="off"
+                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
                   </div>
-
-                  {/* Notes */}
                   <div>
                     <label htmlFor="patient-notes" className="block text-xs font-semibold text-on-surface-variant mb-1.5">Clinical Notes</label>
-                    <textarea
-                      id="patient-notes"
-                      name="notes" value={form.notes ?? ""} onChange={handleChange}
-                      placeholder="Any relevant medical notes..."
-                      rows={3}
-                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none"
-                    />
+                    <textarea id="patient-notes" name="notes" value={form.notes ?? ""} onChange={handleChange}
+                      placeholder="Any relevant medical notes..." rows={3}
+                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none" />
                   </div>
-
-                  {/* Buttons */}
                   <div className="flex gap-2 pt-1">
                     {editingId && (
-                      <button
-                        type="button"
-                        onClick={handleCancel}
-                        className="flex-1 border border-outline-variant/40 text-on-surface-variant text-sm font-semibold py-2.5 rounded-lg hover:bg-surface-container transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                      >
-                        <X className="w-4 h-4" />
-                        Cancel
+                      <button type="button" onClick={handleCancel}
+                        className="flex-1 border border-outline-variant/40 text-on-surface-variant text-sm font-semibold py-2.5 rounded-lg hover:bg-surface-container transition-colors cursor-pointer flex items-center justify-center gap-1.5">
+                        <X className="w-4 h-4" /> Cancel
                       </button>
                     )}
-                    <button
-                      type="submit"
-                      className={`${editingId ? "flex-1" : "w-full"} bg-primary hover:bg-primary/90 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.99]`}
-                    >
+                    <button type="submit"
+                      className={`${editingId ? "flex-1" : "w-full"} bg-primary hover:bg-primary/90 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.99]`}>
                       <CheckCircle2 className="w-4 h-4" />
                       {editingId ? "Save Changes" : "Add Patient"}
                     </button>
                   </div>
-
-                  {/* WhatsApp hint */}
                   {form.phone && (
-                    <a
-                      href={buildWhatsAppUrl(form.phone, form.name || "Patient")}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-2 text-xs text-green-700 font-semibold bg-[#dcfce7] hover:bg-green-200 transition-colors py-2 rounded-lg cursor-pointer"
-                    >
+                    <a href={buildWhatsAppUrl(form.phone, form.name || "Patient")} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 text-xs text-green-700 font-semibold bg-[#dcfce7] hover:bg-green-200 transition-colors py-2 rounded-lg cursor-pointer">
                       <WhatsAppIcon className="w-3.5 h-3.5" />
                       Preview appointment message on WhatsApp
                     </a>
@@ -511,7 +537,7 @@ export default function PatientsPage() {
         </main>
 
         {/* Footer */}
-        <footer className="bg-white border-t border-outline-variant/20 px-8 py-4">
+        <footer className="bg-white border-t border-outline-variant/20 px-4 md:px-8 py-4">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-on-surface-variant">
             <p>© 2024 DentaPure Clinical Excellence. All rights reserved.</p>
             <div className="flex items-center gap-4 font-medium">
@@ -523,9 +549,9 @@ export default function PatientsPage() {
         </footer>
       </div>
 
-      {/* ─── Toast Notification ─── */}
+      {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-surface text-sm font-medium px-4 py-3 rounded-xl shadow-level-2 flex items-center gap-2 animate-in slide-in-from-bottom-4 duration-300">
+        <div className="fixed bottom-6 right-4 md:right-6 z-50 bg-on-surface text-surface text-sm font-medium px-4 py-3 rounded-xl shadow-level-2 flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           {toast}
         </div>

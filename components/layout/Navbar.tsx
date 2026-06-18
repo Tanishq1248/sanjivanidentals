@@ -99,13 +99,7 @@ export const Navbar: React.FC = () => {
           >
             Gallery
           </Link>
-          <Link
-            href="/#patient-info"
-            onClick={(e) => handleNavClick(e, "/#patient-info")}
-            className="text-secondary hover:text-primary transition-all duration-300 font-medium text-sm"
-          >
-            Patient Info
-          </Link>
+         
         </nav>
 
         {/* Trailing Action */}
