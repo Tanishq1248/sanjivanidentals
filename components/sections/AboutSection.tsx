@@ -144,10 +144,10 @@ export const AboutSection: React.FC = () => {
                   style={{ width: "360px", height: "440px" }}
                 >
                   <Image
-                    src="/general_dentistry.png"
+                    src="/drimg.jpg"
                     alt="Dr. Snehal Kumbhar"
                     fill
-                    className="object-cover object-top"
+                    className="object-fill object-top"
                     sizes="260px"
                   />
                 </div>

@@ -117,10 +117,10 @@ export default function ServicesPage() {
   ];
 
   const IMG = {
-    smile: "https://lh3.googleusercontent.com/aida/AP1WRLtY0HSJtkKbGP-bWIJF_ENURdiRnf-eNJjAfrz-QlBIu3IzwRx35fYOSATCsci6F4z91s9ObFiTrGA9zMCKrzPt3DRChoSrJsm2k-ABadrMVEFp_L6kfKAEzxZcy3_uQyGCtjM7axrCQeK-IRZeixj1RbgfX-zZopbAKL8d3SIV8bkjXv4LoP33GeUYC_4HcRAY2G2YMFONuM5h5peEsrm9vWGRl0cXSOl7MpMY-EeHx0y20SN3ra48tA",
-    interior: "https://lh3.googleusercontent.com/aida/AP1WRLu1wzmWdviIhCZqcru3DvHNIaAeH-oLY0YrOCYkvqY53E8wiDwT_wIShQcXCRePFjrAUaIPo2txk-a72lJNrD3DrSf6bLFAjIuhI1zt10FGBT0BpK1GLkKywQ9tBQj2jcsFZTU09j3AG65YFgAq416xAdO_r_O18cgvyD7ojRAO1CrdrW9mTUt-LjuR2oP3FDee1vHEiMFNwSRDvHG3O2_XM8rUiPCF5c3lvSOfW5HICfZkNti_0ov4rM0",
-    tech: "https://lh3.googleusercontent.com/aida/AP1WRLvCt2iIT1FyGLY6hB0z6NWmGl8HOag6oFpiDxX-w7L6Gw_dC2Kpqi89ch84v-r7jqk4GLT0V1z1b8jk30ootI7gwIlslQownx3v_ZO745t-ztiUcVMtyh3bCZKjzuPslC0hhK37bKWDrkyG71F_pI0-Vi4rb2WOadSdCmBeZt5-NJW-s8z3L-YaV6zyujcVF8-sfL19Lw9dnmVdcCN_k2H6zPyAxubwZ8G8GBpWKFr7mK1DzPHXbtIPlcE",
-    reception: "https://lh3.googleusercontent.com/aida/AP1WRLt43UBMaH9snYTLBPmZDqqVswmL8FRptTwsJinWM9PryIX5AYDeC8eGHaXeHv0l4u5S7T0GBohy8nLR5tXQJt-SbIVlwj6Qb3u3n7-QBNLo1NMYhrlmOTPK71y1cRhQN3Gt1UkyIGg-X0nedLqMP_x1kfCw7Vj4w9_zhoYkfR9xW-pBQ3tm8kfIvueHk6yyIt0I0pJvvCfk8b5pChceEnBEO83e85y1IzYdR5dLn2tDAKdriHLOxqk_s4w",
+    smile: "general_dentistry.png",
+    interior: "interior.webp",
+    tech: "dentaltech.jpg",
+    reception: "reception.jpg",
   };
 
   return (
@@ -141,7 +141,7 @@ export default function ServicesPage() {
           <div className="lg:col-span-9 bg-surface-container-lowest rounded-2xl border border-outline-variant/10 shadow-level-1 overflow-hidden">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
               <div className="relative h-[280px] md:min-h-[340px]">
-                <Image src={IMG.smile} alt="Patient with a beautiful smile" fill className="object-cover" sizes="50vw" />
+                <Image src="/general_dentistry.png" alt="Patient with a beautiful smile" fill className="object-cover" sizes="50vw" />
               </div>
               <div className="p-8 flex flex-col justify-center">
                 <div className="flex items-center gap-2 mb-4">
@@ -213,7 +213,7 @@ export default function ServicesPage() {
               </div>
             </div>
             <div className="relative h-[280px] md:min-h-[340px] order-1 md:order-2">
-              <Image src={IMG.interior} alt="Modern dental clinic interior" fill className="object-cover" sizes="50vw" />
+              <Image src= "/interior.webp" alt="Modern dental clinic interior" fill className="object-cover" sizes="50vw" />
             </div>
           </div>
         </div>
@@ -224,7 +224,7 @@ export default function ServicesPage() {
         <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 shadow-level-1 overflow-hidden">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
             <div className="relative h-[280px] md:min-h-[340px]">
-              <Image src={IMG.tech} alt="Advanced dental technology equipment" fill className="object-cover" sizes="50vw" />
+              <Image src="/dentaltech.jpg" alt="Advanced dental technology equipment" fill className="object-cover" sizes="50vw" />
             </div>
             <div className="p-8 md:p-10 flex flex-col justify-center">
               <div className="flex items-center gap-2 mb-4">
@@ -252,18 +252,18 @@ export default function ServicesPage() {
       <section className="px-6 pb-20 max-w-[1200px] mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {[
-            { img: IMG.reception, alt: "Orthodontics treatment", icon: <AlignLeft className="w-4 h-4 text-primary" />, title: "Orthodontics", desc: "Modern braces and clear aligners for patients of all ages. Achieve a straighter, healthier smile with our customized orthodontic treatment plans." },
-            { img: IMG.smile, alt: "Comfortable patient environment", icon: <Armchair className="w-4 h-4 text-primary" />, title: "Patient Comfort", desc: "We understand dental anxiety. Our practice is designed with your comfort in mind — from sedation options to a calming clinic environment." },
+            { img: "reception.jpg", alt: "Orthodontics treatment", icon: <AlignLeft className="w-4 h-4 text-primary" />, title: "Orthodontics", desc: "Modern braces and clear aligners for patients of all ages. Achieve a straighter, healthier smile with our customized orthodontic treatment plans." },
+            { img: "after_smile.png", alt: "Comfortable patient environment", icon: <Armchair className="w-4 h-4 text-primary" />, title: "Patient Comfort", desc: "We understand dental anxiety. Our practice is designed with your comfort in mind — from sedation options to a calming clinic environment." },
           ].map((card, i) => (
             <div key={i} className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 shadow-level-1 overflow-hidden group">
               <div className="relative h-[220px] overflow-hidden">
-                <Image
-                  src={card.img}
-                  alt={card.alt}
+                {/* <Image
+                  src="orthodontics.png"
+                  alt="orthodontics"
                   fill
                   className="object-cover transition-transform duration-500 group-hover:scale-105"
                   sizes="(max-width: 768px) 100vw, 50vw"
-                />
+                /> */}
               </div>
               <div className="p-6">
                 <div className="flex items-center gap-2 mb-3">

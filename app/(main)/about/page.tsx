@@ -54,13 +54,13 @@ export default function AboutPage() {
       <section className="relative h-[340px] md:h-[480px] w-full overflow-hidden flex items-center">
         <div className="absolute inset-0 z-0">
           <Image
-            src="https://lh3.googleusercontent.com/aida/AP1WRLu1wzmWdviIhCZqcru3DvHNIaAeH-oLY0YrOCYkvqY53E8wiDwT_wIShQcXCRePFjrAUaIPo2txk-a72lJNrD3DrSf6bLFAjIuhI1zt10FGBT0BpK1GLkKywQ9tBQj2jcsFZTU09j3AG65YFgAq416xAdO_r_O18cgvyD7ojRAO1CrdrW9mTUt-LjuR2oP3FDee1vHEiMFNwSRDvHG3O2_XM8rUiPCF5c3lvSOfW5HICfZkNti_0ov4rM0"
+            src="/about_hero.png"
             alt="State-of-the-Art Dental Clinic Interior"
             fill
             className="object-cover object-center"
             priority
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-white/95 via-white/80 md:via-white/60 to-transparent" />
+          {/* <div className="absolute inset-0 bg-gradient-to-r from-white/95 via-white/80 md:via-white/60 to-transparent" /> */}
         </div>
 
         <div className="relative z-10 max-w-[1200px] mx-auto w-full px-6">
@@ -83,7 +83,7 @@ export default function AboutPage() {
             {/* Doctor Image */}
             <div className="lg:col-span-5 relative h-[300px] md:h-[400px] w-full rounded-xl overflow-hidden shadow-sm">
               <Image
-                src="https://lh3.googleusercontent.com/aida/AP1WRLsuPHdERu4ervQ8YoyI2Fc4jec6pdmw_Mai4SlVJ8ZHoc20S2IC9iyEQEhFAV_vnSnAI5_ZxGeg8_XUbAJqi6IwsgA6kdZJjCQjZ3avoEgikDGiq3bcRK-jei3-5Jur8PY3okS_i6q8kmOgsq4FgnSdFNL-O4DqkW5GXb-pTZ5tX6QWKI_CAK7tGW0EOvn01UxAKBZL5R1ZrnIdCnAcomSL7jbbCuszIvu8fWl5zlkL4du7Hbw0uJfRZg"
+                src="/drimg.jpg"
                 alt="Dr. Anya Sharma, DDS"
                 fill
                 className="object-cover object-top"
@@ -179,7 +179,7 @@ export default function AboutPage() {
           <div className="lg:col-span-7 grid grid-cols-2 gap-4">
             <div className="relative h-[200px] md:h-[300px] rounded-xl overflow-hidden shadow-sm">
               <Image
-                src="https://lh3.googleusercontent.com/aida/AP1WRLt43UBMaH9snYTLBPmZDqqVswmL8FRptTwsJinWM9PryIX5AYDeC8eGHaXeHv0l4u5S7T0GBohy8nLR5tXQJt-SbIVlwj6Qb3u3n7-QBNLo1NMYhrlmOTPK71y1cRhQN3Gt1UkyIGg-X0nedLqMP_x1kfCw7Vj4w9_zhoYkfR9xW-pBQ3tm8kfIvueHk6yyIt0I0pJvvCfk8b5pChceEnBEO83e85y1IzYdR5dLn2tDAKdriHLOxqk_s4w"
+                src="/reception.jpg"
                 alt="Welcoming Reception Area"
                 fill
                 className="object-cover"
@@ -187,7 +187,7 @@ export default function AboutPage() {
             </div>
             <div className="relative h-[200px] md:h-[300px] rounded-xl overflow-hidden shadow-sm">
               <Image
-                src="https://lh3.googleusercontent.com/aida/AP1WRLvCt2iIT1FyGLY6hB0z6NWmGl8HOag6oFpiDxX-w7L6Gw_dC2Kpqi89ch84v-r7jqk4GLT0V1z1b8jk30ootI7gwIlslQownx3v_ZO745t-ztiUcVMtyh3bCZKjzuPslC0hhK37bKWDrkyG71F_pI0-Vi4rb2WOadSdCmBeZt5-NJW-s8z3L-YaV6zyujcVF8-sfL19Lw9dnmVdcCN_k2H6zPyAxubwZ8G8GBpWKFr7mK1DzPHXbtIPlcE"
+                src="/dentaltech.jpg"
                 alt="Advanced Technology Treatment Room"
                 fill
                 className="object-cover"

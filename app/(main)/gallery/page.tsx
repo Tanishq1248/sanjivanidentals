@@ -11,31 +11,31 @@ export const metadata = {
 
 const galleryItems = [
   {
-    url: "https://lh3.googleusercontent.com/aida/AP1WRLu1wzmWdviIhCZqcru3DvHNIaAeH-oLY0YrOCYkvqY53E8wiDwT_wIShQcXCRePFjrAUaIPo2txk-a72lJNrD3DrSf6bLFAjIuhI1zt10FGBT0BpK1GLkKywQ9tBQj2jcsFZTU09j3AG65YFgAq416xAdO_r_O18cgvyD7ojRAO1CrdrW9mTUt-LjuR2oP3FDee1vHEiMFNwSRDvHG3O2_XM8rUiPCF5c3lvSOfW5HICfZkNti_0ov4rM0",
+    url: "/interior.webp",
     alt: "State of the Art Interior",
     label: "State-of-the-Art Interior",
     className: "md:col-span-2 md:row-span-2 h-[320px] md:h-[660px]",
   },
   {
-    url: "https://lh3.googleusercontent.com/aida/AP1WRLt43UBMaH9snYTLBPmZDqqVswmL8FRptTwsJinWM9PryIX5AYDeC8eGHaXeHv0l4u5S7T0GBohy8nLR5tXQJt-SbIVlwj6Qb3u3n7-QBNLo1NMYhrlmOTPK71y1cRhQN3Gt1UkyIGg-X0nedLqMP_x1kfCw7Vj4w9_zhoYkfR9xW-pBQ3tm8kfIvueHk6yyIt0I0pJvvCfk8b5pChceEnBEO83e85y1IzYdR5dLn2tDAKdriHLOxqk_s4w",
+    url: "/reception.jpg",
     alt: "Welcoming Reception",
     label: "Welcoming Reception",
     className: "h-[320px]",
   },
   {
-    url: "https://lh3.googleusercontent.com/aida/AP1WRLsuPHdERu4ervQ8YoyI2Fc4jec6pdmw_Mai4SlVJ8ZHoc20S2IC9iyEQEhFAV_vnSnAI5_ZxGeg8_XUbAJqi6IwsgA6kdZJjCQjZ3avoEgikDGiq3bcRK-jei3-5Jur8PY3okS_i6q8kmOgsq4FgnSdFNL-O4DqkW5GXb-pTZ5tX6QWKI_CAK7tGW0EOvn01UxAKBZL5R1ZrnIdCnAcomSL7jbbCuszIvu8fWl5zlkL4du7Hbw0uJfRZg",
+    url: "/drimg.jpg",
     alt: "Dr. Anya Sharma",
     label: "Dr. Anya Sharma",
     className: "h-[320px] object-top",
   },
   {
-    url: "https://lh3.googleusercontent.com/aida/AP1WRLvCt2iIT1FyGLY6hB0z6NWmGl8HOag6oFpiDxX-w7L6Gw_dC2Kpqi89ch84v-r7jqk4GLT0V1z1b8jk30ootI7gwIlslQownx3v_ZO745t-ztiUcVMtyh3bCZKjzuPslC0hhK37bKWDrkyG71F_pI0-Vi4rb2WOadSdCmBeZt5-NJW-s8z3L-YaV6zyujcVF8-sfL19Lw9dnmVdcCN_k2H6zPyAxubwZ8G8GBpWKFr7mK1DzPHXbtIPlcE",
+    url: "/dentaltech.jpg",
     alt: "Advanced Technology",
     label: "Advanced Technology",
     className: "md:col-span-2 h-[320px]",
   },
   {
-    url: "https://lh3.googleusercontent.com/aida/AP1WRLtY0HSJtkKbGP-bWIJF_ENURdiRnf-eNJjAfrz-QlBIu3IzwRx35fYOSATCsci6F4z91s9ObFiTrGA9zMCKrzPt3DRChoSrJsm2k-ABadrMVEFp_L6kfKAEzxZcy3_uQyGCtjM7axrCQeK-IRZeixj1RbgfX-zZopbAKL8d3SIV8bkjXv4LoP33GeUYC_4HcRAY2G2YMFONuM5h5peEsrm9vWGRl0cXSOl7MpMY-EeHx0y20SN3ra48tA",
+    url: "/after_teeth.png",
     alt: "Beautiful Results",
     label: "Beautiful Results",
     className: "h-[320px]",
