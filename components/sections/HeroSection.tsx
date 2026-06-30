@@ -33,7 +33,7 @@ export const HeroSection: React.FC = () => {
           {/* Heading */}
           <ScrollReveal delay={250} duration={800} distance="25px">
             <h1 className="font-bold text-4xl md:text-5xl lg:text-6xl text-on-surface tracking-tight max-w-2xl leading-[1.1]">
-              Sanjivani Dental Care<br />
+              Face Max Dental CLinic<br />
               <span className="text-primary-container">You Can Trust</span>
             </h1>
           </ScrollReveal>
