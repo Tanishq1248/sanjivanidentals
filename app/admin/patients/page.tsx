@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
-import Image from "next/image";
+import React, { useState, useEffect, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useDebounce } from "../../../lib/hooks/useDebounce";
 import Link from "next/link";
 import {
   Stethoscope,
@@ -16,7 +17,31 @@ import {
   CheckCircle2,
   Phone,
   Menu,
+  LogOut,
+  Loader2,
+  Pill,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
 } from "lucide-react";
+import { AdminAuthGuard } from "../../../components/auth/AdminAuthGuard";
+import { useAuth } from "../../../lib/context/AuthContext";
+import {
+  getPatients,
+  addPatient,
+  updatePatient,
+  deletePatient,
+  getPatientsPaginated,
+  getPatientsCount,
+  PAGE_SIZE,
+} from "../../../lib/services/patientService";
+import type { Patient, PatientFormData, PaginatedResult } from "../../../lib/types";
+import { useSidebarStore } from "../../../lib/store/useSidebarStore";
+import { usePatientStore } from "../../../lib/store/usePatientStore";
+import { useDashboardStore } from "../../../lib/store/useDashboardStore";
+import { queryKeys } from "../../../lib/query/queryKeys";
+import { PatientDetailsModal } from "../../../components/admin/PatientDetailsModal";
+import { TableSkeleton, CardListSkeleton, useDelayLoading } from "../../../components/ui/Skeletons";
 
 /* ─── WhatsApp SVG Icon ─── */
 const WhatsAppIcon = ({ className }: { className?: string }) => (
@@ -25,62 +50,60 @@ const WhatsAppIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-/* ─── Types ─── */
-interface Patient {
-  id: string;
-  name: string;
-  phone: string;
-  email: string;
-  age: string;
-  lastVisit: string;
-  condition: string;
-  notes: string;
-  avatarColor: string;
-}
-
-const AVATAR_COLORS = [
-  "bg-blue-500", "bg-purple-500", "bg-emerald-500", "bg-orange-500",
-  "bg-teal-500", "bg-rose-500", "bg-sky-500", "bg-violet-500",
-  "bg-amber-500", "bg-indigo-500",
-];
-
+/* ─── Helpers ─── */
 function getInitials(name: string) {
-  return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 function buildWhatsAppUrl(phone: string, name: string) {
   const digits = phone.replace(/\D/g, "");
   const message = encodeURIComponent(
-    `Hello ${name}! 👋 This is DentaPure Clinic. We hope you're doing well! We'd like to schedule your next appointment at your convenience. Please reply to this message to confirm a suitable date and time. Looking forward to seeing you! 😊\n\n– DentaPure Clinical Excellence`
+    `Hello ${name}! 👋 This is Sanjivani Dentals. We hope you're doing well! We'd like to schedule your next appointment at your convenience. Please reply to this message to confirm a suitable date and time. Looking forward to seeing you! 😊\n\n– Sanjivani Dentals`
   );
   return `https://wa.me/${digits}?text=${message}`;
 }
 
-/* ─── Seed Data ─── */
-const seedPatients: Patient[] = [
-  { id: "P-9021", name: "Sarah Henderson", phone: "+1 (555) 901-2100", email: "sarah.h@email.com",   age: "32", lastVisit: "Jun 14, 2024", condition: "Root Canal",        notes: "Follow-up in 6 weeks",          avatarColor: "bg-blue-500" },
-  { id: "P-8842", name: "Michael Jenkins", phone: "+1 (555) 884-2000", email: "m.jenkins@email.com", age: "45", lastVisit: "Jun 13, 2024", condition: "Prophylaxis",        notes: "Mild gum sensitivity",           avatarColor: "bg-purple-500" },
-  { id: "P-9210", name: "Emma Wilson",     phone: "+1 (555) 921-0300", email: "emma.w@email.com",    age: "28", lastVisit: "Jun 12, 2024", condition: "Orthodontics",       notes: "Braces adjustment scheduled",    avatarColor: "bg-emerald-500" },
-  { id: "P-7741", name: "David Rivera",    phone: "+1 (555) 774-1000", email: "d.rivera@email.com",  age: "37", lastVisit: "Jun 10, 2024", condition: "Teeth Whitening",    notes: "Second session pending",         avatarColor: "bg-orange-500" },
-  { id: "P-9310", name: "Laura Peterson",  phone: "+1 (555) 931-0400", email: "l.peterson@email.com",age: "51", lastVisit: "May 28, 2024", condition: "Dental Implants",    notes: "Post-op check required",         avatarColor: "bg-teal-500" },
-];
-
-const emptyForm = { name: "", phone: "", email: "", age: "", lastVisit: "", condition: "", notes: "" };
+const emptyForm = {
+  name: "",
+  phone: "",
+  email: "",
+  age: "",
+  gender: "",
+  address: "",
+};
 
 /* ─── Sidebar ─── */
-function Sidebar({ onClose }: { onClose?: () => void }) {
+function Sidebar({
+  onClose,
+  onLogout,
+}: {
+  onClose?: () => void;
+  onLogout: () => void;
+}) {
   return (
     <aside className="w-full h-full bg-white flex flex-col">
       <div className="px-5 py-5 border-b border-outline-variant/20 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2" onClick={onClose}>
           <Stethoscope className="w-6 h-6 text-primary" />
           <div>
-            <p className="font-bold text-base text-primary leading-tight">DentaPure</p>
-            <p className="text-[10px] text-on-surface-variant font-medium leading-tight">Clinical Excellence</p>
+            <p className="font-bold text-base text-primary leading-tight">
+              DentaPure
+            </p>
+            <p className="text-[10px] text-on-surface-variant font-medium leading-tight">
+              Clinical Excellence
+            </p>
           </div>
         </Link>
         {onClose && (
-          <button onClick={onClose} className="md:hidden p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant">
+          <button
+            onClick={onClose}
+            className="md:hidden p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant"
+          >
             <X className="w-5 h-5" />
           </button>
         )}
@@ -104,8 +127,12 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
         </Link>
       </nav>
       <div className="px-3 py-5 border-t border-outline-variant/20">
-        <button className="w-full bg-primary text-white text-sm font-semibold py-2.5 px-4 rounded-lg hover:bg-primary/90 transition-colors cursor-pointer">
-          Contact Support
+        <button
+          onClick={onLogout}
+          className="w-full bg-red-50 text-red-600 text-sm font-semibold py-2.5 px-4 rounded-lg hover:bg-red-100 transition-colors cursor-pointer flex items-center justify-center gap-2"
+        >
+          <LogOut className="w-4 h-4" />
+          Logout
         </button>
       </div>
     </aside>
@@ -113,75 +140,294 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
 }
 
 /* ─── Patients Page ─── */
-export default function PatientsPage() {
-  const [patients, setPatients] = useState<Patient[]>(seedPatients);
+function PatientsManagement() {
+  const { logout, user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // ── Zustand Store UI states ───────────────────────────────────────────────
+  const { sidebarOpen, setSidebarOpen } = useSidebarStore();
+  const { selectedPatient, isModalOpen, openPatientDetails, closePatientDetails } = usePatientStore();
+  const { toast, showToast } = useDashboardStore();
+
+  // ── Pagination cursor state (cursors are not serializable, so they stay here) ──
+  const [currentPage, setCurrentPage] = useState(1);
+  const [startAfterHistory, setStartAfterHistory] = useState<(any | null)[]>([null]);
+  const [hasNextPage, setHasNextPage] = useState(false);
+
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [toast, setToast] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Debounce the search string — Firestore queries fire only after the user
+  // pauses typing for 400 ms, preventing per-keystroke read storms.
+  const debouncedSearch = useDebounce(search, 400);
   const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  };
+  // ── Patient list query ───────────────────────────────────────────────────
+  const {
+    data: patientListResult,
+    isLoading: isListLoading,
+  } = useQuery({
+    queryKey: queryKeys.patients.list(currentPage, debouncedSearch),
+    queryFn: async () => {
+      if (debouncedSearch.trim() !== "") {
+        // Search mode: fetch all for client-side filtering.
+        const allPatients = await getPatients();
+        return { data: allPatients, hasNext: false, lastVisible: null };
+      }
+      // Paginated mode: cursor lives in local state.
+      const cursor = startAfterHistory[currentPage - 1] ?? null;
+      return getPatientsPaginated(cursor, PAGE_SIZE);
+    },
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    setForm({ ...form, [e.target.name]: e.target.value });
+  // Sync cursor history from query result (only for paginated, non-search pages).
+  useEffect(() => {
+    if (!patientListResult || debouncedSearch.trim() !== "") return;
+    setHasNextPage(patientListResult.hasNext);
+    if (patientListResult.lastVisible) {
+      setStartAfterHistory((prev) => {
+        const copy = [...prev];
+        copy[currentPage] = patientListResult.lastVisible;
+        return copy;
+      });
+    }
+  }, [patientListResult, currentPage, debouncedSearch]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingId) {
-      setPatients((prev) => prev.map((p) => p.id === editingId ? { ...p, ...form } : p));
+  const patients: Patient[] = patientListResult?.data ?? [];
+
+  // ── Patient count query ─────────────────────────────────────────────────
+  const { data: totalCount = 0 } = useQuery({
+    queryKey: queryKeys.patients.count(),
+    queryFn: getPatientsCount,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
+  const showSkeleton = useDelayLoading(isListLoading, 300);
+
+  // ── Search: reset to page 1 whenever debounced search changes ───────────
+  useEffect(() => {
+    setCurrentPage(1);
+    setStartAfterHistory([null]);
+  }, [debouncedSearch]);
+
+  const loadPage = useCallback((pageNumber: number) => {
+    setCurrentPage(pageNumber);
+  }, []);
+
+  // ── Mutations ────────────────────────────────────────────────────────────
+  const addMutation = useMutation({
+    mutationFn: (data: PatientFormData) => addPatient(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.patients.all });
+      showToast("Patient added successfully!");
+      setForm(emptyForm);
+      setShowForm(false);
+      setCurrentPage(1);
+      setStartAfterHistory([null]);
+    },
+    onError: () => showToast("Failed to add patient."),
+    onSettled: () => setSubmitting(false),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<PatientFormData> }) =>
+      updatePatient(id, data),
+    onMutate: async ({ id, data }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: queryKeys.patients.list(currentPage, debouncedSearch) });
+      await queryClient.cancelQueries({ queryKey: queryKeys.patients.byId(id) });
+      await queryClient.cancelQueries({ queryKey: queryKeys.patients.byPhone(data.phone ?? "") });
+
+      // Snapshot previous caches
+      const previousList = queryClient.getQueryData<PaginatedResult<Patient>>(
+        queryKeys.patients.list(currentPage, debouncedSearch)
+      );
+      const previousDetails = queryClient.getQueryData<Patient>(queryKeys.patients.byId(id));
+
+      // Optimistically update the list
+      if (previousList) {
+        queryClient.setQueryData(
+          queryKeys.patients.list(currentPage, debouncedSearch),
+          {
+            ...previousList,
+            data: previousList.data.map((p: Patient) =>
+              p.id === id ? { ...p, ...data } : p
+            ),
+          }
+        );
+      }
+
+      // Optimistically update details by ID
+      if (previousDetails) {
+        queryClient.setQueryData(queryKeys.patients.byId(id), {
+          ...previousDetails,
+          ...data,
+        });
+      }
+
+      return { previousList, previousDetails, id };
+    },
+    onError: (err, variables, context) => {
+      console.error("Update failed:", err);
+      // Rollback to previous state
+      if (context?.previousList) {
+        queryClient.setQueryData(
+          queryKeys.patients.list(currentPage, debouncedSearch),
+          context.previousList
+        );
+      }
+      if (context?.previousDetails) {
+        queryClient.setQueryData(
+          queryKeys.patients.byId(context.id),
+          context.previousDetails
+        );
+      }
+      showToast("Failed to save patient.");
+    },
+    onSuccess: () => {
       showToast("Patient details updated!");
       setEditingId(null);
+      setForm(emptyForm);
+      setShowForm(false);
+    },
+    onSettled: () => {
+      setSubmitting(false);
+      queryClient.invalidateQueries({ queryKey: queryKeys.patients.all });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deletePatient(id),
+    onMutate: async (id) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: queryKeys.patients.list(currentPage, debouncedSearch) });
+      await queryClient.cancelQueries({ queryKey: queryKeys.patients.count() });
+
+      // Snapshot previous caches
+      const previousList = queryClient.getQueryData<PaginatedResult<Patient>>(
+        queryKeys.patients.list(currentPage, debouncedSearch)
+      );
+      const previousCount = queryClient.getQueryData<number>(queryKeys.patients.count());
+
+      // Optimistically remove from list
+      if (previousList) {
+        queryClient.setQueryData(
+          queryKeys.patients.list(currentPage, debouncedSearch),
+          {
+            ...previousList,
+            data: previousList.data.filter((p: Patient) => p.id !== id),
+          }
+        );
+      }
+
+      // Optimistically decrement count
+      if (previousCount !== undefined) {
+        queryClient.setQueryData(
+          queryKeys.patients.count(),
+          Math.max(0, (previousCount as number) - 1)
+        );
+      }
+
+      return { previousList, previousCount };
+    },
+    onError: (err, id, context) => {
+      console.error("Delete failed:", err);
+      // Rollback
+      if (context?.previousList) {
+        queryClient.setQueryData(
+          queryKeys.patients.list(currentPage, debouncedSearch),
+          context.previousList
+        );
+      }
+      if (context?.previousCount !== undefined) {
+        queryClient.setQueryData(
+          queryKeys.patients.count(),
+          context.previousCount
+        );
+      }
+      showToast("Failed to delete patient.");
+    },
+    onSuccess: (_, deletedId) => {
+      if (editingId === deletedId) {
+        setEditingId(null);
+        setForm(emptyForm);
+        setShowForm(false);
+      }
+      showToast("Patient removed.");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.patients.all });
+    },
+  });
+
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => setForm({ ...form, [e.target.name]: e.target.value });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name || !form.phone) return;
+    setSubmitting(true);
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, data: form as PatientFormData });
     } else {
-      const newPatient: Patient = {
-        ...form,
-        id: `P-${Math.floor(1000 + Math.random() * 9000)}`,
-        avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
-      };
-      setPatients((prev) => [newPatient, ...prev]);
-      showToast("Patient added successfully!");
+      addMutation.mutate(form as PatientFormData);
     }
-    setForm(emptyForm);
-    setShowForm(false);
   };
 
   const handleEdit = (p: Patient) => {
     setEditingId(p.id);
-    setForm({ name: p.name, phone: p.phone, email: p.email, age: p.age, lastVisit: p.lastVisit, condition: p.condition, notes: p.notes });
+    setForm({
+      name: p.name,
+      phone: p.phone,
+      email: p.email,
+      age: p.age,
+      gender: p.gender || "",
+      address: p.address || "",
+    });
     setShowForm(true);
   };
 
-  const handleDelete = (id: string) => {
-    setPatients((prev) => prev.filter((p) => p.id !== id));
-    if (editingId === id) { setEditingId(null); setForm(emptyForm); setShowForm(false); }
-    showToast("Patient removed.");
+  const handleDelete = async (id: string) => {
+    deleteMutation.mutate(id);
   };
 
-  const handleCancel = () => { setEditingId(null); setForm(emptyForm); setShowForm(false); };
+  const handleCancel = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setShowForm(false);
+  };
+
+  const handleLogout = async () => {
+    await logout();
+  };
 
   const filtered = patients.filter(
     (p) =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.phone.includes(search) ||
-      p.email.toLowerCase().includes(search.toLowerCase()) ||
-      p.condition.toLowerCase().includes(search.toLowerCase())
+      p.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      p.phone.includes(debouncedSearch) ||
+      p.email.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      p.condition.toLowerCase().includes(debouncedSearch.toLowerCase())
   );
 
   return (
     <div className="min-h-screen flex bg-[#f2f5f8] font-sans">
-
       {/* Mobile overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setSidebarOpen(false)} />
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
       )}
 
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-[200px] shrink-0 border-r border-outline-variant/20 sticky top-0 h-screen shadow-sm flex-col">
-        <Sidebar />
+        <Sidebar onLogout={handleLogout} />
       </aside>
 
       {/* Mobile Sidebar Drawer */}
@@ -190,12 +436,14 @@ export default function PatientsPage() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <Sidebar onClose={() => setSidebarOpen(false)} />
+        <Sidebar
+          onClose={() => setSidebarOpen(false)}
+          onLogout={handleLogout}
+        />
       </div>
 
       {/* ═══ MAIN ═══ */}
       <div className="flex-1 flex flex-col min-w-0">
-
         {/* Top Bar */}
         <header className="bg-white border-b border-outline-variant/20 px-4 md:px-8 py-4 flex items-center gap-3 sticky top-0 z-20 shadow-sm">
           <button
@@ -206,7 +454,9 @@ export default function PatientsPage() {
             <Menu className="w-5 h-5" />
           </button>
 
-          <h1 className="text-lg md:text-xl font-bold text-primary shrink-0">Patient Management</h1>
+          <h1 className="text-lg md:text-xl font-bold text-primary shrink-0">
+            Patient Management
+          </h1>
 
           <div className="relative flex-1 max-w-sm hidden sm:block ml-2">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
@@ -221,17 +471,17 @@ export default function PatientsPage() {
 
           <div className="flex items-center gap-2 md:gap-3 shrink-0 ml-auto">
             <div className="text-right hidden lg:block">
-              <p className="text-sm font-semibold text-on-surface leading-tight">Dr. Julian Moore</p>
-              <p className="text-xs text-on-surface-variant">Senior Orthodontist</p>
+              <p className="text-sm font-semibold text-on-surface leading-tight">
+                {user?.email || "Admin"}
+              </p>
+              <p className="text-xs text-on-surface-variant">
+                Clinic Administrator
+              </p>
             </div>
-            <div className="relative w-9 h-9 md:w-10 md:h-10 rounded-full overflow-hidden border-2 border-secondary-container shrink-0">
-              <Image
-                src="https://lh3.googleusercontent.com/aida/AP1WRLsuPHdERu4ervQ8YoyI2Fc4jec6pdmw_Mai4SlVJ8ZHoc20S2IC9iyEQEhFAV_vnSnAI5_ZxGeg8_XUbAJqi6IwsgA6kdZJjCQjZ3avoEgikDGiq3bcRK-jei3-5Jur8PY3okS_i6q8kmOgsq4FgnSdFNL-O4DqkW5GXb-pTZ5tX6QWKI_CAK7tGW0EOvn01UxAKBZL5R1ZrnIdCnAcomSL7jbbCuszIvu8fWl5zlkL4du7Hbw0uJfRZg"
-                alt="Dr. Julian Moore"
-                fill
-                className="object-cover object-top"
-                sizes="40px"
-              />
+            <div className="relative w-9 h-9 md:w-10 md:h-10 rounded-full overflow-hidden border-2 border-secondary-container shrink-0 bg-primary flex items-center justify-center">
+              <span className="text-white font-bold text-sm">
+                {user?.email?.[0]?.toUpperCase() || "A"}
+              </span>
             </div>
           </div>
         </header>
@@ -251,15 +501,19 @@ export default function PatientsPage() {
         </div>
 
         <main className="flex-1 p-4 md:p-8">
-
           {/* Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 md:mb-8">
             <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-4 md:p-5 flex items-center justify-between">
               <div>
-                <p className="text-xs text-on-surface-variant font-medium mb-1">Total Patients</p>
-                <p className="text-2xl md:text-3xl font-bold text-on-surface">{patients.length}</p>
+                <p className="text-xs text-on-surface-variant font-medium mb-1">
+                  Total Patients
+                </p>
+                <p className="text-2xl md:text-3xl font-bold text-on-surface">
+                  {isListLoading ? "—" : totalCount}
+                </p>
                 <div className="flex items-center gap-1 text-emerald-600 text-xs font-semibold mt-0.5">
-                  <TrendingUp className="w-3 h-3" /><span>+12% this month</span>
+                  <TrendingUp className="w-3 h-3" />
+                  <span>Live from database</span>
                 </div>
               </div>
               <div className="w-11 h-11 rounded-xl bg-secondary-container flex items-center justify-center shrink-0">
@@ -268,9 +522,15 @@ export default function PatientsPage() {
             </div>
             <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-4 md:p-5 flex items-center justify-between">
               <div>
-                <p className="text-xs text-on-surface-variant font-medium mb-1">New This Month</p>
-                <p className="text-2xl md:text-3xl font-bold text-on-surface">24</p>
-                <p className="text-xs text-on-surface-variant mt-0.5">Registered recently</p>
+                <p className="text-xs text-on-surface-variant font-medium mb-1">
+                  Search Results
+                </p>
+                <p className="text-2xl md:text-3xl font-bold text-on-surface">
+                   {isListLoading ? "—" : filtered.length}
+                </p>
+                <p className="text-xs text-on-surface-variant mt-0.5">
+                  {search ? `Matching "${search}"` : "Showing all"}
+                </p>
               </div>
               <div className="w-11 h-11 rounded-xl bg-[#ede9fe] flex items-center justify-center shrink-0">
                 <UserPlus className="w-5 h-5 text-purple-600" />
@@ -278,9 +538,15 @@ export default function PatientsPage() {
             </div>
             <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-4 md:p-5 flex items-center justify-between">
               <div>
-                <p className="text-xs text-on-surface-variant font-medium mb-1">WhatsApp Reachable</p>
-                <p className="text-2xl md:text-3xl font-bold text-on-surface">{patients.filter(p => p.phone).length}</p>
-                <p className="text-xs text-on-surface-variant mt-0.5">With phone numbers</p>
+                <p className="text-xs text-on-surface-variant font-medium mb-1">
+                  WhatsApp Reachable
+                </p>
+                <p className="text-2xl md:text-3xl font-bold text-on-surface">
+                   {isListLoading ? "—" : totalCount}
+                </p>
+                <p className="text-xs text-on-surface-variant mt-0.5">
+                  With phone numbers
+                </p>
               </div>
               <div className="w-11 h-11 rounded-xl bg-[#dcfce7] flex items-center justify-center shrink-0">
                 <WhatsAppIcon className="w-5 h-5 text-green-600" />
@@ -290,16 +556,23 @@ export default function PatientsPage() {
 
           {/* Main grid */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-
             {/* Patient Table / Cards */}
             <div className="xl:col-span-8 bg-white rounded-xl border border-outline-variant/10 shadow-sm overflow-hidden">
               <div className="px-4 md:px-6 pt-5 pb-4 border-b border-outline-variant/10 flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-bold text-on-surface">Patient Registry</h2>
-                  <p className="text-xs text-on-surface-variant mt-0.5">{filtered.length} patient{filtered.length !== 1 ? "s" : ""} found</p>
+                  <h2 className="text-base font-bold text-on-surface">
+                    Patient Registry
+                  </h2>
+                  <p className="text-xs text-on-surface-variant mt-0.5">
+                    {filtered.length} patient
+                    {filtered.length !== 1 ? "s" : ""} found
+                  </p>
                 </div>
                 <button
-                  onClick={() => { handleCancel(); setShowForm(true); }}
+                  onClick={() => {
+                    handleCancel();
+                    setShowForm(true);
+                  }}
                   className="flex items-center gap-1.5 text-sm text-primary font-semibold px-3 py-1.5 rounded-lg border border-primary/30 hover:bg-secondary-container transition-colors cursor-pointer shrink-0"
                 >
                   <UserPlus className="w-4 h-4" />
@@ -307,11 +580,22 @@ export default function PatientsPage() {
                 </button>
               </div>
 
-              {filtered.length === 0 ? (
+              {showSkeleton ? (
+                <div>
+                  <div className="hidden md:block">
+                    <TableSkeleton columns={5} rows={5} />
+                  </div>
+                  <div className="md:hidden">
+                    <CardListSkeleton count={4} />
+                  </div>
+                </div>
+              ) : filtered.length === 0 ? (
                 <div className="py-16 text-center text-on-surface-variant">
                   <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
                   <p className="text-sm font-medium">No patients found</p>
-                  <p className="text-xs mt-1">Try a different search or add a new patient</p>
+                  <p className="text-xs mt-1">
+                    Try a different search or add a new patient
+                  </p>
                 </div>
               ) : (
                 <>
@@ -320,60 +604,124 @@ export default function PatientsPage() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-outline-variant/10 bg-surface-container-low/50">
-                          <th className="text-left px-5 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Patient</th>
-                          <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Contact</th>
-                          <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Condition</th>
-                          <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Last Visit</th>
-                          <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Actions</th>
+                          <th className="text-left px-5 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">
+                            Patient
+                          </th>
+                          <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">
+                            Contact
+                          </th>
+                          <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">
+                            Condition
+                          </th>
+                          <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">
+                            Last Visit
+                          </th>
+                          <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wider">
+                            Actions
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
                         {filtered.map((p) => (
                           <tr
                             key={p.id}
-                            className={`border-b border-outline-variant/10 last:border-0 transition-colors ${editingId === p.id ? "bg-secondary-container/20" : "hover:bg-surface-container-low/40"}`}
+                            className={`border-b border-outline-variant/10 last:border-0 transition-colors ${
+                              editingId === p.id
+                                ? "bg-secondary-container/20"
+                                : "hover:bg-surface-container-low/40"
+                            }`}
                           >
                             <td className="px-5 py-3.5">
                               <div className="flex items-center gap-3">
-                                <div className={`w-9 h-9 rounded-full ${p.avatarColor} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                                <Link
+                                  href={`/admin/patients/${p.id}`}
+                                  className={`w-9 h-9 rounded-full ${p.avatarColor} flex items-center justify-center text-white text-xs font-bold shrink-0 hover:opacity-90 active:scale-95 transition-all`}
+                                  title="View Patient Record"
+                                >
                                   {getInitials(p.name)}
-                                </div>
+                                </Link>
                                 <div>
-                                  <p className="text-sm font-semibold text-on-surface leading-tight">{p.name}</p>
-                                  <p className="text-xs text-on-surface-variant">#{p.id}{p.age ? ` · Age ${p.age}` : ""}</p>
+                                  <Link
+                                    href={`/admin/patients/${p.id}`}
+                                    className="text-sm font-semibold text-on-surface hover:text-primary hover:underline leading-tight block"
+                                  >
+                                    {p.name}
+                                  </Link>
+                                  <p className="text-xs text-on-surface-variant">
+                                    #{p.id.slice(0, 8)}
+                                    {p.age ? ` · Age ${p.age}` : ""}
+                                    {p.gender ? ` · ${p.gender}` : ""}
+                                  </p>
                                 </div>
                               </div>
                             </td>
                             <td className="px-4 py-3.5">
-                              <p className="text-xs font-medium text-on-surface">{p.phone}</p>
-                              <p className="text-xs text-on-surface-variant truncate max-w-[140px]">{p.email}</p>
+                              <p className="text-xs font-medium text-on-surface">
+                                {p.phone}
+                              </p>
+                              <p className="text-xs text-on-surface-variant truncate max-w-[140px]">
+                                {p.email}
+                              </p>
                             </td>
                             <td className="px-4 py-3.5">
                               <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-secondary-container text-primary">
                                 {p.condition || "—"}
                               </span>
-                              {p.notes && <p className="text-xs text-on-surface-variant mt-1 max-w-[140px] truncate">{p.notes}</p>}
+                              {p.notes && (
+                                <p className="text-xs text-on-surface-variant mt-1 max-w-[140px] truncate">
+                                  {p.notes}
+                                </p>
+                              )}
                             </td>
                             <td className="px-4 py-3.5">
-                              <p className="text-xs font-medium text-on-surface whitespace-nowrap">{p.lastVisit || "—"}</p>
+                              <p className="text-xs font-medium text-on-surface whitespace-nowrap">
+                                {p.lastVisit || "—"}
+                              </p>
                             </td>
                             <td className="px-4 py-3.5">
                               <div className="flex items-center gap-1.5">
-                                <a href={buildWhatsAppUrl(p.phone, p.name)} target="_blank" rel="noopener noreferrer"
+                                <Link
+                                  href={`/admin/patients/${p.id}`}
+                                  title="View Profile"
+                                  className="w-8 h-8 rounded-lg bg-surface-container hover:bg-primary/10 hover:text-primary flex items-center justify-center transition-colors cursor-pointer text-on-surface-variant"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </Link>
+                                <a
+                                  href={buildWhatsAppUrl(p.phone, p.name)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
                                   title={`WhatsApp ${p.name}`}
-                                  className="w-8 h-8 rounded-lg bg-[#dcfce7] hover:bg-green-200 flex items-center justify-center transition-colors cursor-pointer group">
+                                  className="w-8 h-8 rounded-lg bg-[#dcfce7] hover:bg-green-200 flex items-center justify-center transition-colors cursor-pointer group"
+                                >
                                   <WhatsAppIcon className="w-4 h-4 text-green-600" />
                                 </a>
-                                <a href={`tel:${p.phone.replace(/\D/g, "")}`} title={`Call ${p.name}`}
-                                  className="w-8 h-8 rounded-lg bg-secondary-container hover:bg-primary/10 flex items-center justify-center transition-colors cursor-pointer">
+                                <a
+                                  href={`tel:${p.phone.replace(/\D/g, "")}`}
+                                  title={`Call ${p.name}`}
+                                  className="w-8 h-8 rounded-lg bg-secondary-container hover:bg-primary/10 flex items-center justify-center transition-colors cursor-pointer"
+                                >
                                   <Phone className="w-3.5 h-3.5 text-primary" />
                                 </a>
-                                <button onClick={() => handleEdit(p)} title="Edit"
-                                  className="w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center transition-colors cursor-pointer">
+                                <Link
+                                   href={`/admin/prescriptions/edit?patientId=${p.id}`}
+                                   title="Prescription"
+                                   className="w-8 h-8 rounded-lg bg-violet-50 hover:bg-violet-100 flex items-center justify-center transition-colors cursor-pointer"
+                                 >
+                                   <Pill className="w-3.5 h-3.5 text-violet-600" />
+                                 </Link>
+                                <button
+                                  onClick={() => handleEdit(p)}
+                                  title="Edit"
+                                  className="w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center transition-colors cursor-pointer"
+                                >
                                   <Pencil className="w-3.5 h-3.5 text-on-surface-variant hover:text-primary" />
                                 </button>
-                                <button onClick={() => handleDelete(p.id)} title="Delete"
-                                  className="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center transition-colors cursor-pointer">
+                                <button
+                                  onClick={() => handleDelete(p.id)}
+                                  title="Delete"
+                                  className="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center transition-colors cursor-pointer"
+                                >
                                   <Trash2 className="w-3.5 h-3.5 text-on-surface-variant hover:text-red-500" />
                                 </button>
                               </div>
@@ -389,43 +737,91 @@ export default function PatientsPage() {
                     {filtered.map((p) => (
                       <div
                         key={p.id}
-                        className={`px-4 py-4 ${editingId === p.id ? "bg-secondary-container/20" : ""}`}
+                        className={`px-4 py-4 ${
+                          editingId === p.id ? "bg-secondary-container/20" : ""
+                        }`}
                       >
                         <div className="flex items-start gap-3">
-                          <div className={`w-10 h-10 rounded-full ${p.avatarColor} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                          <Link
+                            href={`/admin/patients/${p.id}`}
+                            className={`w-10 h-10 rounded-full ${p.avatarColor} flex items-center justify-center text-white text-xs font-bold shrink-0 hover:opacity-90 active:scale-95 transition-all`}
+                            title="View Patient Record"
+                          >
                             {getInitials(p.name)}
-                          </div>
+                          </Link>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-1">
                               <div>
-                                <p className="text-sm font-semibold text-on-surface leading-tight">{p.name}</p>
-                                <p className="text-xs text-on-surface-variant">#{p.id}{p.age ? ` · Age ${p.age}` : ""}</p>
+                                <Link
+                                  href={`/admin/patients/${p.id}`}
+                                  className="text-sm font-semibold text-on-surface hover:text-primary hover:underline leading-tight block"
+                                >
+                                  {p.name}
+                                </Link>
+                                <p className="text-xs text-on-surface-variant">
+                                  #{p.id.slice(0, 8)}
+                                  {p.age ? ` · Age ${p.age}` : ""}
+                                  {p.gender ? ` · ${p.gender}` : ""}
+                                </p>
                               </div>
                               <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-secondary-container text-primary whitespace-nowrap shrink-0">
                                 {p.condition || "—"}
                               </span>
                             </div>
                             <div className="mt-1.5 space-y-0.5">
-                              <p className="text-xs text-on-surface">{p.phone}</p>
-                              <p className="text-xs text-on-surface-variant truncate">{p.email}</p>
-                              {p.lastVisit && <p className="text-xs text-on-surface-variant">Last visit: {p.lastVisit}</p>}
+                              <p className="text-xs text-on-surface">
+                                {p.phone}
+                              </p>
+                              <p className="text-xs text-on-surface-variant truncate">
+                                {p.email}
+                              </p>
+                              {p.lastVisit && (
+                                <p className="text-xs text-on-surface-variant">
+                                  Last visit: {p.lastVisit}
+                                </p>
+                              )}
                             </div>
                             {/* Mobile Actions */}
                             <div className="flex items-center gap-2 mt-2.5">
-                              <a href={buildWhatsAppUrl(p.phone, p.name)} target="_blank" rel="noopener noreferrer"
-                                className="flex items-center gap-1 text-xs font-semibold text-green-700 bg-[#dcfce7] px-2.5 py-1.5 rounded-lg">
-                                <WhatsAppIcon className="w-3.5 h-3.5" /> WhatsApp
+                              <Link
+                                href={`/admin/patients/${p.id}`}
+                                title="View Profile"
+                                className="w-8 h-8 rounded-lg bg-surface-container hover:bg-primary/10 hover:text-primary flex items-center justify-center transition-colors cursor-pointer text-on-surface-variant shrink-0"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </Link>
+                              <a
+                                href={buildWhatsAppUrl(p.phone, p.name)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-xs font-semibold text-green-700 bg-[#dcfce7] px-2.5 py-1.5 rounded-lg"
+                              >
+                                <WhatsAppIcon className="w-3.5 h-3.5" />{" "}
+                                WhatsApp
                               </a>
-                              <a href={`tel:${p.phone.replace(/\D/g, "")}`}
-                                className="flex items-center gap-1 text-xs font-semibold text-primary bg-secondary-container px-2.5 py-1.5 rounded-lg">
+                              <a
+                                href={`tel:${p.phone.replace(/\D/g, "")}`}
+                                className="flex items-center gap-1 text-xs font-semibold text-primary bg-secondary-container px-2.5 py-1.5 rounded-lg"
+                              >
                                 <Phone className="w-3.5 h-3.5" /> Call
                               </a>
-                              <button onClick={() => handleEdit(p)}
-                                className="w-7 h-7 rounded-lg hover:bg-surface-container flex items-center justify-center">
+                              <Link
+                                href={`/admin/prescriptions/edit?patientId=${p.id}`}
+                                className="w-7 h-7 rounded-lg bg-violet-50 hover:bg-violet-100 flex items-center justify-center transition-colors cursor-pointer"
+                                title="Prescription"
+                              >
+                                <Pill className="w-3.5 h-3.5 text-violet-600" />
+                              </Link>
+                              <button
+                                onClick={() => handleEdit(p)}
+                                className="w-7 h-7 rounded-lg hover:bg-surface-container flex items-center justify-center"
+                              >
                                 <Pencil className="w-3.5 h-3.5 text-on-surface-variant" />
                               </button>
-                              <button onClick={() => handleDelete(p.id)}
-                                className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center">
+                              <button
+                                onClick={() => handleDelete(p.id)}
+                                className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center"
+                              >
                                 <Trash2 className="w-3.5 h-3.5 text-red-400" />
                               </button>
                             </div>
@@ -434,13 +830,43 @@ export default function PatientsPage() {
                       </div>
                     ))}
                   </div>
+                  
+                  {/* Pagination Controls */}
+                  {search.trim() === "" && (
+                    <div className="px-4 md:px-6 py-4 border-t border-outline-variant/10 flex items-center justify-between gap-3 bg-surface-container-lowest">
+                      <p className="text-xs text-on-surface-variant font-medium">
+                        Showing Page <span className="font-semibold text-on-surface">{currentPage}</span> · Patients {PAGE_SIZE * (currentPage - 1) + 1}–{PAGE_SIZE * (currentPage - 1) + patients.length} of {totalCount}
+                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => loadPage(currentPage - 1)}
+                          disabled={currentPage === 1 || isListLoading}
+                          className="p-1.5 rounded-lg border border-outline-variant/30 hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer flex items-center justify-center bg-white"
+                          title="Previous Page"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => loadPage(currentPage + 1)}
+                          disabled={!hasNextPage || isListLoading}
+                          className="p-1.5 rounded-lg border border-outline-variant/30 hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer flex items-center justify-center bg-white"
+                          title="Next Page"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
 
             {/* Add / Edit Form */}
-            {/* Desktop: always visible in grid. Mobile: shown as modal-like sheet when showForm=true */}
-            <div className={`xl:col-span-4 ${showForm ? "block" : "hidden xl:block"}`}>
+            <div
+              className={`xl:col-span-4 ${
+                showForm ? "block" : "hidden xl:block"
+              }`}
+            >
               <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm xl:sticky xl:top-24">
                 <div className="px-4 md:px-6 pt-5 pb-4 border-b border-outline-variant/10 flex items-center justify-between">
                   <div>
@@ -448,83 +874,205 @@ export default function PatientsPage() {
                       {editingId ? "Edit Patient" : "Add New Patient"}
                     </h2>
                     <p className="text-xs text-on-surface-variant mt-0.5">
-                      {editingId ? `Editing #${editingId}` : "Fill in the patient details below"}
+                      {editingId
+                        ? `Editing #${editingId.slice(0, 8)}`
+                        : "Fill in the patient details below"}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${editingId ? "bg-amber-100" : "bg-secondary-container"}`}>
-                      {editingId
-                        ? <Pencil className="w-4 h-4 text-amber-600" />
-                        : <UserPlus className="w-5 h-5 text-primary" />
-                      }
+                    <div
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                        editingId ? "bg-amber-100" : "bg-secondary-container"
+                      }`}
+                    >
+                      {editingId ? (
+                        <Pencil className="w-4 h-4 text-amber-600" />
+                      ) : (
+                        <UserPlus className="w-5 h-5 text-primary" />
+                      )}
                     </div>
-                    {/* Close button on mobile */}
-                    <button onClick={handleCancel} className="xl:hidden p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant">
+                    <button
+                      onClick={handleCancel}
+                      className="xl:hidden p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant"
+                    >
                       <X className="w-5 h-5" />
                     </button>
                   </div>
                 </div>
 
-                <form onSubmit={handleSubmit} className="px-4 md:px-6 py-5 flex flex-col gap-3.5">
+                <form
+                  onSubmit={handleSubmit}
+                  className="px-4 md:px-6 py-5 flex flex-col gap-3.5"
+                >
                   <div>
-                    <label htmlFor="patient-name" className="block text-xs font-semibold text-on-surface-variant mb-1.5">Full Name *</label>
-                    <input id="patient-name" type="text" name="name" value={form.name ?? ""} onChange={handleChange}
-                      placeholder="e.g. Jane Smith" required autoComplete="off"
-                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
+                    <label
+                      htmlFor="patient-name"
+                      className="block text-xs font-semibold text-on-surface-variant mb-1.5"
+                    >
+                      Full Name *
+                    </label>
+                    <input
+                      id="patient-name"
+                      type="text"
+                      name="name"
+                      value={form.name ?? ""}
+                      onChange={handleChange}
+                      placeholder="e.g. Jane Smith"
+                      required
+                      autoComplete="off"
+                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                    />
                   </div>
                   <div>
-                    <label htmlFor="patient-phone" className="block text-xs font-semibold text-on-surface-variant mb-1.5">WhatsApp / Phone *</label>
-                    <input id="patient-phone" type="tel" name="phone" value={form.phone ?? ""} onChange={handleChange}
-                      placeholder="+1 (555) 000-0000" required autoComplete="off"
-                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
+                    <label
+                      htmlFor="patient-phone"
+                      className="block text-xs font-semibold text-on-surface-variant mb-1.5"
+                    >
+                      WhatsApp / Phone *
+                    </label>
+                    <input
+                      id="patient-phone"
+                      type="tel"
+                      name="phone"
+                      value={form.phone ?? ""}
+                      onChange={handleChange}
+                      placeholder="+1 (555) 000-0000"
+                      required
+                      autoComplete="off"
+                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                    />
                   </div>
                   <div>
-                    <label htmlFor="patient-email" className="block text-xs font-semibold text-on-surface-variant mb-1.5">Email Address</label>
-                    <input id="patient-email" type="email" name="email" value={form.email ?? ""} onChange={handleChange}
-                      placeholder="jane@example.com" autoComplete="off"
-                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
+                    <label
+                      htmlFor="patient-email"
+                      className="block text-xs font-semibold text-on-surface-variant mb-1.5"
+                    >
+                      Email Address
+                    </label>
+                    <input
+                      id="patient-email"
+                      type="email"
+                      name="email"
+                      value={form.email ?? ""}
+                      onChange={handleChange}
+                      placeholder="jane@example.com"
+                      autoComplete="off"
+                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                    />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label htmlFor="patient-age" className="block text-xs font-semibold text-on-surface-variant mb-1.5">Age</label>
-                      <input id="patient-age" type="number" name="age" value={form.age ?? ""} onChange={handleChange}
-                        placeholder="e.g. 34" min="1" max="120"
-                        className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
+                      <label
+                        htmlFor="patient-age"
+                        className="block text-xs font-semibold text-on-surface-variant mb-1.5"
+                      >
+                        Age / DOB *
+                      </label>
+                      <input
+                        id="patient-age"
+                        type="text"
+                        name="age"
+                        value={form.age ?? ""}
+                        onChange={handleChange}
+                        placeholder="e.g. 34 or 1992-05-12"
+                        required
+                        className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                      />
                     </div>
                     <div>
-                      <label htmlFor="patient-last-visit" className="block text-xs font-semibold text-on-surface-variant mb-1.5">Last Visit</label>
-                      <input id="patient-last-visit" type="date" name="lastVisit" value={form.lastVisit ?? ""} onChange={handleChange}
-                        className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
+                      <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">
+                        Gender
+                      </label>
+                      <div className="flex gap-3 py-2">
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs text-on-surface font-medium">
+                          <input
+                            type="radio"
+                            name="gender"
+                            value="Male"
+                            checked={form.gender === "Male"}
+                            onChange={handleChange}
+                            className="w-3.5 h-3.5 text-primary focus:ring-primary/20 border-outline-variant/40 accent-primary"
+                          />
+                          Male
+                        </label>
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs text-on-surface font-medium">
+                          <input
+                            type="radio"
+                            name="gender"
+                            value="Female"
+                            checked={form.gender === "Female"}
+                            onChange={handleChange}
+                            className="w-3.5 h-3.5 text-primary focus:ring-primary/20 border-outline-variant/40 accent-primary"
+                          />
+                          Female
+                        </label>
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs text-on-surface font-medium">
+                          <input
+                            type="radio"
+                            name="gender"
+                            value="Other"
+                            checked={form.gender === "Other"}
+                            onChange={handleChange}
+                            className="w-3.5 h-3.5 text-primary focus:ring-primary/20 border-outline-variant/40 accent-primary"
+                          />
+                          Other
+                        </label>
+                      </div>
                     </div>
                   </div>
                   <div>
-                    <label htmlFor="patient-condition" className="block text-xs font-semibold text-on-surface-variant mb-1.5">Treatment / Condition</label>
-                    <input id="patient-condition" type="text" name="condition" value={form.condition ?? ""} onChange={handleChange}
-                      placeholder="e.g. Root Canal, Whitening" autoComplete="off"
-                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
-                  </div>
-                  <div>
-                    <label htmlFor="patient-notes" className="block text-xs font-semibold text-on-surface-variant mb-1.5">Clinical Notes</label>
-                    <textarea id="patient-notes" name="notes" value={form.notes ?? ""} onChange={handleChange}
-                      placeholder="Any relevant medical notes..." rows={3}
-                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none" />
+                    <label
+                      htmlFor="patient-address"
+                      className="block text-xs font-semibold text-on-surface-variant mb-1.5"
+                    >
+                      Address (Optional)
+                    </label>
+                    <input
+                      id="patient-address"
+                      type="text"
+                      name="address"
+                      value={form.address ?? ""}
+                      onChange={handleChange}
+                      placeholder="e.g. 123 Main St, New York"
+                      autoComplete="off"
+                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                    />
                   </div>
                   <div className="flex gap-2 pt-1">
                     {editingId && (
-                      <button type="button" onClick={handleCancel}
-                        className="flex-1 border border-outline-variant/40 text-on-surface-variant text-sm font-semibold py-2.5 rounded-lg hover:bg-surface-container transition-colors cursor-pointer flex items-center justify-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleCancel}
+                        className="flex-1 border border-outline-variant/40 text-on-surface-variant text-sm font-semibold py-2.5 rounded-lg hover:bg-surface-container transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      >
                         <X className="w-4 h-4" /> Cancel
                       </button>
                     )}
-                    <button type="submit"
-                      className={`${editingId ? "flex-1" : "w-full"} bg-primary hover:bg-primary/90 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.99]`}>
-                      <CheckCircle2 className="w-4 h-4" />
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className={`${
+                        editingId ? "flex-1" : "w-full"
+                      } bg-primary hover:bg-primary/90 disabled:bg-primary/60 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.99]`}
+                    >
+                      {submitting ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4" />
+                      )}
                       {editingId ? "Save Changes" : "Add Patient"}
                     </button>
                   </div>
                   {form.phone && (
-                    <a href={buildWhatsAppUrl(form.phone, form.name || "Patient")} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-2 text-xs text-green-700 font-semibold bg-[#dcfce7] hover:bg-green-200 transition-colors py-2 rounded-lg cursor-pointer">
+                    <a
+                      href={buildWhatsAppUrl(
+                        form.phone,
+                        form.name || "Patient"
+                      )}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 text-xs text-green-700 font-semibold bg-[#dcfce7] hover:bg-green-200 transition-colors py-2 rounded-lg cursor-pointer"
+                    >
                       <WhatsAppIcon className="w-3.5 h-3.5" />
                       Preview appointment message on WhatsApp
                     </a>
@@ -532,22 +1080,43 @@ export default function PatientsPage() {
                 </form>
               </div>
             </div>
-
           </div>
         </main>
 
         {/* Footer */}
         <footer className="bg-white border-t border-outline-variant/20 px-4 md:px-8 py-4">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-on-surface-variant">
-            <p>© 2024 DentaPure Clinical Excellence. All rights reserved.</p>
+            <p>© 2024 Sanjivani Dentals. All rights reserved.</p>
             <div className="flex items-center gap-4 font-medium">
-              <Link href="/#privacy" className="hover:text-primary transition-colors">Privacy Policy</Link>
-              <Link href="/#hipaa" className="hover:text-primary transition-colors">HIPAA Compliance</Link>
-              <Link href="/#accessibility" className="hover:text-primary transition-colors">Accessibility</Link>
+              <Link
+                href="/#privacy"
+                className="hover:text-primary transition-colors"
+              >
+                Privacy Policy
+              </Link>
+              <Link
+                href="/#hipaa"
+                className="hover:text-primary transition-colors"
+              >
+                HIPAA Compliance
+              </Link>
+              <Link
+                href="/#accessibility"
+                className="hover:text-primary transition-colors"
+              >
+                Accessibility
+              </Link>
             </div>
           </div>
         </footer>
       </div>
+
+      {/* Patient Details Modal */}
+      <PatientDetailsModal
+        patient={selectedPatient}
+        isOpen={isModalOpen}
+        onClose={closePatientDetails}
+      />
 
       {/* Toast */}
       {toast && (
@@ -557,5 +1126,14 @@ export default function PatientsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+/* ─── Export wrapped with AuthGuard ─── */
+export default function PatientsPage() {
+  return (
+    <AdminAuthGuard>
+      <PatientsManagement />
+    </AdminAuthGuard>
   );
 }

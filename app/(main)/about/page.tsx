@@ -16,6 +16,8 @@ import {
 import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
 
+export const revalidate = 3600; // Revalidate at most once per hour
+
 export const metadata = {
   title: "About Us | DentaPure",
   description:

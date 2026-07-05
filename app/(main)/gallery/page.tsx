@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
 
+export const revalidate = 3600; // Revalidate at most once per hour
+
 export const metadata = {
   title: "Gallery | DentaPure",
   description: "Explore our state-of-the-art facility and the beautiful smiles we've helped create.",

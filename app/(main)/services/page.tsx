@@ -1,6 +1,4 @@
-"use client";
-
-import React, { useState } from "react";
+import React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -12,7 +10,6 @@ import {
   Phone,
   Clock,
   CheckCircle2,
-  ChevronDown,
   Zap,
   Scan,
   HeartPulse,
@@ -23,49 +20,12 @@ import {
   Armchair,
 } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
+import { FAQAccordion } from "../../../components/sections/FAQAccordion";
 
-/* ─── FAQ Accordion Item ─── */
-function FAQItem({
-  question,
-  answer,
-  isOpen,
-  onToggle,
-}: {
-  question: string;
-  answer: string;
-  isOpen: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <div className="border-b border-outline-variant/20">
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center justify-between py-5 text-left group cursor-pointer"
-      >
-        <span className="text-base font-semibold text-on-surface group-hover:text-primary transition-colors pr-4">
-          {question}
-        </span>
-        <ChevronDown
-          className={`w-5 h-5 text-on-surface-variant shrink-0 transition-transform duration-300 ${
-            isOpen ? "rotate-180 text-primary" : ""
-          }`}
-        />
-      </button>
-      <div
-        className={`overflow-hidden transition-all duration-300 ${
-          isOpen ? "max-h-60 pb-5" : "max-h-0"
-        }`}
-      >
-        <p className="text-on-surface-variant text-sm leading-relaxed">{answer}</p>
-      </div>
-    </div>
-  );
-}
+export const revalidate = 3600; // Revalidate at most once per hour
 
 /* ─── Services Page ─── */
 export default function ServicesPage() {
-  const [openFAQ, setOpenFAQ] = useState<number | null>(0);
-
   const generalFeatures = [
     { icon: <CheckCircle2 className="w-4 h-4 text-primary" />, label: "Routine Checkups & Cleaning" },
     { icon: <CheckCircle2 className="w-4 h-4 text-primary" />, label: "Cavity Fillings & Sealants" },
@@ -115,13 +75,6 @@ export default function ServicesPage() {
       answer: "The American Dental Association recommends a child's first dental visit by their first birthday or within six months of the first tooth erupting. Early visits help establish good oral habits and allow early detection of any issues.",
     },
   ];
-
-  const IMG = {
-    smile: "general_dentistry.png",
-    interior: "interior.webp",
-    tech: "dentaltech.jpg",
-    reception: "reception.jpg",
-  };
 
   return (
     <div className="bg-surface">
@@ -257,13 +210,6 @@ export default function ServicesPage() {
           ].map((card, i) => (
             <div key={i} className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 shadow-level-1 overflow-hidden group">
               <div className="relative h-[220px] overflow-hidden">
-                {/* <Image
-                  src="orthodontics.png"
-                  alt="orthodontics"
-                  fill
-                  className="object-cover transition-transform duration-500 group-hover:scale-105"
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                /> */}
               </div>
               <div className="p-6">
                 <div className="flex items-center gap-2 mb-3">
@@ -288,17 +234,7 @@ export default function ServicesPage() {
               Find answers to common questions about our services, insurance, and what to expect during your visit.
             </p>
           </div>
-          <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 shadow-level-1 p-6 md:p-8">
-            {faqs.map((faq, index) => (
-              <FAQItem
-                key={index}
-                question={faq.question}
-                answer={faq.answer}
-                isOpen={openFAQ === index}
-                onToggle={() => setOpenFAQ(openFAQ === index ? null : index)}
-              />
-            ))}
-          </div>
+          <FAQAccordion faqs={faqs} />
         </div>
       </section>
 

@@ -5,6 +5,8 @@ import { GalleryPreview } from "../../components/sections/GalleryPreview";
 import { AboutSection } from "../../components/sections/AboutSection";
 import { TestimonialsSection } from "../../components/sections/TestimonialsSection";
 
+export const revalidate = 3600; // Revalidate at most once per hour
+
 export default function Home() {
   return (
     <>

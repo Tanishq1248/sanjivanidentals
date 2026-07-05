@@ -14,8 +14,12 @@ import {
   Phone,
   MessageCircle,
   ExternalLink,
+  Loader2,
+  Mail,
 } from "lucide-react";
 import { BookingNavbar } from "../../components/layout/BookingNavbar";
+import { createAppointment } from "../../lib/services/appointmentService";
+import { createNotification } from "../../lib/services/notificationService";
 
 const timeSlots = [
   "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM",
@@ -38,8 +42,10 @@ const visitReasons = [
 ];
 
 export default function BookingPage() {
-  const [form, setForm] = useState({ name: "", whatsapp: "", date: "", time: "", reason: "" });
+  const [form, setForm] = useState({ name: "", whatsapp: "", email: "", date: "", time: "", reason: "" });
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
   const [minDate, setMinDate] = useState("");
 
   // Set min date client-side only to avoid hydration mismatch
@@ -51,9 +57,37 @@ export default function BookingPage() {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    setError("");
+    setSubmitting(true);
+
+    try {
+      // Create appointment in Firestore
+      const appointmentId = await createAppointment({
+        patientName: form.name,
+        patientPhone: form.whatsapp,
+        patientEmail: form.email,
+        date: form.date,
+        time: form.time,
+        service: form.reason,
+      });
+
+      // Create notification for admin
+      await createNotification({
+        type: "new_booking",
+        title: "New Appointment Request",
+        message: `${form.name} requested an appointment on ${form.date} at ${form.time} for ${form.reason}.`,
+        appointmentId,
+      });
+
+      setSubmitted(true);
+    } catch (err) {
+      console.error("Booking failed:", err);
+      setError("Something went wrong. Please try again or contact us directly.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -89,7 +123,10 @@ export default function BookingPage() {
                   <strong>{form.date} at {form.time}</strong>. We will confirm via WhatsApp shortly.
                 </p>
                 <button
-                  onClick={() => setSubmitted(false)}
+                  onClick={() => {
+                    setSubmitted(false);
+                    setForm({ name: "", whatsapp: "", email: "", date: "", time: "", reason: "" });
+                  }}
                   className="text-primary text-sm font-semibold hover:underline"
                 >
                   Book another appointment
@@ -100,6 +137,16 @@ export default function BookingPage() {
                 onSubmit={handleSubmit}
                 className="bg-white rounded-2xl border border-outline-variant/10 shadow-level-1 p-8 md:p-10"
               >
+                {/* Error Banner */}
+                {error && (
+                  <div className="mb-6 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm font-medium px-4 py-3 rounded-lg">
+                    <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    {error}
+                  </div>
+                )}
+
                 {/* Patient Name */}
                 <div className="mb-6">
                   <label htmlFor="name" className="block text-sm font-semibold text-on-surface mb-2">
@@ -126,7 +173,23 @@ export default function BookingPage() {
                     <input
                       id="whatsapp" name="whatsapp" type="tel"
                       value={form.whatsapp} onChange={handleChange}
-                      placeholder="+1 (555) 000-0000" required
+                      placeholder="+91 77750 89777" required
+                      className="w-full pl-10 pr-4 py-3 rounded-lg border border-outline-variant/40 bg-surface text-on-surface text-sm placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Email Address */}
+                <div className="mb-6">
+                  <label htmlFor="email" className="block text-sm font-semibold text-on-surface mb-2">
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
+                    <input
+                      id="email" name="email" type="email"
+                      value={form.email} onChange={handleChange}
+                      placeholder="patient@example.com" required
                       className="w-full pl-10 pr-4 py-3 rounded-lg border border-outline-variant/40 bg-surface text-on-surface text-sm placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                     />
                   </div>
@@ -197,10 +260,20 @@ export default function BookingPage() {
                 {/* Submit */}
                 <button
                   type="submit"
-                  className="w-full bg-primary-container hover:bg-primary text-white font-semibold py-3.5 rounded-lg flex items-center justify-center gap-2 transition-colors duration-200 active:scale-[0.99] cursor-pointer text-base shadow-level-1"
+                  disabled={submitting}
+                  className="w-full bg-primary-container hover:bg-primary disabled:bg-primary/60 text-white font-semibold py-3.5 rounded-lg flex items-center justify-center gap-2 transition-colors duration-200 active:scale-[0.99] cursor-pointer text-base shadow-level-1"
                 >
-                  <span>Confirm Appointment</span>
-                  <ArrowRight className="w-5 h-5" />
+                  {submitting ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Booking...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Confirm Appointment</span>
+                      <ArrowRight className="w-5 h-5" />
+                    </>
+                  )}
                 </button>
               </form>
             )}
@@ -286,7 +359,7 @@ export default function BookingPage() {
       {/* Footer */}
       <footer className="bg-white border-t border-outline-variant/20 py-6 px-6 w-full">
         <div className="max-w-[1200px] mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="font-bold text-xl text-primary">DentaPure</div>
+          <div className="font-bold text-xl text-primary">Sanjivani Dentals</div>
           <div className="flex flex-wrap gap-x-6 gap-y-2 justify-center text-sm text-secondary font-medium">
             <Link href="/#privacy" className="hover:text-primary transition-colors">Privacy Policy</Link>
             <Link href="/#terms" className="hover:text-primary transition-colors">Terms of Service</Link>
@@ -294,7 +367,7 @@ export default function BookingPage() {
             <Link href="/#contact" className="hover:text-primary transition-colors">Contact Support</Link>
           </div>
           <p className="text-xs text-on-surface-variant text-center md:text-right">
-            © 2024 DentaPure Clinical Group. All rights reserved.
+            © 2024 Sanjivani Dentals. All rights reserved.
           </p>
         </div>
       </footer>
