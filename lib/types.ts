@@ -83,6 +83,13 @@ export interface Doctor {
 export type InvoiceStatus = "Paid" | "Pending" | "Failed";
 export type PaymentMethod = "Cash" | "Card" | "UPI" | "Net Banking" | "Insurance" | "None";
 
+export interface InvoiceItem {
+  id: string;
+  treatmentName: string;
+  toothNumber?: number;
+  fee: number;
+}
+
 export interface Invoice {
   id: string;
   patientId: string;
@@ -93,6 +100,23 @@ export interface Invoice {
   paymentMethod: PaymentMethod;
   invoiceDate: string; // YYYY-MM-DD
   createdAt: Timestamp;
+
+  // New fields for billing review and details
+  patientName?: string;
+  visitDate?: string;
+  items?: InvoiceItem[];
+  grossAmount?: number;
+  taxAmount?: number;
+  discountPercentage?: number;
+  discountAmount?: number;
+  netAmount?: number;
+  emailSent?: boolean;
+  emailSentAt?: Timestamp;
+  status?: string;
+  total?: number;
+  subtotal?: number;
+  discount?: number;
+  tax?: number;
 }
 
 /* ─── Appointment ─── */

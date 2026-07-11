@@ -214,6 +214,45 @@ export async function deletePatientEncounter(encounterId: string): Promise<void>
   await deleteDoc(docRef);
 }
 
+/**
+ * Fetch encounters that have a followUpDate within the next 7 days,
+ * plus any overdue follow-ups from the past 30 days.
+ *
+ * Uses a bounded Firestore range query — only documents with a non-empty
+ * followUpDate in [overdueStart … weekEnd] are fetched, so this is a
+ * lightweight, collection-efficient query.
+ *
+ * Composite index required: patientEncounters(followUpDate ASC).
+ * Firestore will prompt to create it if missing on first run.
+ */
+export async function getFollowUpsDueThisWeek(): Promise<PatientEncounter[]> {
+  const encountersRef = collection(db, COLLECTIONS.PATIENT_ENCOUNTERS);
+
+  // Build date range strings (YYYY-MM-DD)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const overdueStart = new Date(today);
+  overdueStart.setDate(today.getDate() - 30); // include up to 30 days overdue
+
+  const weekEnd = new Date(today);
+  weekEnd.setDate(today.getDate() + 7);
+
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
+
+  const q = query(
+    encountersRef,
+    where("followUpDate", ">=", fmt(overdueStart)),
+    where("followUpDate", "<=", fmt(weekEnd)),
+    orderBy("followUpDate", "asc"),
+    limit(50) // safety cap — a clinic won't realistically have >50 follow-ups in a 37-day window
+  );
+
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as PatientEncounter);
+}
+
+
 /** Logs a tooth-specific treatment by checking for today's encounter, creating or updating it automatically. */
 export async function logToothTreatment(
   patientId: string,

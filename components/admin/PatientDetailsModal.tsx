@@ -37,6 +37,61 @@ const WhatsAppIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
+function formatINR(amount: any): string {
+  const val = Number(amount || 0);
+  const hasPaise = val % 1 !== 0;
+  return val.toLocaleString("en-IN", {
+    minimumFractionDigits: hasPaise ? 2 : 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+function getInvoiceUrgency(invoiceDateStr: string, status: string) {
+  if (status === "Paid") {
+    return {
+      label: "Paid",
+      bgClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      dotClass: "bg-emerald-500",
+      urgencyWeight: 4,
+    };
+  }
+
+  // Calculate local day differences to prevent timezone shifting
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const [dYear, dMonth, dDay] = invoiceDateStr.split("-").map(Number);
+  const due = new Date(dYear, dMonth - 1, dDay);
+  due.setHours(0, 0, 0, 0);
+
+  const diffTime = due.getTime() - today.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    const days = Math.abs(diffDays);
+    return {
+      label: `Overdue • ${days} ${days === 1 ? "day" : "days"}`,
+      bgClass: "bg-red-50 text-red-700 border-red-200 font-bold",
+      dotClass: "bg-red-500",
+      urgencyWeight: 1,
+    };
+  } else if (diffDays <= 7) {
+    return {
+      label: "Due This Week",
+      bgClass: "bg-amber-50 text-amber-700 border-amber-200 font-semibold",
+      dotClass: "bg-amber-500",
+      urgencyWeight: 2,
+    };
+  } else {
+    return {
+      label: "Upcoming",
+      bgClass: "bg-slate-50 text-slate-600 border-slate-200 font-medium",
+      dotClass: "bg-slate-400",
+      urgencyWeight: 3,
+    };
+  }
+}
+
 interface PatientDetailsModalProps {
   patient: Patient | null;
   isOpen: boolean;
@@ -394,8 +449,7 @@ export function PatientDetailsModal({
                   </div>
                 ) : (
                   invoicesList.map((inv) => {
-                    const isPaid = inv.paymentStatus === "Paid";
-                    const isPending = inv.paymentStatus === "Pending";
+                    const urgency = getInvoiceUrgency(inv.invoiceDate, inv.paymentStatus);
                     return (
                       <div key={inv.id} className="py-2.5 flex items-center justify-between gap-2 first:pt-0 last:pb-0">
                         <div>
@@ -403,23 +457,18 @@ export function PatientDetailsModal({
                             {inv.encounterId ? "Visit Encounter Treatment" : "General Consultation"}
                           </p>
                           <p className="text-[10px] text-on-surface-variant mt-0.5">
-                            {inv.invoiceDate} · <span className="font-bold">${inv.amount.toFixed(2)}</span>
+                            {inv.invoiceDate} · <span className="font-bold">₹{formatINR(inv.amount)}</span>
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            isPaid
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : isPending
-                              ? "bg-amber-50 text-amber-700 border-amber-200"
-                              : "bg-red-50 text-red-700 border-red-200"
-                          }`}>
-                            {inv.paymentStatus}
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] border ${urgency.bgClass}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${urgency.dotClass || "bg-amber-500"}`} />
+                            <span>{urgency.label}</span>
                           </span>
                           <button
-                            onClick={() => alert(`Downloading PDF for invoice #${inv.id.slice(0, 8)}`)}
+                            onClick={() => window.open(`/admin/invoices/${inv.id}/print`, '_blank')}
                             className="p-1 rounded bg-surface hover:bg-surface-container border border-outline-variant/20 text-on-surface-variant cursor-pointer flex items-center justify-center shrink-0"
-                            title="Download PDF"
+                            title="Download / Print PDF"
                           >
                             <Download className="w-3 h-3" />
                           </button>

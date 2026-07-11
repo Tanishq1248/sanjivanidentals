@@ -91,6 +91,7 @@ export const queryKeys = {
   invoices: {
     all: ["invoices"] as const,
     byPatientId: (patientId: string) => ["invoices", "patient", patientId] as const,
+    byId: (id: string) => ["invoices", id] as const,
   },
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
@@ -101,4 +102,13 @@ export const queryKeys = {
      */
     appointmentCounts: () => ["dashboard", "appointmentCounts"] as const,
   },
+
+  // ── Encounters ────────────────────────────────────────────────────────────
+  encounters: {
+    /** Follow-ups due this week (bounded range query). */
+    followUpsDue: ["encounters", "followUpsDue"] as const,
+    /** All encounters for a patient (keyed by patientId). */
+    byPatient: (patientId: string) => ["encounters", "patient", patientId] as const,
+  },
 } as const;
+

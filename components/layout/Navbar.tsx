@@ -54,7 +54,7 @@ export const Navbar: React.FC = () => {
             className="w-12 h-10 object-contain"
             priority
           />
-          <span>Sanjivani Dental CLinic</span>
+          <span>Sanjivani Dental Clinic</span>
         </Link>
 
         {/* Navigation Links (Desktop) */}

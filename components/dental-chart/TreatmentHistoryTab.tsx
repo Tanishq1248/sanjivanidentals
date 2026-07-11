@@ -8,6 +8,15 @@ interface TreatmentHistoryTabProps {
   record?: ToothRecord;
 }
 
+function formatINR(amount: any): string {
+  const val = Number(amount || 0);
+  const hasPaise = val % 1 !== 0;
+  return val.toLocaleString("en-IN", {
+    minimumFractionDigits: hasPaise ? 2 : 0,
+    maximumFractionDigits: 2,
+  });
+}
+
 export function TreatmentHistoryTab({ record }: TreatmentHistoryTabProps) {
   const treatments = record?.treatments || [];
 
@@ -50,7 +59,7 @@ export function TreatmentHistoryTab({ record }: TreatmentHistoryTabProps) {
           <div className="pt-2 border-t border-slate-50 flex flex-col gap-1.5 text-xs">
             <div className="flex items-center gap-1 text-[#1b5e20] font-semibold">
               <IndianRupee className="w-3.5 h-3.5" />
-              <span>{t.fee.toLocaleString("en-IN")}</span>
+              <span>{formatINR(t.fee)}</span>
             </div>
             {t.notes && (
               <div className="flex items-start gap-1.5 text-[11px] text-slate-600 bg-slate-50 rounded-lg p-2 mt-1 leading-relaxed">

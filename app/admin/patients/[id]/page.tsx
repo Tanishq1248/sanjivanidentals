@@ -1,11 +1,14 @@
 "use client";
 
 import React, { useState, use } from "react";
+import { Timestamp } from "firebase/firestore";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   User,
   Mail,
   Phone,
@@ -26,6 +29,8 @@ import {
   Loader2,
   Heart,
   FileSpreadsheet,
+  IndianRupee,
+  Receipt,
 } from "lucide-react";
 import { AdminAuthGuard } from "../../../../components/auth/AdminAuthGuard";
 import { useAuth } from "../../../../lib/context/AuthContext";
@@ -40,7 +45,12 @@ import {
   logToothTreatment,
 } from "../../../../lib/services/patientService";
 import { getDoctors } from "../../../../lib/services/doctorService";
+import { addInvoice } from "../../../../lib/services/invoiceService";
 import { queryKeys } from "../../../../lib/query/queryKeys";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import { calculateSubtotal, calculateTax, calculateGrandTotal } from "../../../../lib/services/billingService";
+import { sendInvoiceEmail } from "../../../../lib/services/emailService";
 import { PatientDetailsModalSkeleton } from "../../../../components/ui/Skeletons";
 import type { PatientMedicalProfile, PatientEncounter, EncounterStatus } from "../../../../lib/types";
 import { DentalChart } from "../../../../components/dental-chart/DentalChart";
@@ -77,6 +87,43 @@ function formatTimestamp(ts: any) {
   }
 }
 
+/** Format YYYY-MM-DD to "DD MMM YYYY" e.g. "05 Jul 2026" */
+function formatVisitDate(dateStr: string): string {
+  if (!dateStr) return "—";
+  try {
+    const d = new Date(dateStr + "T00:00:00");
+    return d.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+/** Sum fees from toothTreatments array */
+function calculateTotalFees(encounter: PatientEncounter): number {
+  if (!encounter.toothTreatments || encounter.toothTreatments.length === 0) return 0;
+  return encounter.toothTreatments.reduce((sum, tt) => sum + (tt.fee || 0), 0);
+}
+
+/** Get unique sorted tooth numbers */
+function getTeethNumbers(encounter: PatientEncounter): number[] {
+  if (!encounter.toothTreatments || encounter.toothTreatments.length === 0) return [];
+  return Array.from(new Set(encounter.toothTreatments.map((tt) => tt.toothNumber))).sort((a, b) => a - b);
+}
+
+/** Format currency to INR without paise if .00 */
+function formatINR(amount: any): string {
+  const val = Number(amount || 0);
+  const hasPaise = val % 1 !== 0;
+  return val.toLocaleString("en-IN", {
+    minimumFractionDigits: hasPaise ? 2 : 0,
+    maximumFractionDigits: 2,
+  });
+}
+
 interface PageProps {
   params: Promise<{ id: string }>;
 }
@@ -99,6 +146,18 @@ export default function PatientProfilePage({ params }: PageProps) {
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isEncounterModalOpen, setIsEncounterModalOpen] = useState(false);
   const [isDentalChartOpen, setIsDentalChartOpen] = useState(false);
+  const [expandedEncounterId, setExpandedEncounterId] = useState<string | null>(null);
+  
+  // Billing review workflow states
+  const [selectedBillingItems, setSelectedBillingItems] = useState<Record<string, boolean>>({});
+  const [isBillingModalOpen, setIsBillingModalOpen] = useState(false);
+  const [billingEncounter, setBillingEncounter] = useState<PatientEncounter | null>(null);
+  const [discountPercentage, setDiscountPercentage] = useState(0); // Used as flat discount amount
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [inMemoryPdf, setInMemoryPdf] = useState<jsPDF | null>(null);
+  const [generatedInvoiceId, setGeneratedInvoiceId] = useState<string | null>(null);
+  const [isInvoiceSaved, setIsInvoiceSaved] = useState(false);
   
   // Modals form states
   const [profileForm, setProfileForm] = useState({
@@ -121,6 +180,82 @@ export default function PatientProfilePage({ params }: PageProps) {
     notes: "",
     doctorName: "Dr. Julian Moore",
   });
+
+  // ── Billing Review Workflow Helpers ────────────────────────────────────────
+  const handleToggleBillingItem = (itemId: string) => {
+    setSelectedBillingItems(prev => ({
+      ...prev,
+      [itemId]: !prev[itemId]
+    }));
+  };
+
+  const isEncounterAllBillingSelected = (encounter: PatientEncounter) => {
+    if (encounter.toothTreatments && encounter.toothTreatments.length > 0) {
+      const completedTTs = encounter.toothTreatments.filter(tt => tt.status === "Completed");
+      if (completedTTs.length === 0) return false;
+      return completedTTs.every(tt => !!selectedBillingItems[`tt-${tt.id}`]);
+    } else if (encounter.treatments && encounter.treatments.length > 0) {
+      return !!selectedBillingItems[`fallback-${encounter.id}`];
+    }
+    return false;
+  };
+
+  const handleToggleAllBillingItems = (encounter: PatientEncounter) => {
+    const allSelected = isEncounterAllBillingSelected(encounter);
+    const updated = { ...selectedBillingItems };
+
+    if (encounter.toothTreatments && encounter.toothTreatments.length > 0) {
+      const completedTTs = encounter.toothTreatments.filter(tt => tt.status === "Completed");
+      completedTTs.forEach(tt => {
+        if (allSelected) {
+          delete updated[`tt-${tt.id}`];
+        } else {
+          updated[`tt-${tt.id}`] = true;
+        }
+      });
+    } else if (encounter.treatments && encounter.treatments.length > 0) {
+      if (allSelected) {
+        delete updated[`fallback-${encounter.id}`];
+      } else {
+        updated[`fallback-${encounter.id}`] = true;
+      }
+    }
+    setSelectedBillingItems(updated);
+  };
+
+  const getSelectedTreatmentsForEncounter = (encounter: PatientEncounter) => {
+    const list: Array<{ id: string; treatmentName: string; toothNumber?: number; fee: number }> = [];
+    if (encounter.toothTreatments && encounter.toothTreatments.length > 0) {
+      encounter.toothTreatments.forEach(tt => {
+        if (tt.status === "Completed" && selectedBillingItems[`tt-${tt.id}`]) {
+          list.push({
+            id: tt.id,
+            treatmentName: tt.treatmentName,
+            toothNumber: tt.toothNumber,
+            fee: tt.fee || 0
+          });
+        }
+      });
+    } else if (encounter.treatments && encounter.treatments.length > 0) {
+      if (selectedBillingItems[`fallback-${encounter.id}`]) {
+        list.push({
+          id: `fallback-${encounter.id}`,
+          treatmentName: encounter.treatments.join(" • "),
+          fee: 0
+        });
+      }
+    }
+    return list;
+  };
+
+  const handleOpenBillingReview = (encounter: PatientEncounter) => {
+    setBillingEncounter(encounter);
+    setDiscountPercentage(0);
+    setInMemoryPdf(null);
+    setGeneratedInvoiceId(null);
+    setIsInvoiceSaved(false);
+    setIsBillingModalOpen(true);
+  };
 
   // ── TanStack Queries ─────────────────────────────────────────────────────
   // 1. Patient basic profile
@@ -226,6 +361,245 @@ export default function PatientProfilePage({ params }: PageProps) {
       showToast("Failed to log tooth treatment.");
     },
   });
+
+  // ── Invoice Generation & Resend Email Workflow Handlers ─────────────────
+  const handleGenerateInvoice = async () => {
+    if (!billingEncounter || !patient) {
+      showToast("Missing billing context.");
+      return;
+    }
+    
+    const selectedTreatments = getSelectedTreatmentsForEncounter(billingEncounter);
+    if (selectedTreatments.length === 0) {
+      showToast("Empty invoice: Please select at least one treatment.");
+      return;
+    }
+
+    setIsGeneratingInvoice(true);
+
+    try {
+      const subtotal = calculateSubtotal(selectedTreatments);
+      const tax = calculateTax(subtotal);
+      const discount = discountPercentage; // Flat discount input amount in ₹
+      const total = calculateGrandTotal(subtotal, tax, discount);
+
+      // Create new invoice in Firestore invoices collection matching the required schema
+      const invoiceData = {
+        patientId: patient.id,
+        patientName: patient.name,
+        encounterId: billingEncounter.id,
+        encounterIds: [billingEncounter.id], // supports future multi-encounter invoicing
+        visitDate: billingEncounter.visitDate,
+        subtotal,
+        tax,
+        discount,
+        total,
+        amount: total, // for backward compatibility
+        status: "Pending" as const,
+        paymentStatus: "Pending" as const, // for backward compatibility
+        paymentMethod: "None" as const, // for backward compatibility
+        invoiceDate: new Date().toISOString().split("T")[0],
+        treatments: selectedTreatments.map(t => t.treatmentName),
+        items: selectedTreatments,
+        createdAt: Timestamp.now(),
+        emailSent: false,
+      };
+
+      // Save document to Firestore using the existing invoices collection configuration
+      const invoiceId = await addInvoice(invoiceData);
+      setGeneratedInvoiceId(invoiceId);
+
+      // Invalidate queries to refresh the invoices list
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.byPatientId(patient.id) });
+
+      // Generate PDF using jsPDF and store in memory (using INR text for character compatibility)
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      // Top brand banners
+      doc.setFillColor(0, 188, 212); // #00bcd4
+      doc.ellipse(0, 0, 80, 50, "F");
+
+      doc.setFillColor(0, 168, 204); // #00a8cc
+      doc.ellipse(210, 0, 120, 60, "F");
+
+      // Clinic details
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text("Sanjivani Dentals", 190, 12, { align: "right" });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text("123 Dental Excellence Way, Medical District", 190, 17, { align: "right" });
+      doc.text("+91 77750 89777", 190, 22, { align: "right" });
+      doc.text("support@sanjivanidentals.com", 190, 27, { align: "right" });
+
+      // Invoice title
+      doc.setTextColor(33, 33, 33);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.text("TAX INVOICE", 105, 55, { align: "center" });
+
+      // Divider
+      doc.setDrawColor(230, 230, 230);
+      doc.setLineWidth(0.5);
+      doc.line(20, 60, 190, 60);
+
+      // Metadata grid headers
+      doc.setFontSize(9);
+      doc.setTextColor(120, 120, 120);
+      doc.setFont("helvetica", "bold");
+      doc.text("PATIENT DETAILS", 20, 70);
+      doc.text("INVOICE DETAILS", 120, 70);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(33, 33, 33);
+      doc.text(`Name: ${patient.name}`, 20, 77);
+      doc.text(`Phone: ${patient.phone}`, 20, 83);
+      doc.text(`Email: ${patient.email || "—"}`, 20, 89);
+      doc.text(`Patient ID: ${patient.id.slice(0, 8).toUpperCase()}`, 20, 95);
+
+      doc.text(`Invoice No: #${invoiceId.slice(0, 8).toUpperCase()}`, 120, 77);
+      doc.text(`Invoice Date: ${new Date().toLocaleDateString("en-GB")}`, 120, 83);
+      doc.text(`Visit Date: ${new Date(billingEncounter.visitDate + "T00:00:00").toLocaleDateString("en-GB")}`, 120, 89);
+      doc.text(`Payment Status: Pending`, 120, 95);
+
+      // Billed Items Table Header
+      doc.setDrawColor(220, 220, 220);
+      doc.setFillColor(248, 248, 248);
+      doc.rect(20, 110, 170, 8, "FD");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(80, 80, 80);
+      doc.text("Tooth", 28, 115.5, { align: "center" });
+      doc.text("Treatment Description", 40, 115.5);
+      doc.text("Fee", 180, 115.5, { align: "right" });
+
+      // Table Rows
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9.5);
+      doc.setTextColor(33, 33, 33);
+      let currentY = 118;
+      selectedTreatments.forEach((item, idx) => {
+        currentY += 8;
+        doc.rect(20, currentY - 5, 170, 8);
+        doc.text(item.toothNumber !== undefined ? String(item.toothNumber) : "—", 28, currentY, { align: "center" });
+        doc.text(item.treatmentName, 40, currentY);
+        doc.text(`INR ${formatINR(item.fee)}`, 180, currentY, { align: "right" });
+      });
+
+      // Totals
+      currentY += 15;
+      doc.setFont("helvetica", "normal");
+      doc.text("Subtotal:", 130, currentY);
+      doc.text(`INR ${formatINR(subtotal)}`, 180, currentY, { align: "right" });
+
+      if (discount > 0) {
+        currentY += 6;
+        doc.text("Discount:", 130, currentY);
+        doc.setTextColor(220, 50, 50);
+        doc.text(`-INR ${formatINR(discount)}`, 180, currentY, { align: "right" });
+        doc.setTextColor(33, 33, 33);
+      }
+
+      currentY += 6;
+      doc.text("Tax (18%):", 130, currentY);
+      doc.text(`INR ${formatINR(tax)}`, 180, currentY, { align: "right" });
+
+      currentY += 8;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.text("Grand Total:", 130, currentY);
+      doc.setTextColor(0, 188, 212); // Primary color
+      doc.text(`INR ${formatINR(total)}`, 180, currentY, { align: "right" });
+
+      // Signature Footer
+      currentY += 25;
+      doc.setTextColor(150, 150, 150);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text("Thank you for choosing Sanjivani Dentals.", 20, currentY);
+      doc.text("This is a computer-generated invoice and requires no physical signature.", 20, currentY + 4);
+
+      doc.setTextColor(33, 33, 33);
+      doc.setFont("helvetica", "bold");
+      doc.line(130, currentY + 5, 180, currentY + 5);
+      doc.text("Authorized Signatory", 155, currentY + 10, { align: "center" });
+
+      // Save PDF in state memory
+      setInMemoryPdf(doc);
+      setIsInvoiceSaved(true);
+      showToast("Invoice generated successfully!");
+    } catch (e: any) {
+      console.error("Firestore save or PDF generation failed:", e);
+      showToast(e.message || "Firestore save failed. Please try again.");
+    } finally {
+      setIsGeneratingInvoice(false);
+    }
+  };
+
+  const handleDownloadPdf = () => {
+    if (!inMemoryPdf || !generatedInvoiceId) {
+      showToast("No invoice generated in memory.");
+      return;
+    }
+    try {
+      inMemoryPdf.save(`invoice_${generatedInvoiceId.slice(0, 8)}.pdf`);
+      showToast("PDF downloaded successfully!");
+    } catch (err) {
+      console.error(err);
+      showToast("Download failed. Please try again.");
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!inMemoryPdf || !generatedInvoiceId || !patient) {
+      showToast("Invoice must be generated before sending.");
+      return;
+    }
+
+    if (!patient.email) {
+      showToast("Missing patient email address.");
+      return;
+    }
+
+    // Basic email validation regex
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(patient.email)) {
+      showToast("Invalid patient email address.");
+      return;
+    }
+
+    setIsSendingEmail(true);
+
+    try {
+      // Get base64-encoded PDF from in-memory document
+      const pdfBase64 = inMemoryPdf.output("datauristring").split(",")[1];
+
+      // Invoke the client-side sendInvoiceEmail service
+      await sendInvoiceEmail({
+        invoiceId: generatedInvoiceId,
+        patientEmail: patient.email,
+        patientName: patient.name,
+        pdfBase64,
+        clinicName: "Sanjivani Dentals",
+      });
+
+      // Invalidate queries to refresh the invoices list
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.byPatientId(patient.id) });
+
+      showToast("Invoice emailed successfully!");
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.message || "Unable to send email. Please try again.");
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
 
   // ── Form Handlers ────────────────────────────────────────────────────────
   const openEditProfile = () => {
@@ -609,156 +983,264 @@ export default function PatientProfilePage({ params }: PageProps) {
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-6 relative before:content-[''] before:absolute before:left-[17px] before:top-2 before:bottom-2 before:w-[2px] before:bg-outline-variant/20">
+                    <div className="space-y-2">
                       {encounters.map((e) => {
                         const isCompleted = e.status === "Completed";
                         const isInProgress = e.status === "In Progress";
                         const isCancelled = e.status === "Cancelled";
+                        const isExpanded = expandedEncounterId === e.id;
+                        const totalFees = calculateTotalFees(e);
+                        const teethNums = getTeethNumbers(e);
+
+                        // Compact treatment summary: first 3 with • separator
+                        const treatments = e.treatments || [];
+                        const treatmentPreview = treatments.slice(0, 3).join(" • ");
+                        const hasMoreTreatments = treatments.length > 3;
+
+                        const statusColor = isCompleted
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : isInProgress
+                          ? "bg-blue-50 text-blue-700 border-blue-200"
+                          : isCancelled
+                          ? "bg-red-50 text-red-700 border-red-200"
+                          : "bg-gray-50 text-gray-700 border-gray-200";
+
+                        const statusDot = isCompleted
+                          ? "bg-emerald-500"
+                          : isInProgress
+                          ? "bg-blue-500 animate-pulse"
+                          : isCancelled
+                          ? "bg-red-500"
+                          : "bg-gray-400";
 
                         return (
-                          <div key={e.id} className="relative pl-9 space-y-2 group">
-                            {/* Circle Indicator */}
-                            {isCompleted ? (
-                              <div className="absolute left-0 top-1 w-9 h-9 bg-emerald-500 rounded-full flex items-center justify-center border-4 border-white shadow-sm text-white shrink-0 z-10">
-                                <Check className="w-4.5 h-4.5 stroke-[3px]" />
-                              </div>
-                            ) : isInProgress ? (
-                              <div className="absolute left-0 top-1 w-9 h-9 bg-blue-500 rounded-full flex items-center justify-center border-4 border-white shadow-sm text-white shrink-0 z-10 animate-pulse">
-                                <Clock className="w-4.5 h-4.5" />
-                              </div>
-                            ) : isCancelled ? (
-                              <div className="absolute left-0 top-1 w-9 h-9 bg-red-500 rounded-full flex items-center justify-center border-4 border-white shadow-sm text-white shrink-0 z-10">
-                                <XCircle className="w-4.5 h-4.5" />
-                              </div>
-                            ) : (
-                              <div className="absolute left-0 top-1 w-9 h-9 bg-gray-400 rounded-full flex items-center justify-center border-4 border-white shadow-sm text-white shrink-0 z-10">
-                                <Clock className="w-4.5 h-4.5" />
-                              </div>
-                            )}
+                          <div
+                            key={e.id}
+                            className={`border rounded-xl overflow-hidden transition-all duration-200 ${
+                              isExpanded
+                                ? "border-primary/25 shadow-md bg-white"
+                                : "border-outline-variant/15 bg-white hover:border-outline-variant/30 hover:shadow-sm"
+                            }`}
+                          >
+                            {/* ─── Compact Summary Header ─── */}
+                            <div className="flex items-center gap-2 px-3 py-2.5">
+                              {/* Billing checkbox */}
+                              <input
+                                type="checkbox"
+                                checked={isEncounterAllBillingSelected(e)}
+                                onChange={() => handleToggleAllBillingItems(e)}
+                                className="w-3.5 h-3.5 rounded border-outline-variant/30 cursor-pointer shrink-0"
+                                title="Toggle all completed treatments for billing"
+                                onClick={(ev) => ev.stopPropagation()}
+                              />
 
-                            {/* Details Panel */}
-                            <div className="bg-surface-container-low border border-outline-variant/10 rounded-xl p-4 space-y-3 group-hover:shadow-sm transition-shadow">
-                              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
-                                <div>
-                                  <h4 className="text-sm font-bold text-on-surface">
-                                    Encounter: {e.chiefComplaint || "Routine consultation"}
-                                  </h4>
-                                  <p className="text-xs text-on-surface-variant mt-0.5">
-                                    Clinician: <span className="font-semibold">{e.doctorName || "Dr. Moore"}</span> · Visit Date: {e.visitDate}
-                                  </p>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                                  <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                                    isCompleted
-                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                      : isInProgress
-                                      ? "bg-blue-50 text-blue-700 border-blue-200"
-                                      : isCancelled
-                                      ? "bg-red-50 text-red-700 border-red-200"
-                                      : "bg-gray-50 text-gray-700 border-gray-200"
-                                  }`}>
+                              {/* Status dot */}
+                              <div className={`w-2 h-2 rounded-full shrink-0 ${statusDot}`} />
+
+                              {/* Clickable summary content */}
+                              <button
+                                type="button"
+                                onClick={() => setExpandedEncounterId(isExpanded ? null : e.id)}
+                                className="flex-1 min-w-0 text-left cursor-pointer focus:outline-none group"
+                              >
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {/* Date */}
+                                  <span className="text-[13px] font-semibold text-on-surface whitespace-nowrap">
+                                    {formatVisitDate(e.visitDate)}
+                                  </span>
+
+                                  <span className="text-outline-variant/40 text-xs">|</span>
+
+                                  {/* Doctor */}
+                                  <span className="text-xs text-on-surface-variant font-medium whitespace-nowrap">
+                                    {e.doctorName || "Dr. Moore"}
+                                  </span>
+
+                                  <span className="text-outline-variant/40 text-xs">|</span>
+
+                                  {/* Status */}
+                                  <span className={`inline-flex px-1.5 py-px rounded text-[9px] font-bold border ${statusColor}`}>
                                     {e.status}
                                   </span>
-                                </div>
-                              </div>
 
-                              {e.diagnosis && (
-                                <p className="text-xs text-on-surface font-semibold bg-white/60 border border-outline-variant/5 rounded-lg p-2.5">
-                                  <span className="text-on-surface-variant text-[11px] block font-bold mb-0.5 uppercase tracking-wider">Diagnosis</span>
-                                  {e.diagnosis}
-                                </p>
-                              )}
-
-                              {e.treatments && e.treatments.length > 0 && (
-                                <div className="space-y-1">
-                                  <span className="text-on-surface-variant text-[11px] font-bold block uppercase tracking-wider">Treatments Administered</span>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {e.treatments.map((tr, idx) => (
-                                      <span key={idx} className="bg-primary-container text-primary border border-primary/20 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
-                                        {tr}
+                                  {/* Fees */}
+                                  {totalFees > 0 && (
+                                    <>
+                                      <span className="text-outline-variant/40 text-xs">|</span>
+                                      <span className="text-xs font-bold text-on-surface whitespace-nowrap">
+                                        ₹{formatINR(totalFees)}
                                       </span>
-                                    ))}
-                                  </div>
+                                    </>
+                                  )}
                                 </div>
-                              )}
 
-                              {e.toothTreatments && e.toothTreatments.length > 0 && (
-                                <div className="space-y-1 mt-2">
-                                  <span className="text-on-surface-variant text-[11px] font-bold block uppercase tracking-wider">Teeth Treated</span>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {Array.from(new Set(e.toothTreatments.map((tt) => tt.toothNumber))).sort((a, b) => a - b).map((num) => (
-                                      <span key={num} className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
-                                        Tooth #{num}
+                                {/* Second line: Treatments + Teeth */}
+                                <div className="flex items-center gap-2 mt-1 text-[11px]">
+                                  {treatmentPreview && (
+                                    <span className="text-on-surface-variant font-medium truncate max-w-[280px]" title={treatments.join(", ")}>
+                                      {treatmentPreview}{hasMoreTreatments ? ` +${treatments.length - 3}` : ""}
+                                    </span>
+                                  )}
+                                  {teethNums.length > 0 && (
+                                    <>
+                                      <span className="text-outline-variant/30">|</span>
+                                      <span className="text-on-surface-variant/70 font-medium whitespace-nowrap">
+                                        Teeth: <span className="text-on-surface font-semibold">{teethNums.join(", ")}</span>
                                       </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {e.notes && (
-                                <div className="text-[11px] text-on-surface-variant leading-relaxed bg-[#f8fafc] border border-outline-variant/5 rounded-lg p-2.5">
-                                  <span className="font-bold text-on-surface">Clinical Notes:</span> {e.notes}
-                                </div>
-                              )}
-
-                              {/* Prescription status placeholder */}
-                              <div className="text-[11px] text-slate-500 italic bg-slate-50 border border-slate-100/50 rounded-lg p-2.5 flex items-center justify-between">
-                                <span>Prescription Status: No prescriptions issued for this session</span>
-                                <span className="text-[9px] uppercase tracking-widest font-extrabold text-slate-400 bg-slate-200 px-1.5 py-0.5 rounded">Pending Integration</span>
-                              </div>
-
-                              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-outline-variant/10 pt-3">
-                                <div className="text-[11px] font-semibold text-on-surface-variant flex items-center gap-1">
-                                  <Calendar className="w-3.5 h-3.5 text-primary" />
-                                  {e.followUpDate ? `Follow-up Visit: ${e.followUpDate}` : "No scheduled follow-up"}
-                                </div>
-                                
-                                {/* Status Actions */}
-                                <div className="flex items-center gap-1.5">
-                                  {!isCompleted && (
-                                    <button
-                                      onClick={() => handleStatusChange(e.id, "Completed")}
-                                      className="p-1 rounded bg-emerald-50 hover:bg-emerald-500 hover:text-white border border-emerald-200 text-emerald-700 transition-colors text-[10px] font-bold cursor-pointer"
-                                      title="Mark Completed"
-                                    >
-                                      Mark Completed
-                                    </button>
+                                    </>
                                   )}
-                                  {!isInProgress && !isCompleted && (
-                                    <button
-                                      onClick={() => handleStatusChange(e.id, "In Progress")}
-                                      className="p-1 rounded bg-blue-50 hover:bg-blue-500 hover:text-white border border-blue-200 text-blue-700 transition-colors text-[10px] font-bold cursor-pointer"
-                                      title="Set In Progress"
-                                    >
-                                      Start
-                                    </button>
-                                  )}
-                                  {!isCancelled && (
-                                    <button
-                                      onClick={() => handleStatusChange(e.id, "Cancelled")}
-                                      className="p-1 rounded bg-red-50 hover:bg-red-500 hover:text-white border border-red-200 text-red-700 transition-colors text-[10px] font-bold cursor-pointer"
-                                      title="Cancel Encounter"
-                                    >
-                                      Cancel
-                                    </button>
-                                  )}
-                                  <button
-                                    onClick={() => openEditEncounter(e)}
-                                    className="p-1 rounded bg-white hover:bg-surface-container border border-outline-variant/30 text-on-surface-variant transition-colors cursor-pointer"
-                                    title="Edit Visit Encounter"
-                                  >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteEncounter(e.id)}
-                                    className="p-1 rounded bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-600 border border-outline-variant/30 text-on-surface-variant transition-colors cursor-pointer"
-                                    title="Delete Encounter"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
                                 </div>
-                              </div>
+                              </button>
+
+                              {/* Expand chevron */}
+                              <button
+                                type="button"
+                                onClick={() => setExpandedEncounterId(isExpanded ? null : e.id)}
+                                className="shrink-0 p-1 rounded text-on-surface-variant/40 hover:text-primary hover:bg-primary/5 transition-colors cursor-pointer"
+                              >
+                                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </button>
                             </div>
+
+                            {/* ─── Expanded Detail Panel ─── */}
+                            {isExpanded && (
+                              <div className="border-t border-outline-variant/10 bg-surface-container-low/30 px-4 py-2 space-y-2">
+
+                                {/* Treatment Table — main content */}
+                                {e.toothTreatments && e.toothTreatments.length > 0 ? (
+                                  <div className="rounded-lg border border-outline-variant/10 overflow-hidden">
+                                    {/* Table header */}
+                                    <div className="grid grid-cols-[50px_1fr_80px_70px_60px] gap-1 px-3 py-1.5 bg-surface-container-lowest text-[10px] font-bold text-on-surface-variant uppercase tracking-wider border-b border-outline-variant/10">
+                                      <span>Tooth</span>
+                                      <span>Treatment</span>
+                                      <span>Status</span>
+                                      <span className="text-right">Fee</span>
+                                      <span className="text-center">Billing</span>
+                                    </div>
+                                    {/* Table rows */}
+                                    {e.toothTreatments.map((tt) => (
+                                      <div key={tt.id} className="grid grid-cols-[50px_1fr_80px_70px_60px] gap-1 px-3 py-1.5 text-xs border-b border-outline-variant/5 last:border-b-0 items-center">
+                                        <span className="text-on-surface-variant font-medium">{tt.toothNumber}</span>
+                                        <span className="text-on-surface font-semibold">{tt.treatmentName}</span>
+                                        <span className={`inline-flex items-center px-1.5 py-px rounded text-[9px] font-bold w-fit ${
+                                          tt.status === "Completed" ? "bg-emerald-50 text-emerald-700" :
+                                          tt.status === "In Progress" ? "bg-blue-50 text-blue-700" :
+                                          "bg-gray-50 text-gray-600"
+                                        }`}>{tt.status}</span>
+                                        <span className="text-right font-bold text-on-surface">₹{formatINR(tt.fee)}</span>
+                                        <span className="flex justify-center">
+                                          <input
+                                            type="checkbox"
+                                            disabled={tt.status !== "Completed"}
+                                            checked={!!selectedBillingItems[`tt-${tt.id}`]}
+                                            onChange={() => handleToggleBillingItem(`tt-${tt.id}`)}
+                                            className={`w-3.5 h-3.5 rounded border-outline-variant/30 cursor-pointer ${
+                                              tt.status !== "Completed" ? "opacity-30 cursor-not-allowed" : ""
+                                            }`}
+                                            title={tt.status !== "Completed" ? "Only completed treatments can be billed" : "Select for billing"}
+                                          />
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : treatments.length > 0 ? (
+                                  /* Fallback: if only manual treatments exist (no toothTreatments) */
+                                  <div className="flex items-center justify-between text-xs py-1 px-1 bg-surface-container-lowest rounded border border-outline-variant/10">
+                                    <div className="flex items-baseline gap-2">
+                                      <span className="text-on-surface-variant/70 font-bold uppercase tracking-wider text-[10px] shrink-0">Treatments</span>
+                                      <span className="text-on-surface font-medium">{treatments.join(" • ")}</span>
+                                    </div>
+                                    <span className="flex items-center gap-1 text-[10px] text-on-surface-variant font-medium">
+                                      Billing:{" "}
+                                      <input
+                                        type="checkbox"
+                                        checked={!!selectedBillingItems[`fallback-${e.id}`]}
+                                        onChange={() => handleToggleBillingItem(`fallback-${e.id}`)}
+                                        className="w-3.5 h-3.5 rounded border-outline-variant/30 cursor-pointer"
+                                      />
+                                    </span>
+                                  </div>
+                                ) : null}
+
+                                {/* Follow-up — simple inline text below the table */}
+                                <div className="text-xs text-on-surface-variant/80 font-medium">
+                                  <span>Follow-up: </span>
+                                  <span className="text-on-surface font-semibold">
+                                    {e.followUpDate ? formatVisitDate(e.followUpDate) : "None scheduled"}
+                                  </span>
+                                </div>
+
+                                {/* Actions row */}
+                                <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-outline-variant/10">
+                                  {/* Status actions */}
+                                  <div className="flex items-center gap-1.5">
+                                    {!isCompleted && (
+                                      <button
+                                        onClick={() => handleStatusChange(e.id, "Completed")}
+                                        className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-500 hover:text-white border border-emerald-200 text-emerald-700 transition-colors text-[10px] font-bold cursor-pointer"
+                                      >
+                                        Mark Completed
+                                      </button>
+                                    )}
+                                    {!isInProgress && !isCompleted && (
+                                      <button
+                                        onClick={() => handleStatusChange(e.id, "In Progress")}
+                                        className="px-2 py-1 rounded bg-blue-50 hover:bg-blue-500 hover:text-white border border-blue-200 text-blue-700 transition-colors text-[10px] font-bold cursor-pointer"
+                                      >
+                                        Start
+                                      </button>
+                                    )}
+                                    {!isCancelled && (
+                                      <button
+                                        onClick={() => handleStatusChange(e.id, "Cancelled")}
+                                        className="px-2 py-1 rounded bg-red-50 hover:bg-red-500 hover:text-white border border-red-200 text-red-700 transition-colors text-[10px] font-bold cursor-pointer"
+                                      >
+                                        Cancel
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* Edit / Delete / Generate Invoice */}
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      onClick={() => openEditEncounter(e)}
+                                      className="p-1 rounded bg-white hover:bg-surface-container border border-outline-variant/30 text-on-surface-variant transition-colors cursor-pointer"
+                                      title="Edit"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteEncounter(e.id)}
+                                      className="p-1 rounded bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-600 border border-outline-variant/30 text-on-surface-variant transition-colors cursor-pointer"
+                                      title="Delete"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    {(() => {
+                                      const selectedItems = getSelectedTreatmentsForEncounter(e);
+                                      const hasSelected = selectedItems.length > 0;
+                                      return (
+                                        <button
+                                          type="button"
+                                          disabled={!hasSelected}
+                                          onClick={() => handleOpenBillingReview(e)}
+                                          className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border transition-colors ${
+                                            hasSelected
+                                              ? "bg-emerald-50 hover:bg-emerald-500 hover:text-white border-emerald-200 text-emerald-700 cursor-pointer"
+                                              : "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed opacity-50"
+                                          }`}
+                                          title={hasSelected ? "Open Billing Review" : "Select completed treatments to bill"}
+                                        >
+                                          <Receipt className="w-3 h-3" />
+                                          Generate Invoice
+                                        </button>
+                                      );
+                                    })()}
+                                  </div>
+                                </div>
+
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -1103,6 +1585,191 @@ export default function PatientProfilePage({ params }: PageProps) {
           isSaving={logToothTreatmentMutation.isPending}
           onClose={() => setIsDentalChartOpen(false)}
         />
+      )}
+
+      {/* ── BILLING REVIEW MODAL ── */}
+      {isBillingModalOpen && billingEncounter && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/55 backdrop-blur-sm" onClick={() => setIsBillingModalOpen(false)} />
+          <div className="relative bg-white w-full max-w-xl rounded-2xl shadow-xl border border-outline-variant/10 overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-outline-variant/10 bg-surface-container-lowest flex items-center justify-between">
+              <h3 className="text-base font-bold text-on-surface flex items-center gap-2 font-sans">
+                <Receipt className="w-5 h-5 text-primary" />
+                Billing Review
+              </h3>
+              <button
+                onClick={() => setIsBillingModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-surface-container text-on-surface-variant cursor-pointer transition-colors"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-5 overflow-y-auto space-y-4 flex-1">
+              {/* Patient Information Grid */}
+              <div className="bg-surface-container-lowest p-3 rounded-lg border border-outline-variant/10 space-y-2">
+                <h4 className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Patient Details</h4>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <span className="text-on-surface-variant font-medium block text-[10px] uppercase">Name</span>
+                    <span className="text-on-surface font-bold truncate block">{patient?.name}</span>
+                  </div>
+                  <div>
+                    <span className="text-on-surface-variant font-medium block text-[10px] uppercase">Mobile</span>
+                    <span className="text-on-surface font-bold truncate block">{patient?.phone || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-on-surface-variant font-medium block text-[10px] uppercase">Email</span>
+                    <span className="text-on-surface font-bold truncate block" title={patient?.email || "No email"}>
+                      {patient?.email || "—"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Selected Treatments Table */}
+              <div className="space-y-1.5">
+                <h4 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Selected Treatments</h4>
+                <div className="border border-outline-variant/15 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                  <table className="w-full text-xs text-left border-collapse">
+                    <thead>
+                      <tr className="bg-surface-container border-b border-outline-variant/15 text-[10px] uppercase font-bold text-on-surface-variant">
+                        <th className="p-2 border-r border-outline-variant/10 w-16 text-center">Tooth</th>
+                        <th className="p-2 border-r border-outline-variant/10">Treatment</th>
+                        <th className="p-2 text-right w-28">Unit Price</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-outline-variant/10">
+                      {getSelectedTreatmentsForEncounter(billingEncounter).map((item, idx) => (
+                        <tr key={item.id || idx} className="hover:bg-surface-container-low/20">
+                          <td className="p-2 border-r border-outline-variant/10 text-center text-on-surface-variant font-medium">
+                            {item.toothNumber !== undefined ? item.toothNumber : "—"}
+                          </td>
+                          <td className="p-2 border-r border-outline-variant/10 text-on-surface font-semibold">
+                            {item.treatmentName}
+                          </td>
+                          <td className="p-2 text-right font-bold text-on-surface font-mono">
+                            ₹{formatINR(item.fee)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Billing Summary Calculations */}
+              {(() => {
+                const selectedItems = getSelectedTreatmentsForEncounter(billingEncounter);
+                const subtotal = calculateSubtotal(selectedItems);
+                const tax = calculateTax(subtotal);
+                const discount = discountPercentage; // flat INR discount
+                const total = calculateGrandTotal(subtotal, tax, discount);
+
+                return (
+                  <div className="border-t border-outline-variant/15 pt-3 space-y-2 text-xs">
+                    <div className="flex justify-between items-center text-on-surface-variant">
+                      <span>Subtotal</span>
+                      <span className="font-bold text-on-surface font-mono">₹{formatINR(subtotal)}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-on-surface-variant">Discount (INR)</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-on-surface-variant font-mono">₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          disabled={isInvoiceSaved}
+                          value={discountPercentage || ""}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (isNaN(val)) setDiscountPercentage(0);
+                            else if (val < 0) setDiscountPercentage(0);
+                            else setDiscountPercentage(val);
+                          }}
+                          className={`w-24 px-1.5 py-0.5 rounded border border-outline-variant text-right text-xs font-semibold focus:outline-none focus:border-primary bg-white text-on-surface ${
+                            isInvoiceSaved ? "opacity-60 cursor-not-allowed" : ""
+                          }`}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center text-on-surface-variant">
+                      <span>Tax (18% GST)</span>
+                      <span className="font-bold text-on-surface font-mono">₹{formatINR(tax)}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center text-sm font-bold border-t border-outline-variant/10 pt-2 text-on-surface bg-white sticky bottom-0 z-10">
+                      <span>Grand Total</span>
+                      <span className="text-primary font-mono text-base">₹{formatINR(total)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Validations & Warnings */}
+              {!patient?.email && (
+                <p className="text-[10px] text-amber-600 font-semibold italic bg-amber-50 p-2 rounded border border-amber-200">
+                  * Patient does not have a registered email address. Email resending will be disabled.
+                </p>
+              )}
+            </div>
+
+            {/* Modal Buttons Footer */}
+            <div className="px-5 py-4 border-t border-outline-variant/10 bg-surface-container-lowest flex gap-3">
+              {!isInvoiceSaved ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsBillingModalOpen(false)}
+                    className="flex-1 border border-outline-variant/40 text-on-surface font-semibold py-2 rounded-lg text-xs hover:bg-surface-container transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isGeneratingInvoice}
+                    onClick={handleGenerateInvoice}
+                    className="flex-1 bg-primary text-white font-semibold py-2 rounded-lg text-xs hover:bg-primary/95 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isGeneratingInvoice && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    Generate Invoice
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsBillingModalOpen(false)}
+                    className="border border-outline-variant/40 text-on-surface font-semibold px-4 py-2 rounded-lg text-xs hover:bg-surface-container transition-colors cursor-pointer"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadPdf}
+                    className="flex-1 bg-primary text-white font-semibold py-2.5 rounded-lg text-xs hover:bg-primary/95 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm font-sans"
+                  >
+                    Download PDF
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!patient?.email || isSendingEmail}
+                    onClick={handleSendEmail}
+                    className="flex-1 bg-slate-800 text-white font-semibold py-2.5 rounded-lg text-xs hover:bg-slate-900 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-30 shadow-sm font-sans"
+                    title={!patient?.email ? "Patient has no registered email" : "Email invoice PDF to patient"}
+                  >
+                    {isSendingEmail && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    Send Email
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Toast Alert overlay */}

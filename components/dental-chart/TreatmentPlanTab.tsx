@@ -9,6 +9,15 @@ interface TreatmentPlanTabProps {
   record?: ToothRecord;
 }
 
+function formatINR(amount: any): string {
+  const val = Number(amount || 0);
+  const hasPaise = val % 1 !== 0;
+  return val.toLocaleString("en-IN", {
+    minimumFractionDigits: hasPaise ? 2 : 0,
+    maximumFractionDigits: 2,
+  });
+}
+
 export function TreatmentPlanTab({ record }: TreatmentPlanTabProps) {
   const { setActiveTab } = useDentalChartStore();
   const plans = record?.plans || [];
@@ -28,11 +37,10 @@ export function TreatmentPlanTab({ record }: TreatmentPlanTabProps) {
         </div>
         
         <button
-          type="button"
           onClick={handleAddPlanClick}
-          className="flex items-center gap-1.5 px-4 py-2 border border-[#1b5e20] hover:bg-[#1b5e20]/5 text-[#1b5e20] text-xs font-bold rounded-lg transition-colors cursor-pointer shadow-sm"
+          className="flex items-center gap-1.5 px-4 py-2 bg-[#1b5e20] hover:bg-[#123f15] text-white text-xs font-bold rounded-lg transition-colors cursor-pointer shadow-sm"
         >
-          <Plus className="w-4 h-4" /> Add to Treatment Plan
+          <Plus className="w-3.5 h-3.5" /> Add Plan
         </button>
       </div>
     );
@@ -74,7 +82,7 @@ export function TreatmentPlanTab({ record }: TreatmentPlanTabProps) {
           <div className="pt-2 border-t border-slate-50 flex flex-col gap-1.5 text-xs">
             <div className="flex items-center gap-1 text-[#1b5e20] font-semibold">
               <IndianRupee className="w-3.5 h-3.5" />
-              <span>{p.fee.toLocaleString("en-IN")}</span>
+              <span>{formatINR(p.fee)}</span>
             </div>
             {p.notes && (
               <div className="flex items-start gap-1.5 text-[11px] text-slate-600 bg-slate-50 rounded-lg p-2 mt-1 leading-relaxed">
