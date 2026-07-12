@@ -142,4 +142,14 @@ export const queryKeys = {
     /** Broad key to invalidate P&L calculations */
     stats: ["finance", "stats"] as const,
   },
+
+  // ── Clinic Referrals (Refer & Earn) ────────────────────────────────────────
+  clinicReferrals: {
+    /** Broad key to invalidate all clinic referral queries. */
+    all: ["clinicReferrals"] as const,
+    /** Clinic referral config singleton (referral code). */
+    config: ["clinicReferrals", "config"] as const,
+    /** Subscription info singleton. */
+    subscription: ["clinicReferrals", "subscription"] as const,
+  },
 } as const;

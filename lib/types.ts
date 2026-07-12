@@ -342,3 +342,41 @@ export interface Expense {
 
 export type ExpenseFormData = Omit<Expense, "id" | "createdAt" | "updatedAt" | "createdBy">;
 
+/* ─── Clinic Referral (Refer & Earn) ─── */
+export type ClinicReferralStatus = "Pending" | "Successful" | "Reward Applied" | "Expired";
+
+/** Extensible reward type — currently only free_months is active. */
+export type RewardType = "free_months" | "cash" | "coupon";
+
+export interface ClinicReferral {
+  id: string;
+  referralCode: string;            // This clinic's referral code (e.g., "DP-8XK29A")
+  referrerClinicId: string;         // This clinic's identifier
+  referredClinicName: string;       // Name of the referred clinic
+  referredClinicEmail: string;      // Contact email of the referred clinic
+  referredClinicId?: string;        // Their identifier (set after registration)
+  status: ClinicReferralStatus;
+  referredAt: string;               // ISO date when referral was created
+  activatedAt?: string;             // ISO date when subscription was purchased
+  rewardType: RewardType;
+  rewardMonths: number;             // Default: 1
+  rewardApplied: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/** Singleton config document storing the clinic's unique referral code. */
+export interface ClinicReferralConfig {
+  referralCode: string;             // e.g., "DP-8XK29A"
+  clinicName: string;
+  createdAt: Timestamp;
+}
+
+/** Lightweight subscription stub — ready for future billing integration. */
+export interface SubscriptionInfo {
+  planName: string;                 // e.g., "Free", "Pro", "Enterprise"
+  expiryDate: string;               // YYYY-MM-DD
+  freeMonthsEarned: number;
+  totalSuccessfulReferrals: number;
+  updatedAt: Timestamp;
+}

@@ -18,6 +18,9 @@ export const COLLECTIONS = {
   DOCTORS: "doctors",
   INVOICES: "invoices",
   EXPENSES: "expenses",
+  CLINIC_REFERRALS: "clinicReferrals",
+  CLINIC_REFERRAL_CONFIG: "clinicReferralConfig",
+  SUBSCRIPTION_INFO: "subscriptionInfo",
 
   // Archived Collections (designed for future expansion)
   ARCHIVED_APPOINTMENTS: "archived_appointments",

@@ -34,6 +34,7 @@ import {
   getAppointments,
   updateAppointmentStatus,
   deleteAppointment,
+  getAppointmentsByDateRange,
 } from "../../lib/services/appointmentService";
 import { getInvoices } from "../../lib/services/invoiceService";
 import { getPatientByPhone, getPatients, getFollowUpsDueThisWeek } from "../../lib/services/patientService";
@@ -49,6 +50,11 @@ import type {
 import { useSidebarStore } from "../../lib/store/useSidebarStore";
 import { usePatientStore } from "../../lib/store/usePatientStore";
 import { useDashboardStore } from "../../lib/store/useDashboardStore";
+import {
+  getMonthStart,
+  getMonthEnd,
+  shiftDate,
+} from "../../lib/store/useCalendarStore";
 
 /* ─── Status Styles ─── */
 const statusStyles: Record<string, string> = {
@@ -440,6 +446,159 @@ function PhoneSearchBar({
   );
 }
 
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+function formatDate(dateStr: string) {
+  if (!dateStr) return "";
+  try {
+    const d = new Date(dateStr + "T00:00:00");
+    return d.toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      weekday: "short",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+interface MiniMonthCalendarProps {
+  selectedDate: string;
+  appointments: Appointment[];
+  onDayClick: (date: string) => void;
+  onPrevMonth: () => void;
+  onNextMonth: () => void;
+}
+
+function MiniMonthCalendar({
+  selectedDate,
+  appointments,
+  onDayClick,
+  onPrevMonth,
+  onNextMonth,
+}: MiniMonthCalendarProps) {
+  const [year, month] = selectedDate.split("-").map(Number);
+  const monthName = MONTH_NAMES[month - 1];
+
+  const firstDay = new Date(year, month - 1, 1);
+  const lastDayDate = new Date(year, month, 0);
+  const daysInMonth = lastDayDate.getDate();
+
+  const rawDow = firstDay.getDay();
+  const startOffset = rawDow === 0 ? 6 : rawDow - 1;
+
+  const cells: Array<{ dateStr: string; isCurrentMonth: boolean }> = [];
+  const firstDayStr = `${year}-${String(month).padStart(2, "0")}-01`;
+
+  for (let i = startOffset - 1; i >= 0; i--) {
+    cells.push({ dateStr: shiftDate(firstDayStr, -i - 1), isCurrentMonth: false });
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    cells.push({ dateStr, isCurrentMonth: true });
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push({
+      dateStr: shiftDate(
+        `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`,
+        cells.length - startOffset - daysInMonth + 1
+      ),
+      isCurrentMonth: false,
+    });
+  }
+
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+  const byDate = new Map<string, Appointment[]>();
+  appointments.forEach((apt) => {
+    if (!byDate.has(apt.date)) byDate.set(apt.date, []);
+    byDate.get(apt.date)!.push(apt);
+  });
+
+  return (
+    <div className="w-full select-none">
+      <div className="flex items-center justify-between mb-3 px-1">
+        <span className="text-sm font-bold text-on-surface">
+          {monthName} {year}
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onPrevMonth}
+            className="p-1 rounded-lg hover:bg-surface-container text-on-surface-variant cursor-pointer border-none bg-transparent"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onNextMonth}
+            className="p-1 rounded-lg hover:bg-surface-container text-on-surface-variant cursor-pointer border-none bg-transparent"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 mb-1 text-center">
+        {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
+          <div key={i} className="text-[10px] font-bold text-on-surface-variant/40 py-1">
+            {d}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map(({ dateStr, isCurrentMonth }, idx) => {
+          const isToday = dateStr === todayStr;
+          const isSelected = dateStr === selectedDate;
+          const dayNum = parseInt(dateStr.split("-")[2], 10);
+          const dayApts = byDate.get(dateStr) ?? [];
+          const hasApts = dayApts.length > 0;
+
+          const hasPending = dayApts.some((a) => a.status === "Pending");
+          const hasActive = dayApts.some((a) =>
+            ["Confirmed", "Checked In", "In Progress"].includes(a.status)
+          );
+          const hasCompleted = dayApts.some((a) => a.status === "Completed");
+
+          return (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => onDayClick(dateStr)}
+              className={`relative flex flex-col items-center justify-center h-8 w-8 rounded-full text-xs font-bold transition-all cursor-pointer border-none ${
+                !isCurrentMonth
+                  ? "text-on-surface-variant/20 cursor-default"
+                  : isSelected
+                  ? "bg-primary text-white"
+                  : isToday
+                  ? "bg-primary/10 text-primary border border-primary/20"
+                  : "text-on-surface hover:bg-surface-container"
+              }`}
+            >
+              <span>{dayNum}</span>
+              {hasApts && isCurrentMonth && !isSelected && (
+                <div className="absolute bottom-0.5 flex gap-0.5 justify-center">
+                  {hasPending && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+                  {hasActive && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
+                  {hasCompleted && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Dashboard Component ─── */
 function AdminDashboard() {
   const { logout, user } = useAuth();
@@ -482,6 +641,43 @@ function AdminDashboard() {
     return d.toISOString().split("T")[0];
   }, []);
 
+  // ── Selected Dashboard Date & Month Query ──
+  const [dashboardDate, setDashboardDate] = useState(todayStr);
+
+  const { dashboardMonthStart, dashboardMonthEnd } = useMemo(() => {
+    const s = getMonthStart(dashboardDate);
+    const e = getMonthEnd(dashboardDate);
+    return { dashboardMonthStart: s, dashboardMonthEnd: e };
+  }, [dashboardDate]);
+
+  const handlePrevMonth = useCallback(() => {
+    const [y, m] = dashboardDate.split("-").map(Number);
+    const prevDate = new Date(y, m - 2, 1);
+    const newY = prevDate.getFullYear();
+    const newM = String(prevDate.getMonth() + 1).padStart(2, "0");
+    setDashboardDate(`${newY}-${newM}-01`);
+  }, [dashboardDate]);
+
+  const handleNextMonth = useCallback(() => {
+    const [y, m] = dashboardDate.split("-").map(Number);
+    const nextDate = new Date(y, m, 1);
+    const newY = nextDate.getFullYear();
+    const newM = String(nextDate.getMonth() + 1).padStart(2, "0");
+    setDashboardDate(`${newY}-${newM}-01`);
+  }, [dashboardDate]);
+
+  // Fetch appointments for the selected month on dashboard
+  const { data: dashboardMonthAppointments = [], isLoading: isMonthApptsLoading } = useQuery<Appointment[]>({
+    queryKey: ["appointments", "monthRange", dashboardMonthStart, dashboardMonthEnd],
+    queryFn: () => getAppointmentsByDateRange(dashboardMonthStart, dashboardMonthEnd),
+    staleTime: 30 * 1000,
+  });
+
+  // Filter to only the selected day's appointments for the timeline
+  const selectedDayAppointments = useMemo(() => {
+    return dashboardMonthAppointments.filter((a) => a.date === dashboardDate);
+  }, [dashboardMonthAppointments, dashboardDate]);
+
   // ── Queries ──────────────────────────────────────────────────────────────
   // 1. Patients Registry
   const { data: patients = [], isLoading: isPatientsLoading } = useQuery<Patient[]>({
@@ -490,7 +686,7 @@ function AdminDashboard() {
     staleTime: 2 * 60 * 1000,
   });
 
-  // 2. Today's Appointments
+  // 2. Today's Appointments (for dashboard stats/KPIs only)
   const { data: todayAppointments = [], isLoading: isApptsLoading } = useQuery<Appointment[]>({
     queryKey: ["appointments", "today"],
     queryFn: () => getAppointments("today"),
@@ -571,15 +767,15 @@ function AdminDashboard() {
     return { list, frequencyChips };
   }, [todayEncounters, patients]);
 
-  // Filter & sort today's appointments — phone matches ranked first
+  // Filter & sort selected day's appointments — phone matches ranked first
   const filteredAppointments = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
-    if (!q) return [...todayAppointments].sort((a, b) => a.time.localeCompare(b.time));
+    if (!q) return [...selectedDayAppointments].sort((a, b) => a.time.localeCompare(b.time));
 
     const digits = q.replace(/\D/g, "");
 
-    type Scored = { appt: typeof todayAppointments[0]; score: number };
-    const scored: Scored[] = todayAppointments
+    type Scored = { appt: Appointment; score: number };
+    const scored: Scored[] = selectedDayAppointments
       .map((a) => {
         const phoneDigits = (a.patientPhone ?? "").replace(/\D/g, "");
         let score = 99;
@@ -595,13 +791,13 @@ function AdminDashboard() {
     return scored
       .sort((a, b) => a.score - b.score || a.appt.time.localeCompare(b.appt.time))
       .map((s) => s.appt);
-  }, [todayAppointments, debouncedSearch]);
+  }, [selectedDayAppointments, debouncedSearch]);
 
   const recentPatients = useMemo(() => {
     return patients.slice(0, 10);
   }, [patients]);
 
-  const isLoading = isPatientsLoading || isApptsLoading || isTodayEncountersLoading;
+  const isLoading = isPatientsLoading || isApptsLoading || isTodayEncountersLoading || isMonthApptsLoading;
   const showSkeleton = useDelayLoading(isLoading, 300);
 
   // ── Appointment Mutation ───────────────────────────────────────────────────
@@ -857,11 +1053,12 @@ function AdminDashboard() {
                 <div className="xl:col-span-8 space-y-6">
                   
                   {/* SECTION 2: Today's Schedule — Enhanced Widget */}
+                  {/* SECTION 2: Clinic Schedule & Planner */}
                   <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm overflow-hidden">
                     <div className="px-5 py-4 border-b border-outline-variant/10 flex items-center justify-between">
                       <h2 className="text-sm font-bold text-on-surface uppercase tracking-wider flex items-center gap-2 font-sans">
                         <CalendarDays className="w-4 h-4 text-primary" />
-                        Today's Schedule
+                        Schedule Planner
                       </h2>
                       <Link
                         href="/admin/calendar"
@@ -872,223 +1069,241 @@ function AdminDashboard() {
                       </Link>
                     </div>
 
-                    {/* Quick stats bar */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-outline-variant/10">
-                      {[
-                        {
-                          label: "Checked In",
-                          value: todayAppointments.filter(a => a.status === "Checked In").length,
-                          color: "text-teal-600",
-                          bg: "bg-teal-50",
-                        },
-                        {
-                          label: "In Treatment",
-                          value: todayAppointments.filter(a => a.status === "In Progress").length,
-                          color: "text-purple-600",
-                          bg: "bg-purple-50",
-                        },
-                        {
-                          label: "Completed",
-                          value: todayAppointments.filter(a => a.status === "Completed").length,
-                          color: "text-emerald-600",
-                          bg: "bg-emerald-50",
-                        },
-                        {
-                          label: "Remaining",
-                          value: todayAppointments.filter(a => a.status !== "Completed" && a.status !== "Cancelled" && a.status !== "No Show").length,
-                          color: "text-blue-600",
-                          bg: "bg-blue-50",
-                        },
-                      ].map(({ label, value, color, bg }) => (
-                        <div key={label} className={`${bg} px-4 py-3 flex items-center justify-between`}>
-                          <span className="text-[10px] font-semibold text-on-surface-variant/70">{label}</span>
-                          <span className={`text-xl font-extrabold ${color}`}>{value}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {filteredAppointments.length === 0 ? (
-                      <div className="py-14 flex flex-col items-center justify-center text-center gap-4">
-                        {search ? (
-                          <>
-                            <div className="w-14 h-14 rounded-2xl bg-surface-container flex items-center justify-center">
-                              <CalendarDays className="w-7 h-7 text-on-surface-variant/40" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-on-surface">No matches found</p>
-                              <p className="text-xs text-on-surface-variant/70 mt-1">
-                                No appointments match &ldquo;<span className="font-medium text-on-surface">{search}</span>&rdquo;
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => setSearch("")}
-                              className="text-xs font-semibold text-primary underline underline-offset-2 hover:opacity-75 transition-opacity"
-                            >
-                              Clear search
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center shadow-sm">
-                              <CalendarDays className="w-8 h-8 text-purple-400" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-on-surface">No appointments today</p>
-                              <p className="text-xs text-on-surface-variant/70 mt-1 max-w-[220px]">
-                                Your schedule is clear — open the calendar to add appointments.
-                              </p>
-                            </div>
-                            <Link
-                              href="/admin/calendar"
-                              className="inline-flex items-center gap-2 bg-primary text-on-primary text-xs font-bold px-4 py-2.5 rounded-lg shadow-sm hover:opacity-90 active:scale-[0.98] transition-all duration-150"
-                            >
-                              <span className="text-base leading-none">📅</span>
-                              Open Calendar
-                            </Link>
-                          </>
-                        )}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-outline-variant/10">
+                      {/* Left: Mini Month Calendar (col-span-5) */}
+                      <div className="lg:col-span-5 p-5 bg-surface-container-lowest flex flex-col justify-start">
+                        <MiniMonthCalendar
+                          selectedDate={dashboardDate}
+                          appointments={dashboardMonthAppointments}
+                          onDayClick={setDashboardDate}
+                          onPrevMonth={handlePrevMonth}
+                          onNextMonth={handleNextMonth}
+                        />
                       </div>
-                    ) : (
-                      /* ── VERTICAL TIMELINE ── */
-                      <div className="px-4 py-4">
-                        {(() => {
-                          const currentHour = now.getHours();
-                          const currentMinute = now.getMinutes();
 
-                          // Parse time string to 24h int for comparison: "09:30 AM" → 9.5
-                          const parseTime = (t: string): number => {
-                            const clean = t.trim().toUpperCase();
-                            const match = clean.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
-                            if (!match) return 0;
-                            let h = parseInt(match[1], 10);
-                            const m = parseInt(match[2], 10);
-                            const period = match[3];
-                            if (period === "PM" && h !== 12) h += 12;
-                            if (period === "AM" && h === 12) h = 0;
-                            return h + m / 60;
-                          };
+                      {/* Right: Selected Day Timeline & Stats (col-span-7) */}
+                      <div className="lg:col-span-7 flex flex-col min-w-0">
+                        {/* Quick stats bar */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-outline-variant/10 border-b border-outline-variant/10">
+                          {[
+                            {
+                              label: "Checked In",
+                              value: selectedDayAppointments.filter(a => a.status === "Checked In").length,
+                              color: "text-teal-600",
+                              bg: "bg-teal-50/50",
+                            },
+                            {
+                              label: "In Treatment",
+                              value: selectedDayAppointments.filter(a => a.status === "In Progress").length,
+                              color: "text-purple-600",
+                              bg: "bg-purple-50/50",
+                            },
+                            {
+                              label: "Completed",
+                              value: selectedDayAppointments.filter(a => a.status === "Completed").length,
+                              color: "text-emerald-600",
+                              bg: "bg-emerald-50/50",
+                            },
+                            {
+                              label: "Remaining",
+                              value: selectedDayAppointments.filter(a => a.status !== "Completed" && a.status !== "Cancelled" && a.status !== "No Show").length,
+                              color: "text-blue-600",
+                              bg: "bg-blue-50/50",
+                            },
+                          ].map(({ label, value, color, bg }) => (
+                            <div key={label} className={`${bg} px-4 py-3 flex items-center justify-between`}>
+                              <span className="text-[10px] font-semibold text-on-surface-variant/70">{label}</span>
+                              <span className={`text-xl font-extrabold ${color}`}>{value}</span>
+                            </div>
+                          ))}
+                        </div>
 
-                          // Format label: "09:30 AM" → "9:30 AM"
-                          const formatLabel = (t: string): string => {
-                            const clean = t.trim().toUpperCase();
-                            const match = clean.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
-                            if (!match) return t;
-                            const h = parseInt(match[1], 10);
-                            const m = match[2];
-                            const period = match[3] || "";
-                            if (period) return `${h}:${m} ${period}`;
-                            // No AM/PM — convert 24h
-                            const suffix = h >= 12 ? "PM" : "AM";
-                            const h12 = h % 12 || 12;
-                            return `${h12}:${m} ${suffix}`;
-                          };
+                        {/* Selected day timeline */}
+                        <div className="flex-1 overflow-y-auto max-h-[480px] min-h-[300px]">
+                          {filteredAppointments.length === 0 ? (
+                            <div className="py-14 px-4 flex flex-col items-center justify-center text-center gap-4">
+                              {search ? (
+                                <>
+                                  <div className="w-14 h-14 rounded-2xl bg-surface-container flex items-center justify-center">
+                                    <CalendarDays className="w-7 h-7 text-on-surface-variant/40" />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-semibold text-on-surface">No matches found</p>
+                                    <p className="text-xs text-on-surface-variant/70 mt-1">
+                                      No appointments match &ldquo;<span className="font-medium text-on-surface">{search}</span>&rdquo;
+                                    </p>
+                                  </div>
+                                  <button
+                                    onClick={() => setSearch("")}
+                                    className="text-xs font-semibold text-primary underline underline-offset-2 hover:opacity-75 transition-opacity"
+                                  >
+                                    Clear search
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center shadow-sm">
+                                    <CalendarDays className="w-8 h-8 text-purple-400" />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-semibold text-on-surface">No appointments scheduled</p>
+                                    <p className="text-xs text-on-surface-variant/70 mt-1 max-w-[240px]">
+                                      No appointments scheduled for {formatDate(dashboardDate)}.
+                                    </p>
+                                  </div>
+                                  <Link
+                                    href="/admin/calendar"
+                                    className="inline-flex items-center gap-2 bg-primary text-on-primary text-xs font-bold px-4 py-2 rounded-lg shadow-sm hover:opacity-90 active:scale-[0.98] transition-all duration-150"
+                                  >
+                                    <span className="text-base leading-none">📅</span>
+                                    Open Calendar to Add
+                                  </Link>
+                                </>
+                              )}
+                            </div>
+                          ) : (
+                            /* ── VERTICAL TIMELINE ── */
+                            <div className="px-4 py-4">
+                              {(() => {
+                                const currentHour = now.getHours();
+                                const currentMinute = now.getMinutes();
 
-                          const statusAccent: Record<string, string> = {
-                            Completed:     "bg-emerald-500",
-                            Confirmed:     "bg-blue-500",
-                            "Checked In":  "bg-teal-500",
-                            "In Progress": "bg-purple-500",
-                            Pending:       "bg-amber-400",
-                            Cancelled:     "bg-slate-400",
-                            "No Show":     "bg-red-500",
-                          };
+                                // Parse time string to 24h int for comparison: "09:30 AM" → 9.5
+                                const parseTime = (t: string): number => {
+                                  const clean = t.trim().toUpperCase();
+                                  const match = clean.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
+                                  if (!match) return 0;
+                                  let h = parseInt(match[1], 10);
+                                  const m = parseInt(match[2], 10);
+                                  const period = match[3];
+                                  if (period === "PM" && h !== 12) h += 12;
+                                  if (period === "AM" && h === 12) h = 0;
+                                  return h + m / 60;
+                                };
 
-                          return filteredAppointments.map((apt, index) => {
-                            const aptDecimalTime = parseTime(apt.time);
-                            const nowDecimal = currentHour + currentMinute / 60;
-                            const isNow = aptDecimalTime <= nowDecimal && nowDecimal < aptDecimalTime + 1;
-                            const isPast = aptDecimalTime + 1 <= nowDecimal || apt.status === "Completed" || apt.status === "Cancelled" || apt.status === "No Show";
-                            const accent = statusAccent[apt.status] ?? "bg-slate-400";
-                            const isLast = index === filteredAppointments.length - 1;
+                                // Format label: "09:30 AM" → "9:30 AM"
+                                const formatLabel = (t: string): string => {
+                                  const clean = t.trim().toUpperCase();
+                                  const match = clean.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
+                                  if (!match) return t;
+                                  const h = parseInt(match[1], 10);
+                                  const m = match[2];
+                                  const period = match[3] || "";
+                                  if (period) return `${h}:${m} ${period}`;
+                                  const suffix = h >= 12 ? "PM" : "AM";
+                                  const h12 = h % 12 || 12;
+                                  return `${h12}:${m} ${suffix}`;
+                                };
 
-                            return (
-                              <div key={apt.id} className="flex gap-3 min-h-[88px]">
-                                {/* ── LEFT: time label + spine ── */}
-                                <div className="flex flex-col items-center w-16 shrink-0">
-                                  <span className={`text-[11px] font-bold tabular-nums whitespace-nowrap pt-1 ${
-                                    isNow ? "text-primary" : isPast ? "text-on-surface-variant/40" : "text-on-surface-variant"
-                                  }`}>
-                                    {formatLabel(apt.time)}
-                                  </span>
-                                  {/* Spine line */}
-                                  {!isLast && (
-                                    <div className="flex-1 w-px bg-outline-variant/20 mt-1 mb-0" />
-                                  )}
-                                </div>
+                                const statusAccent: Record<string, string> = {
+                                  Completed:     "bg-emerald-500",
+                                  Confirmed:     "bg-blue-500",
+                                  "Checked In":  "bg-teal-500",
+                                  "In Progress": "bg-purple-500",
+                                  Pending:       "bg-amber-400",
+                                  Cancelled:     "bg-slate-400",
+                                  "No Show":     "bg-red-500",
+                                };
 
-                                {/* ── RIGHT: appointment card ── */}
-                                <div className={`flex-1 mb-3 rounded-xl border overflow-hidden flex transition-all ${
-                                  isNow
-                                    ? "border-primary/30 shadow-md ring-1 ring-primary/20"
-                                    : isPast
-                                    ? "border-outline-variant/10 opacity-60"
-                                    : "border-outline-variant/15 hover:border-outline-variant/30 hover:shadow-sm"
-                                }`}>
-                                  {/* Status accent bar */}
-                                  <div className={`w-1 shrink-0 ${accent}`} />
+                                return filteredAppointments.map((apt, index) => {
+                                  const aptDecimalTime = parseTime(apt.time);
+                                  const nowDecimal = currentHour + currentMinute / 60;
+                                  const isNow = aptDecimalTime <= nowDecimal && nowDecimal < aptDecimalTime + 1;
+                                  const isPast = aptDecimalTime + 1 <= nowDecimal || apt.status === "Completed" || apt.status === "Cancelled" || apt.status === "No Show";
+                                  const accent = statusAccent[apt.status] ?? "bg-slate-400";
+                                  const isLast = index === filteredAppointments.length - 1;
 
-                                  <div className="flex-1 px-4 py-3 flex items-start justify-between gap-3 min-w-0">
-                                    <div className="flex-1 min-w-0">
-                                      {/* NOW pill */}
-                                      {isNow && (
-                                        <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-widest text-primary bg-primary/8 px-1.5 py-0.5 rounded-full mb-1">
-                                          <span className="relative flex h-1.5 w-1.5">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
-                                          </span>
-                                          Now
+                                  return (
+                                    <div key={apt.id} className="flex gap-3 min-h-[88px]">
+                                      {/* ── LEFT: time label + spine ── */}
+                                      <div className="flex flex-col items-center w-16 shrink-0">
+                                        <span className={`text-[11px] font-bold tabular-nums whitespace-nowrap pt-1 ${
+                                          isNow ? "text-primary" : isPast ? "text-on-surface-variant/40" : "text-on-surface-variant"
+                                        }`}>
+                                          {formatLabel(apt.time)}
                                         </span>
-                                      )}
-
-                                      {/* Patient name */}
-                                      <button
-                                        onClick={() => handleOpenPatientDetails(apt.patientPhone, apt.patientName)}
-                                        className="text-sm font-bold text-on-surface hover:underline text-left block truncate max-w-full cursor-pointer bg-transparent border-none p-0 leading-tight"
-                                      >
-                                        {apt.patientName}
-                                      </button>
-
-                                      {/* Service + phone */}
-                                      <p className="text-xs text-on-surface-variant font-medium mt-0.5 truncate">{apt.service}</p>
-                                      <div className="flex items-center gap-2 mt-0.5">
-                                        <p className="text-[11px] text-on-surface-variant/60 font-mono">{apt.patientPhone}</p>
-                                        {apt.chair && (
-                                          <span className="text-[10px] font-semibold text-on-surface-variant/60">· {apt.chair}</span>
-                                        )}
-                                        {apt.duration && (
-                                          <span className="text-[10px] font-semibold text-on-surface-variant/60">· {apt.duration}m</span>
+                                        {/* Spine line */}
+                                        {!isLast && (
+                                          <div className="flex-1 w-px bg-outline-variant/20 mt-1 mb-0" />
                                         )}
                                       </div>
 
-                                      {/* Doctor */}
-                                      {apt.doctorName && (
-                                        <p className="text-[10px] text-on-surface-variant/50 mt-1 truncate">
-                                          {apt.doctorName}
-                                        </p>
-                                      )}
-                                    </div>
-
-                                    {/* Right: status badge + dropdown */}
-                                    <div className="flex flex-col items-end gap-2 shrink-0">
-                                      <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                                        statusStyles[apt.status] || "bg-amber-50 text-amber-700 border-amber-200"
+                                      {/* ── RIGHT: appointment card ── */}
+                                      <div className={`flex-1 mb-3 rounded-xl border overflow-hidden flex transition-all ${
+                                        isNow
+                                          ? "border-primary/30 shadow-md ring-1 ring-primary/20"
+                                          : isPast
+                                          ? "border-outline-variant/10 opacity-60"
+                                          : "border-outline-variant/15 hover:border-outline-variant/30 hover:shadow-sm"
                                       }`}>
-                                        {apt.status}
-                                      </span>
-                                      <StatusDropdown
-                                        currentStatus={apt.status}
-                                        onStatusChange={(s) => handleStatusChange(apt.id, s)}
-                                        openUp={index >= filteredAppointments.length - 2}
-                                      />
+                                        {/* Status accent bar */}
+                                        <div className={`w-1 shrink-0 ${accent}`} />
+
+                                        <div className="flex-1 px-4 py-3 flex items-start justify-between gap-3 min-w-0">
+                                          <div className="flex-1 min-w-0">
+                                            {/* NOW pill */}
+                                            {isNow && (
+                                              <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-widest text-primary bg-primary/8 px-1.5 py-0.5 rounded-full mb-1">
+                                                <span className="relative flex h-1.5 w-1.5">
+                                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                                                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
+                                                </span>
+                                                Now
+                                              </span>
+                                            )}
+
+                                            {/* Patient name */}
+                                            <button
+                                              onClick={() => handleOpenPatientDetails(apt.patientPhone, apt.patientName)}
+                                              className="text-sm font-bold text-on-surface hover:underline text-left block truncate max-w-full cursor-pointer bg-transparent border-none p-0 leading-tight"
+                                            >
+                                              {apt.patientName}
+                                            </button>
+
+                                            {/* Service + phone */}
+                                            <p className="text-xs text-on-surface-variant font-medium mt-0.5 truncate">{apt.service}</p>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                              <p className="text-[11px] text-on-surface-variant/60 font-mono">{apt.patientPhone}</p>
+                                              {apt.chair && (
+                                                <span className="text-[10px] font-semibold text-on-surface-variant/60">· {apt.chair}</span>
+                                              )}
+                                              {apt.duration && (
+                                                <span className="text-[10px] font-semibold text-on-surface-variant/60">· {apt.duration}m</span>
+                                              )}
+                                            </div>
+
+                                            {/* Doctor */}
+                                            {apt.doctorName && (
+                                              <p className="text-[10px] text-on-surface-variant/50 mt-1 truncate">
+                                                {apt.doctorName}
+                                              </p>
+                                            )}
+                                          </div>
+
+                                          {/* Right: status badge + dropdown */}
+                                          <div className="flex flex-col items-end gap-2 shrink-0">
+                                            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                              statusStyles[apt.status] || "bg-amber-50 text-amber-700 border-amber-200"
+                                            }`}>
+                                              {apt.status}
+                                            </span>
+                                            <StatusDropdown
+                                              currentStatus={apt.status}
+                                              onStatusChange={(s) => handleStatusChange(apt.id, s)}
+                                              openUp={index >= filteredAppointments.length - 2}
+                                            />
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          });
-                        })()}
+                                  );
+                                });
+                              })()}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
+                    </div>
                   </div>
 
                   {/* SECTION 3: Today's Completed Treatments */}
