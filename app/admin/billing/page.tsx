@@ -97,98 +97,7 @@ function avatarColor(name: string) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-/* ─── Sidebar component ─── */
-function Sidebar({
-  currentPage,
-  onClose,
-  onLogout,
-  pendingBillingCount = 0,
-}: {
-  currentPage: "appointments" | "patients" | "billing";
-  onClose?: () => void;
-  onLogout: () => void;
-  pendingBillingCount?: number;
-}) {
-  return (
-    <aside className="w-full h-full bg-white flex flex-col">
-      {/* Logo */}
-      <div className="px-5 py-5 border-b border-outline-variant/20 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2" onClick={onClose}>
-          <Stethoscope className="w-6 h-6 text-primary" />
-          <div>
-            <p className="font-bold text-base text-primary leading-tight">
-              DentaPure
-            </p>
-            <p className="text-[10px] text-on-surface-variant font-medium leading-tight">
-              Clinical Excellence
-            </p>
-          </div>
-        </Link>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="md:hidden p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex flex-col gap-1 px-3 py-6 flex-grow">
-        <Link
-          href="/admin"
-          onClick={onClose}
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${currentPage === "appointments"
-              ? "bg-secondary-container text-primary"
-              : "text-secondary hover:bg-surface-container-low hover:text-on-surface"
-            }`}
-        >
-          <CalendarDays className="w-4 h-4 shrink-0" />
-          Dashboard
-        </Link>
-        <Link
-          href="/admin/patients"
-          onClick={onClose}
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${currentPage === "patients"
-              ? "bg-secondary-container text-primary"
-              : "text-secondary hover:bg-surface-container-low hover:text-on-surface"
-            }`}
-        >
-          <Users className="w-4 h-4 shrink-0" />
-          Patients
-        </Link>
-        <Link
-          href="/admin/billing"
-          onClick={onClose}
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${currentPage === "billing"
-              ? "bg-secondary-container text-primary"
-              : "text-secondary hover:bg-surface-container-low hover:text-on-surface"
-            }`}
-        >
-          <CreditCard className="w-4 h-4 shrink-0" />
-          <span className="flex-1">Billing</span>
-          {pendingBillingCount > 0 && (
-            <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold leading-none flex items-center justify-center">
-              {pendingBillingCount > 99 ? "99+" : pendingBillingCount}
-            </span>
-          )}
-        </Link>
-      </nav>
-
-      {/* Logout */}
-      <div className="px-3 py-5 border-t border-outline-variant/20">
-        <button
-          onClick={onLogout}
-          className="w-full bg-red-50 text-red-600 text-sm font-semibold py-2.5 px-4 rounded-lg hover:bg-red-100 transition-colors cursor-pointer flex items-center justify-center gap-2"
-        >
-          <LogOut className="w-4 h-4" />
-          Logout
-        </button>
-      </div>
-    </aside>
-  );
-}
+import { Sidebar } from "../../../components/admin/Sidebar";
 
 /* ─── WhatsApp SVG Icon ─── */
 const WhatsAppIcon = ({ className }: { className?: string }) => (
@@ -611,9 +520,6 @@ function BillingPageContent() {
   const isLoading = isPatientsLoading || isInvoicesLoading;
   const showSkeleton = useDelayLoading(isLoading, 300);
 
-  const handleLogout = async () => {
-    await logout();
-  };
 
   return (
     <div className="min-h-screen flex bg-[#f2f5f8] font-sans">
@@ -627,11 +533,7 @@ function BillingPageContent() {
 
       {/* ── Desktop Sidebar ── */}
       <aside className="hidden md:flex w-[200px] shrink-0 border-r border-outline-variant/20 sticky top-0 h-screen shadow-sm flex-col">
-        <Sidebar
-          currentPage="billing"
-          onLogout={handleLogout}
-          pendingBillingCount={pendingBillingCount}
-        />
+        <Sidebar currentPage="billing" />
       </aside>
 
       {/* ── Mobile Sidebar Drawer ── */}
@@ -642,8 +544,6 @@ function BillingPageContent() {
         <Sidebar
           currentPage="billing"
           onClose={() => setSidebarOpen(false)}
-          onLogout={handleLogout}
-          pendingBillingCount={pendingBillingCount}
         />
       </div>
 

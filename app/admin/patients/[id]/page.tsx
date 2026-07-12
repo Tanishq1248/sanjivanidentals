@@ -31,6 +31,8 @@ import {
   FileSpreadsheet,
   IndianRupee,
   Receipt,
+  TrendingUp,
+  Users,
 } from "lucide-react";
 import { AdminAuthGuard } from "../../../../components/auth/AdminAuthGuard";
 import { useAuth } from "../../../../lib/context/AuthContext";
@@ -43,6 +45,7 @@ import {
   updatePatientEncounter,
   deletePatientEncounter,
   logToothTreatment,
+  getPatientsByReferrer,
 } from "../../../../lib/services/patientService";
 import { getDoctors } from "../../../../lib/services/doctorService";
 import { addInvoice } from "../../../../lib/services/invoiceService";
@@ -283,6 +286,20 @@ export default function PatientProfilePage({ params }: PageProps) {
   const { data: doctorsList = [] } = useQuery({
     queryKey: queryKeys.doctors.all,
     queryFn: getDoctors,
+  });
+
+  // 5. Referred patients by this patient
+  const { data: referredPatients = [] } = useQuery({
+    queryKey: queryKeys.referrals.byReferrer(patientId),
+    queryFn: () => getPatientsByReferrer(patientId),
+    enabled: !!patientId,
+  });
+
+  // 6. Referrer details
+  const { data: referrer } = useQuery({
+    queryKey: queryKeys.patients.byId(patient?.referredByPatientId || ""),
+    queryFn: () => getPatientById(patient?.referredByPatientId || ""),
+    enabled: !!patient?.referredByPatientId,
   });
 
   // Derive latest active encounter details
@@ -850,6 +867,44 @@ export default function PatientProfilePage({ params }: PageProps) {
                   </div>
                 </div>
 
+                {/* Referral Information Card */}
+                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden">
+                  <div className="p-4 bg-surface-container-lowest border-b border-outline-variant/10">
+                    <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-primary" /> Referral Information
+                    </h3>
+                  </div>
+                  <div className="p-5 space-y-3.5 text-sm font-medium text-on-surface">
+                    <p>
+                      <span className="text-on-surface-variant">Referral Source:</span>{" "}
+                      {patient.referralSource ? (
+                        <span className="inline-flex px-2 py-0.5 rounded bg-secondary-container text-primary text-xs font-bold">
+                          {patient.referralSource}
+                        </span>
+                      ) : (
+                        <span className="text-on-surface-variant/60 italic font-normal">Not recorded</span>
+                      )}
+                    </p>
+                    {patient.referralSource === "Existing Patient" && (
+                      <p>
+                        <span className="text-on-surface-variant">Referred By:</span>{" "}
+                        {referrer ? (
+                          <Link
+                            href={`/admin/patients/${referrer.id}`}
+                            className="text-primary hover:underline font-bold inline-flex items-center gap-1"
+                          >
+                            {referrer.name}
+                          </Link>
+                        ) : patient.referredByPatientId ? (
+                          <span className="text-on-surface-variant/60 italic font-normal">Loading referrer profile…</span>
+                        ) : (
+                          <span className="text-on-surface-variant/60 italic font-normal">No referrer linked</span>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
                 {/* Medical Profile Card */}
                 <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden">
                   <div className="p-4 bg-surface-container-lowest border-b border-outline-variant/10 flex justify-between items-center">
@@ -1269,6 +1324,56 @@ export default function PatientProfilePage({ params }: PageProps) {
                     >
                       <Activity className="w-4 h-4" /> Open Dental Chart Workspace
                     </button>
+                  </div>
+                </div>
+
+                {/* Patients Referred Card */}
+                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden">
+                  <div className="p-4 bg-surface-container-lowest border-b border-outline-variant/10 flex justify-between items-center">
+                    <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-2">
+                      <Users className="w-4 h-4 text-primary" /> Patients Referred
+                    </h3>
+                    <span className="bg-primary/10 text-primary px-2.5 py-0.5 rounded-full text-xs font-bold">
+                      {referredPatients.length} Referral{referredPatients.length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  
+                  <div className="p-5">
+                    {referredPatients.length === 0 ? (
+                      <p className="text-xs text-on-surface-variant/75 italic font-normal py-4 text-center">
+                        This patient has not referred any other patients yet.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {referredPatients.map((p) => (
+                          <div
+                            key={p.id}
+                            className="flex items-center justify-between p-3 rounded-xl border border-outline-variant/10 hover:border-outline-variant/20 transition-all bg-surface-container-lowest"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <Link
+                                href={`/admin/patients/${p.id}`}
+                                className={`w-8 h-8 rounded-lg ${p.avatarColor || "bg-primary"} flex items-center justify-center text-white text-xs font-bold shrink-0 hover:opacity-90 active:scale-95 transition-all`}
+                              >
+                                {getInitials(p.name)}
+                              </Link>
+                              <div className="min-w-0">
+                                <Link
+                                  href={`/admin/patients/${p.id}`}
+                                  className="text-xs font-bold text-on-surface hover:text-primary hover:underline block truncate leading-tight"
+                                >
+                                  {p.name}
+                                </Link>
+                                <p className="text-[10px] text-on-surface-variant font-mono mt-0.5">{p.phone}</p>
+                              </div>
+                            </div>
+                            <span className="text-[10px] text-on-surface-variant font-medium whitespace-nowrap bg-surface-container px-2 py-0.5 rounded-full">
+                              Referred: {formatVisitDate(p.createdAt?.toDate ? p.createdAt.toDate().toISOString().split("T")[0] : p.createdAt?.seconds ? new Date(p.createdAt.seconds * 1000).toISOString().split("T")[0] : "")}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 

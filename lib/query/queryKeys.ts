@@ -110,5 +110,36 @@ export const queryKeys = {
     /** All encounters for a patient (keyed by patientId). */
     byPatient: (patientId: string) => ["encounters", "patient", patientId] as const,
   },
-} as const;
 
+  // ── Calendar ──────────────────────────────────────────────────────────────
+  calendar: {
+    /**
+     * Calendar view data keyed by view type and date range key.
+     * - view: "day" | "week" | "month"
+     * - rangeKey: "YYYY-MM-DD" for day, "YYYY-MM-DD:YYYY-MM-DD" for week/month
+     */
+    byRange: (view: string, rangeKey: string) =>
+      ["calendar", view, rangeKey] as const,
+  },
+
+  // ── Referrals ─────────────────────────────────────────────────────────────
+  referrals: {
+    /** Full referral analytics: leaderboard + source distribution + KPIs. */
+    stats: ["referrals", "stats"] as const,
+    /** All patients referred by a specific patient (keyed by referrer ID). */
+    byReferrer: (referrerId: string) =>
+      ["referrals", "byReferrer", referrerId] as const,
+  },
+
+  // ── Expenses ──────────────────────────────────────────────────────────────
+  expenses: {
+    /** Broad key to invalidate all expenses queries */
+    all: ["expenses"] as const,
+  },
+
+  // ── Finance (Profit & Loss) ───────────────────────────────────────────────
+  finance: {
+    /** Broad key to invalidate P&L calculations */
+    stats: ["finance", "stats"] as const,
+  },
+} as const;

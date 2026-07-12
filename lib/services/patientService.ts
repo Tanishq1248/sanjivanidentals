@@ -354,3 +354,141 @@ export async function logToothTreatment(
     return docRef.id;
   }
 }
+
+/* ─────────────────────────────────────────────────────────
+   REFERRAL TRACKING FUNCTIONS
+   ───────────────────────────────────────────────────────── */
+
+/**
+ * Fetch all patients that were referred by a specific patient.
+ * Uses a targeted where query — does NOT scan the full collection.
+ * Returns patients ordered by creation date (newest first).
+ */
+export async function getPatientsByReferrer(referrerId: string): Promise<Patient[]> {
+  const q = query(
+    patientsRef,
+    where("referredByPatientId", "==", referrerId),
+    orderBy("createdAt", "desc")
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Patient);
+}
+
+/**
+ * Fetch all patients that have a referralSource recorded.
+ * Used to build the analytics dashboard.
+ * Bounded to only documents with the field set (sparse query via index).
+ */
+export async function getPatientsWithReferralSource(): Promise<Patient[]> {
+  const q = query(
+    patientsRef,
+    where("referralSource", "!=", ""),
+    orderBy("referralSource", "asc")
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Patient);
+}
+
+/**
+ * Compute referral analytics in one pass over patients that have
+ * a referredByPatientId set. Returns:
+ * - leaderboard: top referrers with their referral counts
+ * - sourceDistribution: count per referral source
+ * - totalReferrals: total number of referred patients
+ * - thisMonthReferrals: referred patients added this calendar month
+ *
+ * This function fetches only patients that have referredByPatientId set
+ * (sparse index query) and patients with referralSource set for distribution.
+ * These are typically a small subset of the full collection.
+ */
+export interface ReferralLeaderboardEntry {
+  referrerId: string;
+  referrerName: string;
+  referrerPhone: string;
+  referrerAvatarColor: string;
+  count: number;
+}
+
+export interface ReferralStats {
+  totalReferrals: number;
+  thisMonthReferrals: number;
+  leaderboard: ReferralLeaderboardEntry[];
+  sourceDistribution: { source: string; count: number }[];
+  topReferrer: ReferralLeaderboardEntry | null;
+  topSource: string | null;
+}
+
+export async function getReferralStats(): Promise<ReferralStats> {
+  // 1. Fetch patients referred by someone (has referredByPatientId)
+  const referredQ = query(
+    patientsRef,
+    where("referredByPatientId", "!=", ""),
+  );
+  const referredSnap = await getDocs(referredQ);
+  const referredPatients = referredSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Patient);
+
+  // 2. Fetch patients with any referralSource (for source distribution)
+  const sourceQ = query(
+    patientsRef,
+    where("referralSource", "!=", ""),
+  );
+  const sourceSnap = await getDocs(sourceQ);
+  const sourcedPatients = sourceSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Patient);
+
+  // 3. This-month start
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthStartTs = Timestamp.fromDate(monthStart);
+
+  const thisMonthReferrals = referredPatients.filter(
+    (p) => p.createdAt && p.createdAt.seconds >= monthStartTs.seconds
+  ).length;
+
+  // 4. Build referrer count map
+  const referrerMap = new Map<string, { count: number }>();
+  referredPatients.forEach((p) => {
+    if (!p.referredByPatientId) return;
+    const existing = referrerMap.get(p.referredByPatientId) ?? { count: 0 };
+    referrerMap.set(p.referredByPatientId, { count: existing.count + 1 });
+  });
+
+  // 5. Resolve referrer names by fetching their patient docs (batch via getPatientById)
+  const leaderboardRaw: ReferralLeaderboardEntry[] = [];
+  const referrerIds = Array.from(referrerMap.keys());
+
+  await Promise.all(
+    referrerIds.map(async (id) => {
+      const patient = await getPatientById(id);
+      if (!patient) return;
+      leaderboardRaw.push({
+        referrerId: id,
+        referrerName: patient.name,
+        referrerPhone: patient.phone,
+        referrerAvatarColor: patient.avatarColor,
+        count: referrerMap.get(id)!.count,
+      });
+    })
+  );
+
+  const leaderboard = leaderboardRaw.sort((a, b) => b.count - a.count);
+
+  // 6. Source distribution
+  const sourceMap = new Map<string, number>();
+  sourcedPatients.forEach((p) => {
+    if (!p.referralSource) return;
+    sourceMap.set(p.referralSource, (sourceMap.get(p.referralSource) ?? 0) + 1);
+  });
+
+  const sourceDistribution = Array.from(sourceMap.entries())
+    .map(([source, count]) => ({ source, count }))
+    .sort((a, b) => b.count - a.count);
+
+  return {
+    totalReferrals: referredPatients.length,
+    thisMonthReferrals,
+    leaderboard,
+    sourceDistribution,
+    topReferrer: leaderboard[0] ?? null,
+    topSource: sourceDistribution[0]?.source ?? null,
+  };
+}

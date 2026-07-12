@@ -39,6 +39,7 @@ import {
   PAGE_SIZE,
 } from "../../../lib/services/patientService";
 import type { Patient, PatientFormData, PaginatedResult } from "../../../lib/types";
+import { REFERRAL_SOURCES } from "../../../lib/types";
 import { useSidebarStore } from "../../../lib/store/useSidebarStore";
 import { usePatientStore } from "../../../lib/store/usePatientStore";
 import { useDashboardStore } from "../../../lib/store/useDashboardStore";
@@ -202,77 +203,11 @@ const emptyForm = {
   age: "",
   gender: "",
   address: "",
+  referralSource: "",
+  referredByPatientId: "",
 };
 
-/* ─── Sidebar ─── */
-function Sidebar({
-  onClose,
-  onLogout,
-}: {
-  onClose?: () => void;
-  onLogout: () => void;
-}) {
-  return (
-    <aside className="w-full h-full bg-white flex flex-col">
-      <div className="px-5 py-5 border-b border-outline-variant/20 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2" onClick={onClose}>
-          <Stethoscope className="w-6 h-6 text-primary" />
-          <div>
-            <p className="font-bold text-base text-primary leading-tight">
-              DentaPure
-            </p>
-            <p className="text-[10px] text-on-surface-variant font-medium leading-tight">
-              Clinical Excellence
-            </p>
-          </div>
-        </Link>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="md:hidden p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
-      </div>
-      <nav className="flex flex-col gap-1 px-3 py-6 flex-grow">
-        <Link
-          href="/admin"
-          onClick={onClose}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-secondary hover:bg-surface-container-low hover:text-on-surface"
-        >
-          <CalendarDays className="w-4 h-4 shrink-0" />
-          Dashboard
-        </Link>
-        <Link
-          href="/admin/patients"
-          onClick={onClose}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors bg-secondary-container text-primary"
-        >
-          <Users className="w-4 h-4 shrink-0" />
-          Patients
-        </Link>
-        <Link
-          href="/admin/billing"
-          onClick={onClose}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-secondary hover:bg-surface-container-low hover:text-on-surface"
-        >
-          <CreditCard className="w-4 h-4 shrink-0" />
-          Billing
-        </Link>
-      </nav>
-      <div className="px-3 py-5 border-t border-outline-variant/20">
-        <button
-          onClick={onLogout}
-          className="w-full bg-red-50 text-red-600 text-sm font-semibold py-2.5 px-4 rounded-lg hover:bg-red-100 transition-colors cursor-pointer flex items-center justify-center gap-2"
-        >
-          <LogOut className="w-4 h-4" />
-          Logout
-        </button>
-      </div>
-    </aside>
-  );
-}
+import { Sidebar } from "../../../components/admin/Sidebar";
 
 /* ─── Patients Page ─── */
 function PatientsManagement() {
@@ -297,6 +232,11 @@ function PatientsManagement() {
   const debouncedSearch = useDebounce(search, 400);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // ── Referral patient search state ────────────────────────────────────────
+  const [referrerSearch, setReferrerSearch] = useState("");
+  const [referrerName, setReferrerName] = useState("");
+  const [showReferrerSuggestions, setShowReferrerSuggestions] = useState(false);
 
   // ── Patient list query ───────────────────────────────────────────────────
   const {
@@ -332,6 +272,28 @@ function PatientsManagement() {
   }, [patientListResult, currentPage, debouncedSearch]);
 
   const patients: Patient[] = patientListResult?.data ?? [];
+
+  // ── Patient list for referrer search (uses cached all-patients query) ──
+  const { data: allPatientsForSearch = [] } = useQuery<Patient[]>({
+    queryKey: queryKeys.patients.all,
+    queryFn: getPatients,
+    staleTime: 5 * 60_000,
+  });
+
+  const referrerSuggestions = React.useMemo(() => {
+    const q = referrerSearch.trim().toLowerCase();
+    if (q.length < 2) return [];
+    const digits = q.replace(/\D/g, "");
+    return allPatientsForSearch
+      .filter((p) => {
+        const phoneDigits = p.phone.replace(/\D/g, "");
+        return (
+          (digits && phoneDigits.includes(digits)) ||
+          p.name.toLowerCase().includes(q)
+        );
+      })
+      .slice(0, 6);
+  }, [referrerSearch, allPatientsForSearch]);
 
   // ── Patient count query ─────────────────────────────────────────────────
   const { data: totalCount = 0 } = useQuery({
@@ -524,6 +486,8 @@ function PatientsManagement() {
       age: p.age,
       gender: p.gender || "",
       address: p.address || "",
+      referralSource: p.referralSource || "",
+      referredByPatientId: p.referredByPatientId || "",
     });
     setShowForm(true);
   };
@@ -536,11 +500,10 @@ function PatientsManagement() {
     setEditingId(null);
     setForm(emptyForm);
     setShowForm(false);
+    setReferrerSearch("");
+    setReferrerName("");
   };
 
-  const handleLogout = async () => {
-    await logout();
-  };
 
   const filtered = patients.filter(
     (p) =>
@@ -562,7 +525,7 @@ function PatientsManagement() {
 
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-[200px] shrink-0 border-r border-outline-variant/20 sticky top-0 h-screen shadow-sm flex-col">
-        <Sidebar onLogout={handleLogout} />
+        <Sidebar currentPage="patients" />
       </aside>
 
       {/* Mobile Sidebar Drawer */}
@@ -572,8 +535,8 @@ function PatientsManagement() {
         }`}
       >
         <Sidebar
+          currentPage="patients"
           onClose={() => setSidebarOpen(false)}
-          onLogout={handleLogout}
         />
       </div>
 
@@ -1098,6 +1061,112 @@ function PatientsManagement() {
                       className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                     />
                   </div>
+
+                  {/* ── Referral Information ── */}
+                  <div className="border-t border-outline-variant/10 pt-4 mt-1">
+                    <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                      <TrendingUp className="w-3.5 h-3.5 text-primary" />
+                      Referral Information
+                    </h3>
+
+                    {/* Referral Source */}
+                    <div className="mb-3">
+                      <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">
+                        How did this patient hear about us?
+                      </label>
+                      <select
+                        name="referralSource"
+                        value={form.referralSource ?? ""}
+                        onChange={(e) => {
+                          setForm({ ...form, referralSource: e.target.value, referredByPatientId: "" });
+                          setReferrerSearch("");
+                          setReferrerName("");
+                        }}
+                        className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                      >
+                        <option value="">— Select source (optional) —</option>
+                        {REFERRAL_SOURCES.map((src) => (
+                          <option key={src} value={src}>{src}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Referred By — only when source is Existing Patient */}
+                    {form.referralSource === "Existing Patient" && (
+                      <div className="relative">
+                        <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">
+                          Referred By (search patient)
+                        </label>
+                        {form.referredByPatientId && referrerName ? (
+                          /* Selected referrer chip */
+                          <div className="flex items-center justify-between p-2.5 rounded-lg border border-primary/30 bg-primary/5">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+                                {referrerName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-on-surface truncate">{referrerName}</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setForm({ ...form, referredByPatientId: "" });
+                                setReferrerSearch("");
+                                setReferrerName("");
+                              }}
+                              className="text-[10px] font-semibold text-on-surface-variant hover:text-red-600 shrink-0 ml-2 cursor-pointer"
+                            >
+                              Change
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="relative">
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-on-surface-variant pointer-events-none" />
+                              <input
+                                type="text"
+                                value={referrerSearch}
+                                onChange={(e) => { setReferrerSearch(e.target.value); setShowReferrerSuggestions(true); }}
+                                onFocus={() => referrerSearch.length >= 2 && setShowReferrerSuggestions(true)}
+                                onBlur={() => setTimeout(() => setShowReferrerSuggestions(false), 150)}
+                                placeholder="Search by name or phone…"
+                                autoComplete="off"
+                                className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                              />
+                            </div>
+                            {showReferrerSuggestions && referrerSuggestions.length > 0 && (
+                              <div className="absolute left-0 right-0 z-50 mt-1 bg-white border border-outline-variant/20 rounded-xl shadow-lg overflow-hidden">
+                                {referrerSuggestions.map((p) => (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => {
+                                      setForm({ ...form, referredByPatientId: p.id });
+                                      setReferrerName(p.name);
+                                      setReferrerSearch(p.name);
+                                      setShowReferrerSuggestions(false);
+                                    }}
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-surface-container-low transition-colors text-left cursor-pointer"
+                                  >
+                                    <div className={`w-7 h-7 rounded-full ${p.avatarColor} flex items-center justify-center text-white text-[10px] font-bold shrink-0`}>
+                                      {p.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-semibold text-on-surface truncate">{p.name}</p>
+                                      <p className="text-[11px] font-mono text-on-surface-variant">{p.phone}</p>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="flex gap-2 pt-1">
                     {editingId && (
                       <button

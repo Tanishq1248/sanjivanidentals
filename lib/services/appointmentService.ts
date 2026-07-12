@@ -26,6 +26,10 @@ import type {
 } from "../types";
 import { COLLECTIONS, getCollectionRef } from "./firestoreConfig";
 
+/** Extended creation payload including calendar-specific fields. */
+export type AppointmentAdminPayload = AppointmentFormData &
+  Partial<Pick<Appointment, "status" | "chair" | "duration" | "patientId" | "doctorId" | "doctorName">>;
+
 const COLLECTION = COLLECTIONS.APPOINTMENTS;
 const ARCHIVED_COLLECTION = COLLECTIONS.ARCHIVED_APPOINTMENTS;
 
@@ -211,16 +215,22 @@ export async function createAppointment(
 /**
  * Create an appointment from the admin panel.
  * Status defaults to "Confirmed", source to "admin_created".
+ * Accepts optional chair, duration, patientId, doctorId, doctorName.
  */
 export async function createAppointmentByAdmin(
-  data: AppointmentFormData & { status?: AppointmentStatus }
+  data: AppointmentAdminPayload
 ): Promise<string> {
   const now = Timestamp.now();
+  const { status, chair, duration, patientId, doctorId, doctorName, ...rest } = data;
   const docRef = await addDoc(appointmentsRef, {
-    ...data,
-    patientId: "",
-    status: data.status || ("Confirmed" as AppointmentStatus),
+    ...rest,
+    patientId: patientId || "",
+    status: status || ("Confirmed" as AppointmentStatus),
     source: "admin_created",
+    ...(chair ? { chair } : {}),
+    ...(duration ? { duration } : {}),
+    ...(doctorId ? { doctorId } : {}),
+    ...(doctorName ? { doctorName } : {}),
     createdAt: now,
     updatedAt: now,
   });
@@ -280,4 +290,69 @@ export async function getAppointmentsCount(
 
   const snapshot = await getCountFromServer(q);
   return snapshot.data().count;
+}
+
+/**
+ * Fetch appointments for a specific date string (YYYY-MM-DD).
+ * Ordered by time ascending for the Day calendar view.
+ */
+export async function getAppointmentsByDate(
+  date: string
+): Promise<Appointment[]> {
+  const q = query(
+    appointmentsRef,
+    where("date", "==", date),
+    orderBy("time", "asc")
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Appointment);
+}
+
+/**
+ * Fetch appointments within a date range [startDate, endDate] inclusive.
+ * Used by Week and Month calendar views.
+ * Ordered by date asc, then time asc (client-side sort for time within same date).
+ */
+export async function getAppointmentsByDateRange(
+  startDate: string,
+  endDate: string
+): Promise<Appointment[]> {
+  const q = query(
+    appointmentsRef,
+    where("date", ">=", startDate),
+    where("date", "<=", endDate),
+    orderBy("date", "asc")
+  );
+  const snapshot = await getDocs(q);
+  const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Appointment);
+  // Secondary sort by time within same date
+  data.sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    return a.time.localeCompare(b.time);
+  });
+  return data;
+}
+
+/**
+ * Check in a patient — sets status to "Checked In" and records checkInTime.
+ */
+export async function checkInAppointment(id: string): Promise<void> {
+  const ref = doc(db, COLLECTION, id);
+  await updateDoc(ref, {
+    status: "Checked In" as AppointmentStatus,
+    checkInTime: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  });
+}
+
+/**
+ * Complete an appointment — sets status to "Completed" and records completedTime.
+ */
+export async function completeAppointment(id: string): Promise<void> {
+  const ref = doc(db, COLLECTION, id);
+  await updateDoc(ref, {
+    status: "Completed" as AppointmentStatus,
+    completedTime: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  });
 }

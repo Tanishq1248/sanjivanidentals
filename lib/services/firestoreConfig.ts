@@ -17,6 +17,7 @@ export const COLLECTIONS = {
   PATIENT_ENCOUNTERS: "patientEncounters",
   DOCTORS: "doctors",
   INVOICES: "invoices",
+  EXPENSES: "expenses",
 
   // Archived Collections (designed for future expansion)
   ARCHIVED_APPOINTMENTS: "archived_appointments",

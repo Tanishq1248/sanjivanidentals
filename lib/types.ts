@@ -1,5 +1,22 @@
 import { Timestamp } from "firebase/firestore";
 
+/* ─── Referral Sources ─── */
+export const REFERRAL_SOURCES = [
+  "Existing Patient",
+  "Doctor",
+  "Friend / Family",
+  "Google Search",
+  "Google Maps",
+  "Instagram",
+  "Facebook",
+  "Website",
+  "Walk-in",
+  "Newspaper",
+  "Other",
+] as const;
+
+export type ReferralSource = (typeof REFERRAL_SOURCES)[number];
+
 /* ─── Patient ─── */
 export interface Patient {
   id: string;
@@ -18,6 +35,13 @@ export interface Patient {
   bloodType?: string;
   allergies?: string;
   address?: string;
+  // ── Referral Tracking (added for referral module) ──
+  referralSource?: string;          // one of REFERRAL_SOURCES
+  referredByPatientId?: string;     // Firestore ID of the referring patient
+  // ── Future-ready fields (not yet active) ──
+  // referralCampaignId?: string;   // for campaign tracking
+  // referralRewardStatus?: "pending" | "claimed" | "expired";
+  // referralNotes?: string;
 }
 
 export type PatientFormData = Omit<Patient, "id" | "avatarColor" | "createdAt" | "updatedAt">;
@@ -123,9 +147,19 @@ export interface Invoice {
 export type AppointmentStatus =
   | "Pending"
   | "Confirmed"
+  | "Checked In"
   | "In Progress"
+  | "Completed"
   | "Cancelled"
-  | "Completed";
+  | "No Show";
+
+/** Available dental chairs — extend this array to add more chairs. */
+export const CHAIR_OPTIONS = ["Chair 1", "Chair 2", "Chair 3", "Chair 4"] as const;
+export type ChairOption = typeof CHAIR_OPTIONS[number];
+
+/** Standard appointment duration options in minutes. */
+export const DURATION_OPTIONS = [15, 30, 45, 60, 90] as const;
+export type DurationOption = typeof DURATION_OPTIONS[number];
 
 export interface Appointment {
   id: string;
@@ -140,6 +174,14 @@ export interface Appointment {
   source: "online_booking" | "admin_created";
   doctorId?: string;
   doctorName?: string;
+  /** Dental chair assigned to this appointment (e.g. "Chair 1"). */
+  chair?: string;
+  /** Appointment duration in minutes. Defaults to 30 if not set. */
+  duration?: number;
+  /** Timestamp when patient checked in at the clinic. */
+  checkInTime?: Timestamp;
+  /** Timestamp when the appointment was completed. */
+  completedTime?: Timestamp;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -268,4 +310,35 @@ export interface ToothRecord {
   // FUTURE: updatedAt: Timestamp
   // FUTURE: updatedBy: string  (doctorId)
 }
+
+/* ─── Expenses & Finance ─── */
+export const EXPENSE_CATEGORIES = [
+  "Rent",
+  "Salaries",
+  "Dental Supplies",
+  "Laboratory Charges",
+  "Equipment Maintenance",
+  "Utilities",
+  "Internet",
+  "Marketing",
+  "Miscellaneous",
+] as const;
+
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+export interface Expense {
+  id: string;
+  expenseTitle: string;
+  category: ExpenseCategory | string;
+  amount: number;
+  expenseDate: string; // YYYY-MM-DD
+  paymentMethod: string;
+  vendor?: string;
+  notes?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  createdBy: string; // User email who recorded it
+}
+
+export type ExpenseFormData = Omit<Expense, "id" | "createdAt" | "updatedAt" | "createdBy">;
 

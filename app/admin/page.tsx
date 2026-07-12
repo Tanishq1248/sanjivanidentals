@@ -23,6 +23,7 @@ import {
   Clock,
   RefreshCw,
   ExternalLink,
+  TrendingUp,
 } from "lucide-react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../lib/firebase";
@@ -51,21 +52,25 @@ import { useDashboardStore } from "../../lib/store/useDashboardStore";
 
 /* ─── Status Styles ─── */
 const statusStyles: Record<string, string> = {
-  Confirmed: "bg-blue-50 text-blue-700 border border-blue-200",
-  Pending: "bg-amber-50 text-amber-700 border border-amber-200",
-  "In Progress": "bg-amber-50 text-amber-700 border border-amber-200",
-  Completed: "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  Paid: "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  Cancelled: "bg-red-50 text-red-600 border border-red-200",
-  Failed: "bg-red-50 text-red-600 border border-red-200",
+  Confirmed:    "bg-blue-50 text-blue-700 border border-blue-200",
+  "Checked In": "bg-teal-50 text-teal-700 border border-teal-200",
+  Pending:      "bg-amber-50 text-amber-700 border border-amber-200",
+  "In Progress": "bg-purple-50 text-purple-700 border border-purple-200",
+  Completed:    "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  Paid:         "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  Cancelled:    "bg-slate-50 text-slate-600 border border-slate-200",
+  "No Show":    "bg-red-50 text-red-700 border border-red-200",
+  Failed:       "bg-red-50 text-red-600 border border-red-200",
 };
 
 const statusOptions: AppointmentStatus[] = [
   "Pending",
   "Confirmed",
+  "Checked In",
   "In Progress",
   "Completed",
   "Cancelled",
+  "No Show",
 ];
 
 /* ─── Helper to get initials ─── */
@@ -107,102 +112,7 @@ function formatINR(amount: any): string {
     maximumFractionDigits: 2,
   });
 }
-
-/* ─── Sidebar component ─── */
-function Sidebar({
-  currentPage,
-  onClose,
-  onLogout,
-  pendingBillingCount = 0,
-}: {
-  currentPage: "appointments" | "patients" | "billing";
-  onClose?: () => void;
-  onLogout: () => void;
-  pendingBillingCount?: number;
-}) {
-  return (
-    <aside className="w-full h-full bg-white flex flex-col">
-      {/* Logo */}
-      <div className="px-5 py-5 border-b border-outline-variant/20 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2" onClick={onClose}>
-          <Stethoscope className="w-6 h-6 text-primary" />
-          <div>
-            <p className="font-bold text-base text-primary leading-tight">
-              DentaPure
-            </p>
-            <p className="text-[10px] text-on-surface-variant font-medium leading-tight">
-              Clinical Excellence
-            </p>
-          </div>
-        </Link>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="md:hidden p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex flex-col gap-1 px-3 py-6 flex-grow">
-        <Link
-          href="/admin"
-          onClick={onClose}
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-            currentPage === "appointments"
-              ? "bg-secondary-container text-primary"
-              : "text-secondary hover:bg-surface-container-low hover:text-on-surface"
-          }`}
-        >
-          <CalendarDays className="w-4 h-4 shrink-0" />
-          Dashboard
-        </Link>
-        <Link
-          href="/admin/patients"
-          onClick={onClose}
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-            currentPage === "patients"
-              ? "bg-secondary-container text-primary"
-              : "text-secondary hover:bg-surface-container-low hover:text-on-surface"
-          }`}
-        >
-          <Users className="w-4 h-4 shrink-0" />
-          Patients
-        </Link>
-        <Link
-          href="/admin/billing"
-          onClick={onClose}
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-            currentPage === "billing"
-              ? "bg-secondary-container text-primary"
-              : "text-secondary hover:bg-surface-container-low hover:text-on-surface"
-          }`}
-        >
-          <CreditCard className="w-4 h-4 shrink-0" />
-          <span className="flex-1">Billing</span>
-          {pendingBillingCount > 0 && (
-            <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold leading-none flex items-center justify-center">
-              {pendingBillingCount > 99 ? "99+" : pendingBillingCount}
-            </span>
-          )}
-        </Link>
-      </nav>
-
-      {/* Logout */}
-      <div className="px-3 py-5 border-t border-outline-variant/20">
-        <button
-          onClick={onLogout}
-          className="w-full bg-red-50 text-red-600 text-sm font-semibold py-2.5 px-4 rounded-lg hover:bg-red-100 transition-colors cursor-pointer flex items-center justify-center gap-2"
-        >
-          <LogOut className="w-4 h-4" />
-          Logout
-        </button>
-      </div>
-    </aside>
-  );
-}
+import { Sidebar } from "../../components/admin/Sidebar";
 
 /* ─── Status dropdown ─── */
 function StatusDropdown({
@@ -560,16 +470,6 @@ function AdminDashboard() {
     [now]
   );
 
-  // 4. Pending billing invoices count (Pending or Failed)
-  const { data: allInvoices = [] } = useQuery({
-    queryKey: queryKeys.invoices.all,
-    queryFn: getInvoices,
-    staleTime: 2 * 60_000,
-  });
-  const pendingBillingCount = useMemo(
-    () => allInvoices.filter((inv) => inv.paymentStatus === "Pending" || inv.paymentStatus === "Failed").length,
-    [allInvoices]
-  );
 
   // 5. Follow-ups due this week
   const { data: followUpEncounters = [] } = useQuery<PatientEncounter[]>({
@@ -782,11 +682,7 @@ function AdminDashboard() {
 
       {/* ── Desktop Sidebar ── */}
       <aside className="hidden md:flex w-[200px] shrink-0 border-r border-outline-variant/20 sticky top-0 h-screen shadow-sm flex-col">
-        <Sidebar
-          currentPage="appointments"
-          onLogout={handleLogout}
-          pendingBillingCount={pendingBillingCount}
-        />
+        <Sidebar currentPage="dashboard" />
       </aside>
 
       {/* ── Mobile Sidebar Drawer ── */}
@@ -796,10 +692,8 @@ function AdminDashboard() {
         }`}
       >
         <Sidebar
-          currentPage="appointments"
+          currentPage="dashboard"
           onClose={() => setSidebarOpen(false)}
-          onLogout={handleLogout}
-          pendingBillingCount={pendingBillingCount}
         />
       </div>
 
@@ -962,22 +856,60 @@ function AdminDashboard() {
                 {/* LEFT COLUMN: Tables (col-span-8) */}
                 <div className="xl:col-span-8 space-y-6">
                   
-                  {/* SECTION 2: Today's Appointments Table */}
+                  {/* SECTION 2: Today's Schedule — Enhanced Widget */}
                   <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm overflow-hidden">
                     <div className="px-5 py-4 border-b border-outline-variant/10 flex items-center justify-between">
                       <h2 className="text-sm font-bold text-on-surface uppercase tracking-wider flex items-center gap-2 font-sans">
                         <CalendarDays className="w-4 h-4 text-primary" />
-                        Today's Appointments
+                        Today's Schedule
                       </h2>
-                      <span className="text-xs font-semibold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full font-sans">
-                        {filteredAppointments.length} Scheduled
-                      </span>
+                      <Link
+                        href="/admin/calendar"
+                        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-primary hover:underline"
+                      >
+                        View Full Calendar
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+
+                    {/* Quick stats bar */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-outline-variant/10">
+                      {[
+                        {
+                          label: "Checked In",
+                          value: todayAppointments.filter(a => a.status === "Checked In").length,
+                          color: "text-teal-600",
+                          bg: "bg-teal-50",
+                        },
+                        {
+                          label: "In Treatment",
+                          value: todayAppointments.filter(a => a.status === "In Progress").length,
+                          color: "text-purple-600",
+                          bg: "bg-purple-50",
+                        },
+                        {
+                          label: "Completed",
+                          value: todayAppointments.filter(a => a.status === "Completed").length,
+                          color: "text-emerald-600",
+                          bg: "bg-emerald-50",
+                        },
+                        {
+                          label: "Remaining",
+                          value: todayAppointments.filter(a => a.status !== "Completed" && a.status !== "Cancelled" && a.status !== "No Show").length,
+                          color: "text-blue-600",
+                          bg: "bg-blue-50",
+                        },
+                      ].map(({ label, value, color, bg }) => (
+                        <div key={label} className={`${bg} px-4 py-3 flex items-center justify-between`}>
+                          <span className="text-[10px] font-semibold text-on-surface-variant/70">{label}</span>
+                          <span className={`text-xl font-extrabold ${color}`}>{value}</span>
+                        </div>
+                      ))}
                     </div>
 
                     {filteredAppointments.length === 0 ? (
                       <div className="py-14 flex flex-col items-center justify-center text-center gap-4">
                         {search ? (
-                          /* ── No search results ── */
                           <>
                             <div className="w-14 h-14 rounded-2xl bg-surface-container flex items-center justify-center">
                               <CalendarDays className="w-7 h-7 text-on-surface-variant/40" />
@@ -996,7 +928,6 @@ function AdminDashboard() {
                             </button>
                           </>
                         ) : (
-                          /* ── Truly empty day ── */
                           <>
                             <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center shadow-sm">
                               <CalendarDays className="w-8 h-8 text-purple-400" />
@@ -1004,78 +935,164 @@ function AdminDashboard() {
                             <div>
                               <p className="text-sm font-semibold text-on-surface">No appointments today</p>
                               <p className="text-xs text-on-surface-variant/70 mt-1 max-w-[220px]">
-                                Your schedule is clear — fill it up by adding a new appointment.
+                                Your schedule is clear — open the calendar to add appointments.
                               </p>
                             </div>
-                            <a
-                              href="/book"
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <Link
+                              href="/admin/calendar"
                               className="inline-flex items-center gap-2 bg-primary text-on-primary text-xs font-bold px-4 py-2.5 rounded-lg shadow-sm hover:opacity-90 active:scale-[0.98] transition-all duration-150"
                             >
-                              <span className="text-base leading-none">+</span>
-                              Schedule Appointment
-                            </a>
+                              <span className="text-base leading-none">📅</span>
+                              Open Calendar
+                            </Link>
                           </>
                         )}
                       </div>
-
                     ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left border-collapse">
-                          <thead>
-                            <tr className="bg-surface-container border-b border-outline-variant/15 text-[11px] uppercase font-bold text-on-surface-variant">
-                              <th className="px-5 py-4">Time</th>
-                              <th className="px-5 py-4">Patient</th>
-                              <th className="px-5 py-4">Phone</th>
-                              <th className="px-5 py-4">Doctor</th>
-                              <th className="px-5 py-4">Status</th>
-                              <th className="px-5 py-4 text-right">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-outline-variant/10">
-                            {filteredAppointments.map((apt, index) => (
-                              <tr key={apt.id} className="hover:bg-surface-container-low/20 transition-colors">
-                                <td className="px-5 py-5 font-bold text-on-surface whitespace-nowrap">
-                                  {apt.time}
-                                </td>
-                                <td className="px-5 py-5 font-bold text-on-surface">
-                                  <button
-                                    onClick={() => handleOpenPatientDetails(apt.patientPhone, apt.patientName)}
-                                    className="hover:underline text-left cursor-pointer bg-transparent border-none p-0 font-bold text-sm text-on-surface"
-                                  >
-                                    {apt.patientName}
-                                  </button>
-                                </td>
-                                <td className="px-5 py-5 text-on-surface-variant font-semibold">
-                                  {apt.patientPhone}
-                                </td>
-                                <td className="px-5 py-5 text-on-surface-variant font-semibold">
-                                  {apt.doctorName || "Dr. Julian Moore"}
-                                </td>
-                                <td className="px-5 py-5">
-                                  <span className={`inline-flex px-3 py-1 rounded-full text-xs font-bold border ${
-                                    statusStyles[apt.status] || "bg-amber-50 text-amber-700 border-amber-200"
+                      /* ── VERTICAL TIMELINE ── */
+                      <div className="px-4 py-4">
+                        {(() => {
+                          const currentHour = now.getHours();
+                          const currentMinute = now.getMinutes();
+
+                          // Parse time string to 24h int for comparison: "09:30 AM" → 9.5
+                          const parseTime = (t: string): number => {
+                            const clean = t.trim().toUpperCase();
+                            const match = clean.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
+                            if (!match) return 0;
+                            let h = parseInt(match[1], 10);
+                            const m = parseInt(match[2], 10);
+                            const period = match[3];
+                            if (period === "PM" && h !== 12) h += 12;
+                            if (period === "AM" && h === 12) h = 0;
+                            return h + m / 60;
+                          };
+
+                          // Format label: "09:30 AM" → "9:30 AM"
+                          const formatLabel = (t: string): string => {
+                            const clean = t.trim().toUpperCase();
+                            const match = clean.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
+                            if (!match) return t;
+                            const h = parseInt(match[1], 10);
+                            const m = match[2];
+                            const period = match[3] || "";
+                            if (period) return `${h}:${m} ${period}`;
+                            // No AM/PM — convert 24h
+                            const suffix = h >= 12 ? "PM" : "AM";
+                            const h12 = h % 12 || 12;
+                            return `${h12}:${m} ${suffix}`;
+                          };
+
+                          const statusAccent: Record<string, string> = {
+                            Completed:     "bg-emerald-500",
+                            Confirmed:     "bg-blue-500",
+                            "Checked In":  "bg-teal-500",
+                            "In Progress": "bg-purple-500",
+                            Pending:       "bg-amber-400",
+                            Cancelled:     "bg-slate-400",
+                            "No Show":     "bg-red-500",
+                          };
+
+                          return filteredAppointments.map((apt, index) => {
+                            const aptDecimalTime = parseTime(apt.time);
+                            const nowDecimal = currentHour + currentMinute / 60;
+                            const isNow = aptDecimalTime <= nowDecimal && nowDecimal < aptDecimalTime + 1;
+                            const isPast = aptDecimalTime + 1 <= nowDecimal || apt.status === "Completed" || apt.status === "Cancelled" || apt.status === "No Show";
+                            const accent = statusAccent[apt.status] ?? "bg-slate-400";
+                            const isLast = index === filteredAppointments.length - 1;
+
+                            return (
+                              <div key={apt.id} className="flex gap-3 min-h-[88px]">
+                                {/* ── LEFT: time label + spine ── */}
+                                <div className="flex flex-col items-center w-16 shrink-0">
+                                  <span className={`text-[11px] font-bold tabular-nums whitespace-nowrap pt-1 ${
+                                    isNow ? "text-primary" : isPast ? "text-on-surface-variant/40" : "text-on-surface-variant"
                                   }`}>
-                                    {apt.status}
+                                    {formatLabel(apt.time)}
                                   </span>
-                                </td>
-                                <td className="px-5 py-5 text-right">
-                                  <StatusDropdown
-                                    currentStatus={apt.status}
-                                    onStatusChange={(s) => handleStatusChange(apt.id, s)}
-                                    openUp={index >= filteredAppointments.length - 2}
-                                  />
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                                  {/* Spine line */}
+                                  {!isLast && (
+                                    <div className="flex-1 w-px bg-outline-variant/20 mt-1 mb-0" />
+                                  )}
+                                </div>
+
+                                {/* ── RIGHT: appointment card ── */}
+                                <div className={`flex-1 mb-3 rounded-xl border overflow-hidden flex transition-all ${
+                                  isNow
+                                    ? "border-primary/30 shadow-md ring-1 ring-primary/20"
+                                    : isPast
+                                    ? "border-outline-variant/10 opacity-60"
+                                    : "border-outline-variant/15 hover:border-outline-variant/30 hover:shadow-sm"
+                                }`}>
+                                  {/* Status accent bar */}
+                                  <div className={`w-1 shrink-0 ${accent}`} />
+
+                                  <div className="flex-1 px-4 py-3 flex items-start justify-between gap-3 min-w-0">
+                                    <div className="flex-1 min-w-0">
+                                      {/* NOW pill */}
+                                      {isNow && (
+                                        <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-widest text-primary bg-primary/8 px-1.5 py-0.5 rounded-full mb-1">
+                                          <span className="relative flex h-1.5 w-1.5">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
+                                          </span>
+                                          Now
+                                        </span>
+                                      )}
+
+                                      {/* Patient name */}
+                                      <button
+                                        onClick={() => handleOpenPatientDetails(apt.patientPhone, apt.patientName)}
+                                        className="text-sm font-bold text-on-surface hover:underline text-left block truncate max-w-full cursor-pointer bg-transparent border-none p-0 leading-tight"
+                                      >
+                                        {apt.patientName}
+                                      </button>
+
+                                      {/* Service + phone */}
+                                      <p className="text-xs text-on-surface-variant font-medium mt-0.5 truncate">{apt.service}</p>
+                                      <div className="flex items-center gap-2 mt-0.5">
+                                        <p className="text-[11px] text-on-surface-variant/60 font-mono">{apt.patientPhone}</p>
+                                        {apt.chair && (
+                                          <span className="text-[10px] font-semibold text-on-surface-variant/60">· {apt.chair}</span>
+                                        )}
+                                        {apt.duration && (
+                                          <span className="text-[10px] font-semibold text-on-surface-variant/60">· {apt.duration}m</span>
+                                        )}
+                                      </div>
+
+                                      {/* Doctor */}
+                                      {apt.doctorName && (
+                                        <p className="text-[10px] text-on-surface-variant/50 mt-1 truncate">
+                                          {apt.doctorName}
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    {/* Right: status badge + dropdown */}
+                                    <div className="flex flex-col items-end gap-2 shrink-0">
+                                      <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                        statusStyles[apt.status] || "bg-amber-50 text-amber-700 border-amber-200"
+                                      }`}>
+                                        {apt.status}
+                                      </span>
+                                      <StatusDropdown
+                                        currentStatus={apt.status}
+                                        onStatusChange={(s) => handleStatusChange(apt.id, s)}
+                                        openUp={index >= filteredAppointments.length - 2}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
                     )}
                   </div>
 
                   {/* SECTION 3: Today's Completed Treatments */}
+
                   <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm overflow-hidden">
                     <div className="px-5 py-4 border-b border-outline-variant/10">
                       <h2 className="text-sm font-bold text-on-surface uppercase tracking-wider flex items-center gap-2 mb-3 font-sans">
