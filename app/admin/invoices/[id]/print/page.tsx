@@ -4,7 +4,7 @@ import React, { useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, AlertCircle, Printer } from "lucide-react";
-import { getInvoiceById } from "../../../../../lib/services/invoiceService";
+import { getInvoiceById, getInvoiceStatusDetails } from "../../../../../lib/services/invoiceService";
 import { getPatientById } from "../../../../../lib/services/patientService";
 import { queryKeys } from "../../../../../lib/query/queryKeys";
 import { doc, getDoc } from "firebase/firestore";
@@ -121,6 +121,8 @@ export default function InvoicePrintPage({ params }: PrintPageProps) {
   const clinicPhone = clinicSettings?.phone || "+91 77750 89777";
   const clinicAddress = clinicSettings?.address || "123 Dental Excellence Way, Medical District";
 
+  const statusDetails = getInvoiceStatusDetails(invoice);
+
   const printDate = new Date(invoice.createdAt?.seconds * 1000 || Date.now()).toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
@@ -204,11 +206,9 @@ export default function InvoicePrintPage({ params }: PrintPageProps) {
               <p className="text-gray-600 text-right"><span className="font-semibold text-gray-800">Visit Date:</span> {formattedVisitDate}</p>
               <div className="flex justify-end gap-1.5 mt-1">
                 <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${
-                  (invoice.status || invoice.paymentStatus) === "Paid"
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                    : "bg-amber-50 text-amber-700 border-amber-200"
+                  statusDetails.bgClass
                 }`}>
-                  {invoice.status || invoice.paymentStatus}
+                  {statusDetails.label}
                 </span>
                 <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold border bg-gray-50 text-gray-700 border-gray-200">
                   {invoice.paymentMethod === "None" ? "Unpaid" : invoice.paymentMethod}
@@ -288,6 +288,20 @@ export default function InvoicePrintPage({ params }: PrintPageProps) {
                     <span>Grand Total:</span>
                     <span className="font-mono text-primary">₹{formatINR(total)}</span>
                   </div>
+                  
+                  {invoice.paidAmount !== undefined && invoice.paidAmount > 0 && (
+                    <div className="flex justify-between text-gray-600 font-medium pt-1">
+                      <span>Amount Paid:</span>
+                      <span className="font-mono text-emerald-600">₹{formatINR(invoice.paidAmount)}</span>
+                    </div>
+                  )}
+
+                  {invoice.remainingAmount !== undefined && invoice.remainingAmount > 0 && (
+                    <div className="flex justify-between text-gray-900 font-bold border-t border-dashed border-gray-200 pt-1">
+                      <span>Balance Outstanding:</span>
+                      <span className="font-mono text-red-600">₹{formatINR(invoice.remainingAmount)}</span>
+                    </div>
+                  )}
                 </div>
               );
             })()}

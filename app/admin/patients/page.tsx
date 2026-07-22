@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "framer-motion";
 import { useDebounce } from "../../../lib/hooks/useDebounce";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -206,7 +207,6 @@ const emptyForm = {
   referralSource: "",
   referredByPatientId: "",
 };
-
 import { Sidebar } from "../../../components/admin/Sidebar";
 
 /* ─── Patients Page ─── */
@@ -314,6 +314,17 @@ function PatientsManagement() {
   const loadPage = useCallback((pageNumber: number) => {
     setCurrentPage(pageNumber);
   }, []);
+
+  // ── Escape key event listener to close modal ─────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && showForm) {
+        handleCancel();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showForm]);
 
   // ── Mutations ────────────────────────────────────────────────────────────
   const addMutation = useMutation({
@@ -461,7 +472,6 @@ function PatientsManagement() {
     },
   });
 
-
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setForm({ ...form, [e.target.name]: e.target.value });
@@ -489,6 +499,15 @@ function PatientsManagement() {
       referralSource: p.referralSource || "",
       referredByPatientId: p.referredByPatientId || "",
     });
+    
+    // Find referrer name optimistically to show in UI chip
+    if (p.referredByPatientId) {
+      const refPatient = allPatientsForSearch.find((x) => x.id === p.referredByPatientId);
+      setReferrerName(refPatient ? refPatient.name : "");
+    } else {
+      setReferrerName("");
+    }
+    
     setShowForm(true);
   };
 
@@ -503,7 +522,6 @@ function PatientsManagement() {
     setReferrerSearch("");
     setReferrerName("");
   };
-
 
   const filtered = patients.filter(
     (p) =>
@@ -524,7 +542,7 @@ function PatientsManagement() {
       )}
 
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-[200px] shrink-0 border-r border-outline-variant/20 sticky top-0 h-screen shadow-sm flex-col">
+      <aside className="hidden md:flex w-[200px] shrink-0 border-r border-outline-variant/20 sticky top-0 h-screen shadow-sm flex-col bg-white">
         <Sidebar currentPage="patients" />
       </aside>
 
@@ -546,7 +564,7 @@ function PatientsManagement() {
         <header className="bg-white border-b border-outline-variant/20 px-4 md:px-8 py-4 flex items-center gap-3 sticky top-0 z-20 shadow-sm">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="md:hidden p-2 rounded-lg hover:bg-surface-variant text-primary shrink-0"
+            className="md:hidden p-2 rounded-lg hover:bg-surface-variant text-primary shrink-0 cursor-pointer"
             aria-label="Open menu"
           >
             <Menu className="w-5 h-5" />
@@ -555,17 +573,6 @@ function PatientsManagement() {
           <h1 className="text-lg md:text-xl font-bold text-primary shrink-0">
             Patient Management
           </h1>
-
-          <div className="relative flex-1 max-w-sm hidden sm:block ml-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, phone, condition..."
-              className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-outline-variant/40 bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-on-surface-variant/60"
-            />
-          </div>
 
           <div className="flex items-center gap-2 md:gap-3 shrink-0 ml-auto">
             <div className="text-right hidden lg:block">
@@ -584,632 +591,323 @@ function PatientsManagement() {
           </div>
         </header>
 
-        {/* Mobile Search */}
-        <div className="sm:hidden px-4 pt-3 pb-1 bg-[#f2f5f8]">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search patients..."
-              className="w-full pl-9 pr-4 py-2.5 text-sm rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-on-surface-variant/60"
-            />
-          </div>
-        </div>
-
         <main className="flex-1 p-4 md:p-8">
           {/* Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 md:mb-8">
-            <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-4 md:p-5 flex items-center justify-between">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+            <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm p-6 flex items-center justify-between hover:shadow-md transition-shadow">
               <div>
-                <p className="text-xs text-on-surface-variant font-medium mb-1">
+                <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
                   Total Patients
                 </p>
-                <p className="text-2xl md:text-3xl font-bold text-on-surface">
+                <p className="text-3xl font-extrabold text-on-surface tracking-tight">
                   {isListLoading ? "—" : totalCount}
                 </p>
-                <div className="flex items-center gap-1 text-emerald-600 text-xs font-semibold mt-0.5">
-                  <TrendingUp className="w-3 h-3" />
-                  <span>Live from database</span>
+                <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-semibold mt-2 bg-emerald-50 px-2 py-0.5 rounded-md w-fit">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  <span>Live Sync</span>
                 </div>
               </div>
-              <div className="w-11 h-11 rounded-xl bg-secondary-container flex items-center justify-center shrink-0">
-                <Users className="w-5 h-5 text-primary" />
+              <div className="w-12 h-12 rounded-2xl bg-secondary-container flex items-center justify-center shrink-0">
+                <Users className="w-6 h-6 text-primary" />
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-4 md:p-5 flex items-center justify-between">
+
+            <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm p-6 flex items-center justify-between hover:shadow-md transition-shadow">
               <div>
-                <p className="text-xs text-on-surface-variant font-medium mb-1">
+                <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
                   Search Results
                 </p>
-                <p className="text-2xl md:text-3xl font-bold text-on-surface">
-                   {isListLoading ? "—" : filtered.length}
+                <p className="text-3xl font-extrabold text-on-surface tracking-tight">
+                  {isListLoading ? "—" : filtered.length}
                 </p>
-                <p className="text-xs text-on-surface-variant mt-0.5">
+                <p className="text-xs text-on-surface-variant font-medium mt-2 bg-slate-50 px-2 py-0.5 rounded-md w-fit">
                   {search ? `Matching "${search}"` : "Showing all"}
                 </p>
               </div>
-              <div className="w-11 h-11 rounded-xl bg-[#ede9fe] flex items-center justify-center shrink-0">
-                <UserPlus className="w-5 h-5 text-purple-600" />
+              <div className="w-12 h-12 rounded-2xl bg-violet-100 flex items-center justify-center shrink-0">
+                <UserPlus className="w-6 h-6 text-violet-600" />
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-4 md:p-5 flex items-center justify-between">
+
+            <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm p-6 flex items-center justify-between hover:shadow-md transition-shadow">
               <div>
-                <p className="text-xs text-on-surface-variant font-medium mb-1">
+                <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
                   WhatsApp Reachable
                 </p>
-                <p className="text-2xl md:text-3xl font-bold text-on-surface">
-                   {isListLoading ? "—" : totalCount}
+                <p className="text-3xl font-extrabold text-on-surface tracking-tight">
+                  {isListLoading ? "—" : totalCount}
                 </p>
-                <p className="text-xs text-on-surface-variant mt-0.5">
+                <p className="text-xs text-on-surface-variant font-medium mt-2 bg-green-50 px-2 py-0.5 rounded-md w-fit text-green-700">
                   With phone numbers
                 </p>
               </div>
-              <div className="w-11 h-11 rounded-xl bg-[#dcfce7] flex items-center justify-center shrink-0">
-                <WhatsAppIcon className="w-5 h-5 text-green-600" />
+              <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center shrink-0">
+                <WhatsAppIcon className="w-6 h-6 text-green-600" />
               </div>
             </div>
           </div>
 
-          {/* Main grid */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-            {/* Patient Table / Cards */}
-            <div className="xl:col-span-8 bg-white rounded-xl border border-outline-variant/10 shadow-sm overflow-hidden">
-              <div className="px-4 md:px-6 pt-5 pb-4 border-b border-outline-variant/10 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-bold text-on-surface">
-                    Patient Registry
-                  </h2>
-                  <p className="text-xs text-on-surface-variant mt-0.5">
-                    {filtered.length} patient
-                    {filtered.length !== 1 ? "s" : ""} found
-                  </p>
+          {/* Full-width Patient Registry Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="w-full bg-white rounded-2xl border border-outline-variant/10 shadow-sm overflow-hidden flex flex-col"
+          >
+            {/* Header + Toolbar */}
+            <div className="px-6 py-5 border-b border-outline-variant/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg md:text-xl font-bold text-on-surface">
+                  Patient Registry
+                </h2>
+                <p className="text-xs text-on-surface-variant mt-0.5">
+                  {filtered.length} patient{filtered.length !== 1 ? "s" : ""} found
+                </p>
+              </div>
+              <div className="flex flex-1 items-center gap-3 w-full md:max-w-xl md:justify-end">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant/70" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search patients..."
+                    className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-outline-variant/30 bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-on-surface-variant/50"
+                  />
                 </div>
                 <button
                   onClick={() => {
                     handleCancel();
                     setShowForm(true);
                   }}
-                  className="flex items-center gap-1.5 text-sm text-primary font-semibold px-3 py-1.5 rounded-lg border border-primary/30 hover:bg-secondary-container transition-colors cursor-pointer shrink-0"
+                  className="flex items-center gap-2 text-sm text-white bg-primary font-semibold px-4 py-2.5 rounded-xl hover:bg-primary/95 transition-all shadow-sm hover:shadow-md active:scale-95 cursor-pointer shrink-0"
                 >
                   <UserPlus className="w-4 h-4" />
-                  <span className="hidden sm:inline">Add New</span>
+                  <span>+ Add Patient</span>
                 </button>
               </div>
+            </div>
 
-              {showSkeleton ? (
-                <div>
-                  <div className="hidden md:block">
-                    <TableSkeleton columns={5} rows={5} />
-                  </div>
-                  <div className="md:hidden">
-                    <CardListSkeleton count={4} />
-                  </div>
+            {showSkeleton ? (
+              <div>
+                <div className="hidden md:block">
+                  <TableSkeleton columns={5} rows={5} />
                 </div>
-              ) : filtered.length === 0 ? (
-                <div className="py-16 text-center text-on-surface-variant">
-                  <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm font-medium">No patients found</p>
-                  <p className="text-xs mt-1">
-                    Try a different search or add a new patient
-                  </p>
+                <div className="md:hidden">
+                  <CardListSkeleton count={4} />
                 </div>
-              ) : (
-                <>
-                  {/* Desktop Table */}
-                  <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-outline-variant/10 bg-surface-container-low/50">
-                          <th className="text-left px-5 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                            Patient
-                          </th>
-                          <th className="text-left px-5 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                            Contact
-                          </th>
-                          <th className="text-left px-5 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                            Condition
-                          </th>
-                          <th className="text-left px-5 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                            Last Visit
-                          </th>
-                          <th className="text-right px-5 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider w-40">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filtered.map((p, index) => (
-                          <tr
-                            key={p.id}
-                            className={`border-b border-outline-variant/10 last:border-0 transition-colors ${
-                              editingId === p.id
-                                ? "bg-secondary-container/20"
-                                : "hover:bg-surface-container-low/40"
-                            }`}
-                          >
-                            <td className="px-5 py-5">
-                              <div className="flex items-center gap-4">
-                                <Link
-                                  href={`/admin/patients/${p.id}`}
-                                  className={`w-11 h-11 rounded-xl ${p.avatarColor} flex items-center justify-center text-white text-sm font-bold shrink-0 hover:opacity-90 active:scale-95 transition-all`}
-                                  title="View Patient Record"
-                                >
-                                  {getInitials(p.name)}
-                                </Link>
-                                <div>
-                                  <Link
-                                    href={`/admin/patients/${p.id}`}
-                                    className="text-base font-bold text-on-surface hover:text-primary hover:underline leading-tight block"
-                                  >
-                                    {p.name}
-                                  </Link>
-                                  <p className="text-xs md:text-sm text-on-surface-variant font-medium mt-0.5">
-                                    #{p.id.slice(0, 8)}
-                                    {p.age ? ` · Age ${p.age}` : ""}
-                                    {p.gender ? ` · ${p.gender}` : ""}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-5 py-5">
-                              <p className="text-sm font-bold text-on-surface leading-tight">
-                                {p.phone}
-                              </p>
-                              <p className="text-xs md:text-sm text-on-surface-variant font-medium mt-0.5 truncate max-w-[180px]">
-                                {p.email}
-                              </p>
-                            </td>
-                            <td className="px-5 py-5">
-                              <span className="inline-flex px-3 py-1 rounded-full text-xs font-bold bg-secondary-container text-primary border border-primary/10">
-                                {p.condition || "—"}
-                              </span>
-                              {p.notes && (
-                                <p className="text-xs md:text-sm text-on-surface-variant mt-1.5 max-w-[180px] truncate font-medium">
-                                  {p.notes}
-                                </p>
-                              )}
-                            </td>
-                            <td className="px-5 py-5">
-                              <p className="text-sm font-bold text-on-surface whitespace-nowrap">
-                                {p.lastVisit || "—"}
-                              </p>
-                            </td>
-                            <td className="px-5 py-5 text-right">
-                              <PatientActionDropdown
-                                patient={p}
-                                onEdit={handleEdit}
-                                onDelete={handleDelete}
-                                openUp={index >= filtered.length - 2}
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Mobile Card List */}
-                  <div className="md:hidden divide-y divide-outline-variant/10">
-                    {filtered.map((p, index) => (
-                      <div
-                        key={p.id}
-                        className={`px-4 py-5 ${
-                          editingId === p.id ? "bg-secondary-container/20" : ""
-                        }`}
-                      >
-                        <div className="flex items-start gap-4">
-                          <Link
-                            href={`/admin/patients/${p.id}`}
-                            className={`w-11 h-11 rounded-xl ${p.avatarColor} flex items-center justify-center text-white text-sm font-bold shrink-0 hover:opacity-90 active:scale-95 transition-all`}
-                            title="View Patient Record"
-                          >
-                            {getInitials(p.name)}
-                          </Link>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-1">
+              </div>
+            ) : filtered.length === 0 ? (
+              /* Better Empty State */
+              <div className="py-20 flex flex-col items-center justify-center text-center px-4">
+                <div className="w-24 h-24 rounded-full bg-slate-50 flex items-center justify-center mb-6 text-primary/40 border border-slate-100">
+                  <Users className="w-12 h-12" />
+                </div>
+                <h3 className="text-lg font-bold text-on-surface mb-2">
+                  Patients will appear here
+                </h3>
+                <p className="text-sm text-on-surface-variant max-w-sm mb-6 leading-relaxed">
+                  Click Add Patient to create your first patient and start managing their treatments, appointments, and medical histories.
+                </p>
+                <button
+                  onClick={() => {
+                    handleCancel();
+                    setShowForm(true);
+                  }}
+                  className="flex items-center gap-2 text-sm text-white bg-primary font-semibold px-5 py-3 rounded-xl hover:bg-primary/95 transition-all shadow-sm hover:shadow active:scale-95 cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>+ Add Patient</span>
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Desktop Table with Sticky Header */}
+                <div className="hidden md:block overflow-x-auto max-h-[60vh] scrollbar-thin">
+                  <table className="w-full border-collapse">
+                    <thead className="sticky top-0 z-10 bg-slate-50 border-b border-outline-variant/10 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <tr>
+                        <th className="text-left px-6 py-3.5 text-xs font-bold text-on-surface-variant uppercase tracking-wider bg-slate-50">
+                          Patient
+                        </th>
+                        <th className="text-left px-6 py-3.5 text-xs font-bold text-on-surface-variant uppercase tracking-wider bg-slate-50">
+                          Contact
+                        </th>
+                        <th className="text-left px-6 py-3.5 text-xs font-bold text-on-surface-variant uppercase tracking-wider bg-slate-50">
+                          Condition
+                        </th>
+                        <th className="text-left px-6 py-3.5 text-xs font-bold text-on-surface-variant uppercase tracking-wider bg-slate-50">
+                          Last Visit
+                        </th>
+                        <th className="text-right px-6 py-3.5 text-xs font-bold text-on-surface-variant uppercase tracking-wider w-40 bg-slate-50">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((p, index) => (
+                        <tr
+                          key={p.id}
+                          className={`border-b border-outline-variant/10 last:border-0 transition-colors h-[52px] ${
+                            editingId === p.id
+                              ? "bg-secondary-container/20"
+                              : "hover:bg-surface-container-low/40"
+                          }`}
+                        >
+                          <td className="px-6 py-2">
+                            <div className="flex items-center gap-3">
+                              <Link
+                                href={`/admin/patients/${p.id}`}
+                                className={`w-9 h-9 rounded-xl ${p.avatarColor} flex items-center justify-center text-white text-xs font-bold shrink-0 hover:opacity-90 active:scale-95 transition-all`}
+                                title="View Patient Record"
+                              >
+                                {getInitials(p.name)}
+                              </Link>
                               <div>
                                 <Link
                                   href={`/admin/patients/${p.id}`}
-                                  className="text-base font-bold text-on-surface hover:text-primary hover:underline leading-tight block"
+                                  className="text-base font-semibold text-on-surface hover:text-primary hover:underline leading-tight block"
                                 >
                                   {p.name}
                                 </Link>
-                                <p className="text-xs md:text-sm text-on-surface-variant font-medium mt-0.5">
+                                <p className="text-[13px] text-on-surface-variant font-medium mt-0.5">
                                   #{p.id.slice(0, 8)}
                                   {p.age ? ` · Age ${p.age}` : ""}
                                   {p.gender ? ` · ${p.gender}` : ""}
                                 </p>
                               </div>
-                              <span className="inline-flex px-3 py-1 rounded-full text-xs font-bold bg-secondary-container text-primary whitespace-nowrap shrink-0 border border-primary/10">
-                                {p.condition || "—"}
-                              </span>
                             </div>
-                            <div className="mt-2 space-y-1">
-                              <p className="text-sm font-bold text-on-surface">
-                                {p.phone}
+                          </td>
+                          <td className="px-6 py-2">
+                            <p className="text-[15px] font-semibold text-on-surface leading-tight">
+                              {p.phone}
+                            </p>
+                            <p className="text-[13px] text-on-surface-variant font-medium mt-0.5 truncate max-w-[180px]">
+                              {p.email}
+                            </p>
+                          </td>
+                          <td className="px-6 py-2">
+                            <span className="inline-flex px-3 py-1 rounded-full text-xs font-bold bg-secondary-container text-primary border border-primary/10">
+                              {p.condition || "—"}
+                            </span>
+                            {p.notes && (
+                              <p className="text-[13px] text-on-surface-variant mt-1 max-w-[180px] truncate font-medium">
+                                {p.notes}
                               </p>
-                              <p className="text-xs md:text-sm text-on-surface-variant font-medium truncate">
-                                {p.email}
+                            )}
+                          </td>
+                          <td className="px-6 py-2">
+                            <p className="text-[15px] font-bold text-on-surface whitespace-nowrap">
+                              {p.lastVisit || "—"}
+                            </p>
+                          </td>
+                          <td className="px-6 py-2 text-right">
+                            <PatientActionDropdown
+                              patient={p}
+                              onEdit={handleEdit}
+                              onDelete={handleDelete}
+                              openUp={index >= filtered.length - 2}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile Card List */}
+                <div className="md:hidden divide-y divide-outline-variant/10">
+                  {filtered.map((p, index) => (
+                    <div
+                      key={p.id}
+                      className={`px-4 py-5 ${
+                        editingId === p.id ? "bg-secondary-container/20" : ""
+                      }`}
+                    >
+                      <div className="flex items-start gap-4">
+                        <Link
+                          href={`/admin/patients/${p.id}`}
+                          className={`w-11 h-11 rounded-xl ${p.avatarColor} flex items-center justify-center text-white text-sm font-bold shrink-0 hover:opacity-90 active:scale-95 transition-all`}
+                          title="View Patient Record"
+                        >
+                          {getInitials(p.name)}
+                        </Link>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-1">
+                            <div>
+                              <Link
+                                href={`/admin/patients/${p.id}`}
+                                className="text-base font-bold text-on-surface hover:text-primary hover:underline leading-tight block"
+                              >
+                                {p.name}
+                              </Link>
+                              <p className="text-xs md:text-sm text-on-surface-variant font-medium mt-0.5">
+                                #{p.id.slice(0, 8)}
+                                {p.age ? ` · Age ${p.age}` : ""}
+                                {p.gender ? ` · ${p.gender}` : ""}
                               </p>
-                              {p.lastVisit && (
-                                <p className="text-xs md:text-sm text-on-surface-variant font-semibold">
-                                  Last visit: {p.lastVisit}
-                                </p>
-                              )}
                             </div>
-                            {/* Mobile Actions */}
-                            <div className="mt-3.5 flex justify-end">
-                              <PatientActionDropdown
-                                patient={p}
-                                onEdit={handleEdit}
-                                onDelete={handleDelete}
-                                openUp={index >= filtered.length - 2}
-                              />
-                            </div>
+                            <span className="inline-flex px-3 py-1 rounded-full text-xs font-bold bg-secondary-container text-primary whitespace-nowrap shrink-0 border border-primary/10">
+                              {p.condition || "—"}
+                            </span>
+                          </div>
+                          <div className="mt-2 space-y-1">
+                            <p className="text-sm font-bold text-on-surface">
+                              {p.phone}
+                            </p>
+                            <p className="text-xs md:text-sm text-on-surface-variant font-medium truncate">
+                              {p.email}
+                            </p>
+                            {p.lastVisit && (
+                              <p className="text-xs md:text-sm text-on-surface-variant font-semibold">
+                                Last visit: {p.lastVisit}
+                              </p>
+                            )}
+                          </div>
+                          {/* Mobile Actions */}
+                          <div className="mt-3.5 flex justify-end">
+                            <PatientActionDropdown
+                              patient={p}
+                              onEdit={handleEdit}
+                              onDelete={handleDelete}
+                              openUp={index >= filtered.length - 2}
+                            />
                           </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                  
-                  {/* Pagination Controls */}
-                  {search.trim() === "" && (
-                    <div className="px-4 md:px-6 py-4 border-t border-outline-variant/10 flex items-center justify-between gap-3 bg-surface-container-lowest">
-                      <p className="text-xs text-on-surface-variant font-medium">
-                        Showing Page <span className="font-semibold text-on-surface">{currentPage}</span> · Patients {PAGE_SIZE * (currentPage - 1) + 1}–{PAGE_SIZE * (currentPage - 1) + patients.length} of {totalCount}
-                      </p>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => loadPage(currentPage - 1)}
-                          disabled={currentPage === 1 || isListLoading}
-                          className="p-1.5 rounded-lg border border-outline-variant/30 hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer flex items-center justify-center bg-white"
-                          title="Previous Page"
-                        >
-                          <ChevronLeft className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => loadPage(currentPage + 1)}
-                          disabled={!hasNextPage || isListLoading}
-                          className="p-1.5 rounded-lg border border-outline-variant/30 hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer flex items-center justify-center bg-white"
-                          title="Next Page"
-                        >
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </div>
                     </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Add / Edit Form */}
-            <div
-              className={`xl:col-span-4 ${
-                showForm ? "block" : "hidden xl:block"
-              }`}
-            >
-              <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm xl:sticky xl:top-24">
-                <div className="px-4 md:px-6 pt-5 pb-4 border-b border-outline-variant/10 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-base font-bold text-on-surface">
-                      {editingId ? "Edit Patient" : "Add New Patient"}
-                    </h2>
-                    <p className="text-xs text-on-surface-variant mt-0.5">
-                      {editingId
-                        ? `Editing #${editingId.slice(0, 8)}`
-                        : "Fill in the patient details below"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                        editingId ? "bg-amber-100" : "bg-secondary-container"
-                      }`}
-                    >
-                      {editingId ? (
-                        <Pencil className="w-4 h-4 text-amber-600" />
-                      ) : (
-                        <UserPlus className="w-5 h-5 text-primary" />
-                      )}
-                    </div>
-                    <button
-                      onClick={handleCancel}
-                      className="xl:hidden p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
+                  ))}
                 </div>
 
-                <form
-                  onSubmit={handleSubmit}
-                  className="px-4 md:px-6 py-5 flex flex-col gap-3.5"
-                >
-                  <div>
-                    <label
-                      htmlFor="patient-name"
-                      className="block text-xs font-semibold text-on-surface-variant mb-1.5"
-                    >
-                      Full Name *
-                    </label>
-                    <input
-                      id="patient-name"
-                      type="text"
-                      name="name"
-                      value={form.name ?? ""}
-                      onChange={handleChange}
-                      placeholder="e.g. Jane Smith"
-                      required
-                      autoComplete="off"
-                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="patient-phone"
-                      className="block text-xs font-semibold text-on-surface-variant mb-1.5"
-                    >
-                      WhatsApp / Phone *
-                    </label>
-                    <input
-                      id="patient-phone"
-                      type="tel"
-                      name="phone"
-                      value={form.phone ?? ""}
-                      onChange={handleChange}
-                      placeholder="+1 (555) 000-0000"
-                      required
-                      autoComplete="off"
-                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="patient-email"
-                      className="block text-xs font-semibold text-on-surface-variant mb-1.5"
-                    >
-                      Email Address
-                    </label>
-                    <input
-                      id="patient-email"
-                      type="email"
-                      name="email"
-                      value={form.email ?? ""}
-                      onChange={handleChange}
-                      placeholder="jane@example.com"
-                      autoComplete="off"
-                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                    />
-                  </div>
-                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label
-                        htmlFor="patient-age"
-                        className="block text-xs font-semibold text-on-surface-variant mb-1.5"
-                      >
-                        Age / DOB *
-                      </label>
-                      <input
-                        id="patient-age"
-                        type="text"
-                        name="age"
-                        value={form.age ?? ""}
-                        onChange={handleChange}
-                        placeholder="e.g. 34 or 1992-05-12"
-                        required
-                        className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">
-                        Gender
-                      </label>
-                      <div className="flex gap-3 py-2">
-                        <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs text-on-surface font-medium">
-                          <input
-                            type="radio"
-                            name="gender"
-                            value="Male"
-                            checked={form.gender === "Male"}
-                            onChange={handleChange}
-                            className="w-3.5 h-3.5 text-primary focus:ring-primary/20 border-outline-variant/40 accent-primary"
-                          />
-                          Male
-                        </label>
-                        <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs text-on-surface font-medium">
-                          <input
-                            type="radio"
-                            name="gender"
-                            value="Female"
-                            checked={form.gender === "Female"}
-                            onChange={handleChange}
-                            className="w-3.5 h-3.5 text-primary focus:ring-primary/20 border-outline-variant/40 accent-primary"
-                          />
-                          Female
-                        </label>
-                        <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs text-on-surface font-medium">
-                          <input
-                            type="radio"
-                            name="gender"
-                            value="Other"
-                            checked={form.gender === "Other"}
-                            onChange={handleChange}
-                            className="w-3.5 h-3.5 text-primary focus:ring-primary/20 border-outline-variant/40 accent-primary"
-                          />
-                          Other
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="patient-address"
-                      className="block text-xs font-semibold text-on-surface-variant mb-1.5"
-                    >
-                      Address (Optional)
-                    </label>
-                    <input
-                      id="patient-address"
-                      type="text"
-                      name="address"
-                      value={form.address ?? ""}
-                      onChange={handleChange}
-                      placeholder="e.g. 123 Main St, New York"
-                      autoComplete="off"
-                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                    />
-                  </div>
-
-                  {/* ── Referral Information ── */}
-                  <div className="border-t border-outline-variant/10 pt-4 mt-1">
-                    <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                      <TrendingUp className="w-3.5 h-3.5 text-primary" />
-                      Referral Information
-                    </h3>
-
-                    {/* Referral Source */}
-                    <div className="mb-3">
-                      <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">
-                        How did this patient hear about us?
-                      </label>
-                      <select
-                        name="referralSource"
-                        value={form.referralSource ?? ""}
-                        onChange={(e) => {
-                          setForm({ ...form, referralSource: e.target.value, referredByPatientId: "" });
-                          setReferrerSearch("");
-                          setReferrerName("");
-                        }}
-                        className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                      >
-                        <option value="">— Select source (optional) —</option>
-                        {REFERRAL_SOURCES.map((src) => (
-                          <option key={src} value={src}>{src}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Referred By — only when source is Existing Patient */}
-                    {form.referralSource === "Existing Patient" && (
-                      <div className="relative">
-                        <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">
-                          Referred By (search patient)
-                        </label>
-                        {form.referredByPatientId && referrerName ? (
-                          /* Selected referrer chip */
-                          <div className="flex items-center justify-between p-2.5 rounded-lg border border-primary/30 bg-primary/5">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-white text-[10px] font-bold shrink-0">
-                                {referrerName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-xs font-bold text-on-surface truncate">{referrerName}</p>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setForm({ ...form, referredByPatientId: "" });
-                                setReferrerSearch("");
-                                setReferrerName("");
-                              }}
-                              className="text-[10px] font-semibold text-on-surface-variant hover:text-red-600 shrink-0 ml-2 cursor-pointer"
-                            >
-                              Change
-                            </button>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="relative">
-                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-on-surface-variant pointer-events-none" />
-                              <input
-                                type="text"
-                                value={referrerSearch}
-                                onChange={(e) => { setReferrerSearch(e.target.value); setShowReferrerSuggestions(true); }}
-                                onFocus={() => referrerSearch.length >= 2 && setShowReferrerSuggestions(true)}
-                                onBlur={() => setTimeout(() => setShowReferrerSuggestions(false), 150)}
-                                placeholder="Search by name or phone…"
-                                autoComplete="off"
-                                className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                              />
-                            </div>
-                            {showReferrerSuggestions && referrerSuggestions.length > 0 && (
-                              <div className="absolute left-0 right-0 z-50 mt-1 bg-white border border-outline-variant/20 rounded-xl shadow-lg overflow-hidden">
-                                {referrerSuggestions.map((p) => (
-                                  <button
-                                    key={p.id}
-                                    type="button"
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => {
-                                      setForm({ ...form, referredByPatientId: p.id });
-                                      setReferrerName(p.name);
-                                      setReferrerSearch(p.name);
-                                      setShowReferrerSuggestions(false);
-                                    }}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-surface-container-low transition-colors text-left cursor-pointer"
-                                  >
-                                    <div className={`w-7 h-7 rounded-full ${p.avatarColor} flex items-center justify-center text-white text-[10px] font-bold shrink-0`}>
-                                      {p.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-xs font-semibold text-on-surface truncate">{p.name}</p>
-                                      <p className="text-[11px] font-mono text-on-surface-variant">{p.phone}</p>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 pt-1">
-                    {editingId && (
+                {/* Pagination Controls */}
+                {search.trim() === "" && (
+                  <div className="px-4 md:px-6 py-4 border-t border-outline-variant/10 flex items-center justify-between gap-3 bg-surface-container-lowest">
+                    <p className="text-xs text-on-surface-variant font-medium">
+                      Showing Page <span className="font-semibold text-on-surface">{currentPage}</span> · Patients {PAGE_SIZE * (currentPage - 1) + 1}–{PAGE_SIZE * (currentPage - 1) + patients.length} of {totalCount}
+                    </p>
+                    <div className="flex items-center gap-1.5">
                       <button
-                        type="button"
-                        onClick={handleCancel}
-                        className="flex-1 border border-outline-variant/40 text-on-surface-variant text-sm font-semibold py-2.5 rounded-lg hover:bg-surface-container transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                        onClick={() => loadPage(currentPage - 1)}
+                        disabled={currentPage === 1 || isListLoading}
+                        className="p-1.5 rounded-lg border border-outline-variant/30 hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer flex items-center justify-center bg-white"
+                        title="Previous Page"
                       >
-                        <X className="w-4 h-4" /> Cancel
+                        <ChevronLeft className="w-4 h-4" />
                       </button>
-                    )}
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className={`${
-                        editingId ? "flex-1" : "w-full"
-                      } bg-primary hover:bg-primary/90 disabled:bg-primary/60 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.99]`}
-                    >
-                      {submitting ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="w-4 h-4" />
-                      )}
-                      {editingId ? "Save Changes" : "Add Patient"}
-                    </button>
+                      <button
+                        onClick={() => loadPage(currentPage + 1)}
+                        disabled={!hasNextPage || isListLoading}
+                        className="p-1.5 rounded-lg border border-outline-variant/30 hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer flex items-center justify-center bg-white"
+                        title="Next Page"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                  {form.phone && (
-                    <a
-                      href={buildWhatsAppUrl(
-                        form.phone,
-                        form.name || "Patient"
-                      )}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-2 text-xs text-green-700 font-semibold bg-[#dcfce7] hover:bg-green-200 transition-colors py-2 rounded-lg cursor-pointer"
-                    >
-                      <WhatsAppIcon className="w-3.5 h-3.5" />
-                      Preview appointment message on WhatsApp
-                    </a>
-                  )}
-                </form>
-              </div>
-            </div>
-          </div>
+                )}
+              </>
+            )}
+          </motion.div>
         </main>
 
         {/* Footer */}
@@ -1240,6 +938,356 @@ function PatientsManagement() {
         </footer>
       </div>
 
+      {/* Responsive Centered Modal Dialog for Add/Edit Patient */}
+      <AnimatePresence>
+        {showForm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4">
+            {/* Backdrop Overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+              onClick={handleCancel}
+            />
+
+            {/* Modal Box */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.2 }}
+              className="relative w-full h-full md:h-auto md:max-h-[90vh] md:w-[70%] lg:w-[50%] xl:w-[45%] max-w-[800px] bg-white rounded-none md:rounded-2xl shadow-2xl overflow-y-auto flex flex-col z-10 border border-outline-variant/10"
+            >
+              {/* Header */}
+              <div className="px-6 py-5 border-b border-outline-variant/10 flex items-center justify-between sticky top-0 bg-white z-20">
+                <div>
+                  <h2 className="text-lg font-bold text-on-surface">
+                    {editingId ? "Edit Patient" : "Add New Patient"}
+                  </h2>
+                  <p className="text-xs text-on-surface-variant mt-0.5">
+                    {editingId
+                      ? `Editing #${editingId.slice(0, 8)}`
+                      : "Fill in the patient details below"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                      editingId ? "bg-amber-100" : "bg-secondary-container"
+                    }`}
+                  >
+                    {editingId ? (
+                      <Pencil className="w-4 h-4 text-amber-600" />
+                    ) : (
+                      <UserPlus className="w-5 h-5 text-primary" />
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant cursor-pointer transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Form Body */}
+              <form
+                onSubmit={handleSubmit}
+                className="px-6 md:px-8 py-6 flex flex-col gap-4 overflow-y-auto"
+              >
+                <div>
+                  <label
+                    htmlFor="patient-name"
+                    className="block text-xs font-semibold text-on-surface-variant mb-1.5"
+                  >
+                    Full Name *
+                  </label>
+                  <input
+                    id="patient-name"
+                    type="text"
+                    name="name"
+                    value={form.name ?? ""}
+                    onChange={handleChange}
+                    placeholder="e.g. Jane Smith"
+                    required
+                    autoComplete="off"
+                    className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="patient-phone"
+                    className="block text-xs font-semibold text-on-surface-variant mb-1.5"
+                  >
+                    WhatsApp / Phone *
+                  </label>
+                  <input
+                    id="patient-phone"
+                    type="tel"
+                    name="phone"
+                    value={form.phone ?? ""}
+                    onChange={handleChange}
+                    placeholder="+1 (555) 000-0000"
+                    required
+                    autoComplete="off"
+                    className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="patient-email"
+                    className="block text-xs font-semibold text-on-surface-variant mb-1.5"
+                  >
+                    Email Address
+                  </label>
+                  <input
+                    id="patient-email"
+                    type="email"
+                    name="email"
+                    value={form.email ?? ""}
+                    onChange={handleChange}
+                    placeholder="jane@example.com"
+                    autoComplete="off"
+                    className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label
+                      htmlFor="patient-age"
+                      className="block text-xs font-semibold text-on-surface-variant mb-1.5"
+                    >
+                      Age / DOB *
+                    </label>
+                    <input
+                      id="patient-age"
+                      type="text"
+                      name="age"
+                      value={form.age ?? ""}
+                      onChange={handleChange}
+                      placeholder="e.g. 34 or 1992-05-12"
+                      required
+                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">
+                      Gender
+                    </label>
+                    <div className="flex gap-3 py-2">
+                      <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs text-on-surface font-medium">
+                        <input
+                          type="radio"
+                          name="gender"
+                          value="Male"
+                          checked={form.gender === "Male"}
+                          onChange={handleChange}
+                          className="w-3.5 h-3.5 text-primary focus:ring-primary/20 border-outline-variant/40 accent-primary"
+                        />
+                        Male
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs text-on-surface font-medium">
+                        <input
+                          type="radio"
+                          name="gender"
+                          value="Female"
+                          checked={form.gender === "Female"}
+                          onChange={handleChange}
+                          className="w-3.5 h-3.5 text-primary focus:ring-primary/20 border-outline-variant/40 accent-primary"
+                        />
+                        Female
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs text-on-surface font-medium">
+                        <input
+                          type="radio"
+                          name="gender"
+                          value="Other"
+                          checked={form.gender === "Other"}
+                          onChange={handleChange}
+                          className="w-3.5 h-3.5 text-primary focus:ring-primary/20 border-outline-variant/40 accent-primary"
+                        />
+                        Other
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="patient-address"
+                    className="block text-xs font-semibold text-on-surface-variant mb-1.5"
+                  >
+                    Address (Optional)
+                  </label>
+                  <input
+                    id="patient-address"
+                    type="text"
+                    name="address"
+                    value={form.address ?? ""}
+                    onChange={handleChange}
+                    placeholder="e.g. 123 Main St, New York"
+                    autoComplete="off"
+                    className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                  />
+                </div>
+
+                {/* ── Referral Information ── */}
+                <div className="border-t border-outline-variant/10 pt-4 mt-1">
+                  <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5 text-primary" />
+                    Referral Information
+                  </h3>
+
+                  {/* Referral Source */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">
+                      How did this patient hear about us?
+                    </label>
+                    <select
+                      name="referralSource"
+                      value={form.referralSource ?? ""}
+                      onChange={(e) => {
+                        setForm({ ...form, referralSource: e.target.value, referredByPatientId: "" });
+                        setReferrerSearch("");
+                        setReferrerName("");
+                      }}
+                      className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                    >
+                      <option value="">— Select source (optional) —</option>
+                      {REFERRAL_SOURCES.map((src) => (
+                        <option key={src} value={src}>{src}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Referred By — only when source is Existing Patient */}
+                  {form.referralSource === "Existing Patient" && (
+                    <div className="relative">
+                      <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">
+                        Referred By (search patient)
+                      </label>
+                      {form.referredByPatientId && referrerName ? (
+                        /* Selected referrer chip */
+                        <div className="flex items-center justify-between p-2.5 rounded-lg border border-primary/30 bg-primary/5">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+                              {referrerName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-on-surface truncate">{referrerName}</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setForm({ ...form, referredByPatientId: "" });
+                              setReferrerSearch("");
+                              setReferrerName("");
+                            }}
+                            className="text-[10px] font-semibold text-on-surface-variant hover:text-red-600 shrink-0 ml-2 cursor-pointer"
+                          >
+                            Change
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-on-surface-variant pointer-events-none" />
+                            <input
+                              type="text"
+                              value={referrerSearch}
+                              onChange={(e) => { setReferrerSearch(e.target.value); setShowReferrerSuggestions(true); }}
+                              onFocus={() => referrerSearch.length >= 2 && setShowReferrerSuggestions(true)}
+                              onBlur={() => setTimeout(() => setShowReferrerSuggestions(false), 150)}
+                              placeholder="Search by name or phone…"
+                              autoComplete="off"
+                              className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                            />
+                          </div>
+                          {showReferrerSuggestions && referrerSuggestions.length > 0 && (
+                            <div className="absolute left-0 right-0 z-50 mt-1 bg-white border border-outline-variant/20 rounded-xl shadow-lg overflow-hidden">
+                              {referrerSuggestions.map((p) => (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    setForm({ ...form, referredByPatientId: p.id });
+                                    setReferrerName(p.name);
+                                    setReferrerSearch(p.name);
+                                    setShowReferrerSuggestions(false);
+                                  }}
+                                  className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-surface-container-low transition-colors text-left cursor-pointer"
+                                >
+                                  <div className={`w-7 h-7 rounded-full ${p.avatarColor} flex items-center justify-center text-white text-[10px] font-bold shrink-0`}>
+                                    {p.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-semibold text-on-surface truncate">{p.name}</p>
+                                    <p className="text-[11px] font-mono text-on-surface-variant">{p.phone}</p>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 pt-2 pb-1">
+                  {editingId && (
+                    <button
+                      type="button"
+                      onClick={handleCancel}
+                      className="flex-1 border border-outline-variant/40 text-on-surface-variant text-sm font-semibold py-2.5 rounded-lg hover:bg-surface-container transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <X className="w-4 h-4" /> Cancel
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className={`${
+                      editingId ? "flex-1" : "w-full"
+                    } bg-primary hover:bg-primary/90 disabled:bg-primary/60 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.99]`}
+                  >
+                    {submitting ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4" />
+                    )}
+                    {editingId ? "Save Changes" : "Add Patient"}
+                  </button>
+                </div>
+                {form.phone && (
+                  <a
+                    href={buildWhatsAppUrl(
+                      form.phone,
+                      form.name || "Patient"
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 text-xs text-green-700 font-semibold bg-[#dcfce7] hover:bg-green-200 transition-colors py-2 rounded-lg cursor-pointer"
+                  >
+                    <WhatsAppIcon className="w-3.5 h-3.5" />
+                    Preview appointment message on WhatsApp
+                  </a>
+                )}
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Patient Details Modal */}
       <PatientDetailsModal
         patient={selectedPatient}
@@ -1249,7 +1297,7 @@ function PatientsManagement() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 right-4 md:right-6 z-50 bg-on-surface text-surface text-sm font-medium px-4 py-3 rounded-xl shadow-level-2 flex items-center gap-2">
+        <div className="fixed bottom-6 right-4 md:right-6 z-50 bg-on-surface text-surface text-sm font-medium px-4 py-3 rounded-xl shadow-level-2 flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           {toast}
         </div>

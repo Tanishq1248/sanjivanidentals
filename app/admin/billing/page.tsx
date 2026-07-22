@@ -14,6 +14,7 @@ import {
   TrendingUp,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Menu,
   X,
   LogOut,
@@ -24,6 +25,15 @@ import {
   Printer,
   ArrowRight,
   Filter,
+  AlertCircle,
+  AlertTriangle,
+  Clock,
+  FileText,
+  ExternalLink,
+  Receipt,
+  Plus,
+  Mail,
+  RefreshCw,
 } from "lucide-react";
 import { collection, getDocs, query, where, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../../lib/firebase";
@@ -31,17 +41,16 @@ import { COLLECTIONS } from "../../../lib/services/firestoreConfig";
 import { AdminAuthGuard } from "../../../components/auth/AdminAuthGuard";
 import { useAuth } from "../../../lib/context/AuthContext";
 import { getPatientByPhone, getPatients } from "../../../lib/services/patientService";
-import { getInvoices } from "../../../lib/services/invoiceService";
+import { getInvoices, getInvoiceStatusDetails, getInvoiceStatus } from "../../../lib/services/invoiceService";
 import { PatientDetailsModal } from "../../../components/admin/PatientDetailsModal";
+import { PaymentDialog } from "../../../components/admin/PaymentDialog";
 import { queryKeys } from "../../../lib/query/queryKeys";
 import { TableSkeleton, CardListSkeleton, StatsCardSkeleton, useDelayLoading } from "../../../components/ui/Skeletons";
-import type {
-  Patient,
-  Invoice,
-} from "../../../lib/types";
+import type { Patient, Invoice } from "../../../lib/types";
 import { useSidebarStore } from "../../../lib/store/useSidebarStore";
 import { usePatientStore } from "../../../lib/store/usePatientStore";
 import { useDashboardStore } from "../../../lib/store/useDashboardStore";
+import { Sidebar } from "../../../components/admin/Sidebar";
 
 /* ─── Status Styles ─── */
 const statusStyles: Record<string, string> = {
@@ -50,12 +59,14 @@ const statusStyles: Record<string, string> = {
   "In Progress": "bg-amber-50 text-amber-700 border border-amber-200",
   Completed: "bg-emerald-50 text-emerald-700 border border-emerald-200",
   Paid: "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  Partial: "bg-amber-50 text-amber-700 border border-amber-200",
+  Partial: "bg-blue-50 text-blue-700 border border-blue-200",
   Cancelled: "bg-red-50 text-red-600 border border-red-200",
   Failed: "bg-red-50 text-red-600 border border-red-200",
+  PAID: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  PARTIAL: "bg-blue-50 text-blue-700 border border-blue-200",
+  PENDING: "bg-amber-50 text-amber-700 border border-amber-200",
+  UNPAID: "bg-red-50 text-red-600 border border-red-200",
 };
-
-const invoiceStatusOptions = ["Paid", "Pending", "Partial"];
 
 function formatINR(amount: any): string {
   const val = Number(amount || 0);
@@ -66,7 +77,6 @@ function formatINR(amount: any): string {
   });
 }
 
-/* ─── Helper to get initials ─── */
 function getInitials(name: string) {
   return name
     .split(" ")
@@ -75,29 +85,6 @@ function getInitials(name: string) {
     .toUpperCase()
     .slice(0, 2);
 }
-
-/* ─── Avatar color from name hash ─── */
-const AVATAR_COLORS = [
-  "bg-blue-500",
-  "bg-purple-500",
-  "bg-emerald-500",
-  "bg-orange-500",
-  "bg-teal-500",
-  "bg-rose-500",
-  "bg-sky-500",
-  "bg-violet-500",
-  "bg-amber-500",
-  "bg-indigo-500",
-];
-
-function avatarColor(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++)
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
-
-import { Sidebar } from "../../../components/admin/Sidebar";
 
 /* ─── WhatsApp SVG Icon ─── */
 const WhatsAppIcon = ({ className }: { className?: string }) => (
@@ -113,13 +100,13 @@ const WhatsAppIcon = ({ className }: { className?: string }) => (
 
 function buildInvoiceWhatsAppUrl(phone: string, name: string, inv: any) {
   const digits = phone.replace(/\D/g, "");
-  const amountDue = inv.total || inv.amount || 0;
+  const amountDue = inv.remainingAmount !== undefined ? inv.remainingAmount : (inv.total || inv.amount || 0);
   const invIdShort = inv.id.slice(0, 8).toUpperCase();
   const invStatus = inv.status || inv.paymentStatus || "Pending";
-  const dateStr = inv.invoiceDate;
+  const dateStr = inv.dueDate || inv.invoiceDate;
   
   const message = encodeURIComponent(
-    `Hello ${name}! 👋 This is Sanjivani Dental Clinic. A friendly reminder regarding your invoice #${invIdShort} of amount ₹${formatINR(amountDue)} dated ${dateStr}.\n\n` +
+    `Hello ${name}! 👋 This is Sanjivani Dental Clinic. A friendly reminder regarding your invoice #${invIdShort} with remaining due ₹${formatINR(amountDue)} dated ${dateStr}.\n\n` +
     `Status: *${invStatus}*\n\n` +
     `You can pay using Cash, Card, or UPI during your visit. If you have already paid, please ignore this message. Thank you! 😊\n\n` +
     `– Sanjivani Dental Clinic`
@@ -127,97 +114,29 @@ function buildInvoiceWhatsAppUrl(phone: string, name: string, inv: any) {
   return `https://wa.me/${digits}?text=${message}`;
 }
 
-export function getInvoiceUrgency(invoiceDateStr: string, status: string) {
-  if (status === "Paid") {
-    return {
-      label: "Paid",
-      bgClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
-      dotClass: "bg-emerald-500",
-      urgencyWeight: 4,
-    };
-  }
-
-  // Calculate local day differences to prevent timezone shifting
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const [dYear, dMonth, dDay] = invoiceDateStr.split("-").map(Number);
-  const due = new Date(dYear, dMonth - 1, dDay);
-  due.setHours(0, 0, 0, 0);
-
-  const diffTime = due.getTime() - today.getTime();
-  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-
-  if (diffDays < 0) {
-    const days = Math.abs(diffDays);
-    return {
-      label: `Overdue • ${days} ${days === 1 ? "day" : "days"}`,
-      bgClass: "bg-red-50 text-red-700 border-red-200 font-bold",
-      dotClass: "bg-red-500",
-      urgencyWeight: 1,
-    };
-  } else if (diffDays <= 7) {
-    return {
-      label: "Due This Week",
-      bgClass: "bg-amber-50 text-amber-700 border-amber-200 font-semibold",
-      dotClass: "bg-amber-500",
-      urgencyWeight: 2,
-    };
-  } else {
-    return {
-      label: "Upcoming",
-      bgClass: "bg-slate-50 text-slate-600 border-slate-200 font-medium",
-      dotClass: "bg-slate-400",
-      urgencyWeight: 3,
-    };
-  }
+function getDiffDays(dateStr?: string, todayDate?: Date): number {
+  if (!dateStr || !todayDate) return 0;
+  const [year, month, day] = dateStr.split("-").map(Number);
+  if (!year || !month || !day) return 0;
+  const target = new Date(year, month - 1, day);
+  target.setHours(0, 0, 0, 0);
+  const diffTime = target.getTime() - todayDate.getTime();
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
 }
 
-/* ─── Invoice Status Dropdown ─── */
-function InvoiceStatusDropdown({
-  currentStatus,
-  onStatusChange,
-  openUp = false,
-}: {
-  currentStatus: string;
-  onStatusChange: (status: string) => void;
-  openUp?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-10 h-10 rounded-xl hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer flex items-center justify-center border-none bg-transparent"
-      >
-        <MoreVertical className="w-5 h-5" />
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className={`absolute right-0 ${openUp ? "bottom-11" : "top-11"} z-40 bg-white rounded-lg shadow-lg border border-outline-variant/20 py-1.5 w-40`}>
-            {invoiceStatusOptions.map((s) => (
-              <button
-                key={s}
-                onClick={() => {
-                  onStatusChange(s);
-                  setOpen(false);
-                }}
-                className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-surface-container-low transition-colors ${s === currentStatus
-                    ? "text-primary bg-secondary-container/30"
-                    : "text-on-surface"
-                  }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
+function getInvoicePaymentMethod(inv: Invoice): string {
+  const history = inv.paymentHistory || [];
+  const validHistory = history.filter((p) => p.paymentType !== "Generated" && p.paymentMethod && p.paymentMethod !== "None");
+  if (validHistory.length > 0) {
+    const methods = Array.from(new Set(validHistory.map((p) => p.paymentMethod)));
+    if (methods.length === 1) return methods[0];
+    if (methods.length > 1) return "Multiple";
+  }
+  if ((inv as any).paymentMethod) return (inv as any).paymentMethod;
+  return "—";
 }
+
+type FilterTab = "All" | "PENDING" | "PARTIAL" | "PAID" | "OVERDUE" | "DUE_TODAY" | "DUE_THIS_WEEK";
 
 /* ─── Billing Page Component ─── */
 function BillingPageContent() {
@@ -225,19 +144,23 @@ function BillingPageContent() {
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  // ── Zustand Store UI states ───────────────────────────────────────────────
+  // Zustand Store UI states
   const { sidebarOpen, setSidebarOpen } = useSidebarStore();
   const { selectedPatient, isModalOpen, openPatientDetails, closePatientDetails } = usePatientStore();
   const { toast, showToast } = useDashboardStore();
 
-  // Invoice-specific filters and search
+  // Payment Modal states
+  const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
+  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+
+  // Search & Filter Tabs
   const [invoiceSearch, setInvoiceSearch] = useState("");
   const debouncedInvoiceSearch = useDebounce(invoiceSearch, 300);
-  const [activeStatusFilter, setActiveStatusFilter] = useState<"All" | "Paid" | "Pending" | "Partial">("All");
+  const [activeStatusFilter, setActiveStatusFilter] = useState<FilterTab>("All");
 
   // Pagination for Invoice Registry
   const [invoicePage, setInvoicePage] = useState(1);
-  const pageSize = 10;
+  const pageSize = 12;
 
   // Collapsible Invoice breakdown state
   const [expandedInvoices, setExpandedInvoices] = useState<Record<string, boolean>>({});
@@ -258,200 +181,142 @@ function BillingPageContent() {
     setSelectedInvoiceIds({});
   }, [debouncedInvoiceSearch, activeStatusFilter, invoicePage]);
 
-  // ── Date Computations ──────────────────────────────────────────────────────
+  // ── Date Computations ──
   const todayStr = useMemo(() => {
     const d = new Date();
     return d.toISOString().split("T")[0];
   }, []);
 
-  const currentMonthPrefix = useMemo(() => {
+  const todayDate = useMemo(() => {
     const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    d.setHours(0, 0, 0, 0);
+    return d;
   }, []);
 
-  // ── Queries ──────────────────────────────────────────────────────────────
-  // 1. Patients Registry
+  // ── Queries ──
   const { data: patients = [], isLoading: isPatientsLoading } = useQuery<Patient[]>({
     queryKey: queryKeys.patients.all,
     queryFn: getPatients,
     staleTime: 5 * 60 * 1000,
   });
 
-  // 2. Invoices
   const { data: invoices = [], isLoading: isInvoicesLoading } = useQuery<Invoice[]>({
     queryKey: ["invoices", "all"],
     queryFn: getInvoices,
     staleTime: 60 * 1000,
   });
 
-  // Pending/Failed invoices count for sidebar badge
-  const pendingBillingCount = useMemo(
-    () => invoices.filter((inv) => (inv.status || inv.paymentStatus) === "Pending" || (inv.status || inv.paymentStatus) === "Failed").length,
-    [invoices]
-  );
-
-  // ── Memoized Aggregations ──────────────────────────────────────────────────
+  // ── Memoized Operational Statistics ──
   const stats = useMemo(() => {
-    // Today's Revenue
-    const todayPaidInvoices = invoices.filter(
-      (inv) => (inv.status === "Paid" || inv.paymentStatus === "Paid") && inv.invoiceDate === todayStr
-    );
-    const todayRevenue = todayPaidInvoices.reduce((sum, inv) => sum + (inv.total || inv.amount || 0), 0);
-    const todayPaidCount = todayPaidInvoices.length;
+    let todayRevenue = 0;
+    let todayPaidCount = 0;
+    let pendingPaymentsCount = 0;
+    let pendingPaymentsAmount = 0;
+    let dueTodayCount = 0;
+    let dueTodayAmount = 0;
+    let overdueCount = 0;
+    let overdueAmount = 0;
 
-    // Monthly Revenue
-    const monthlyInvoices = invoices.filter(inv => inv.invoiceDate.startsWith(currentMonthPrefix));
-    const countGenerated = monthlyInvoices.length;
-    const paidInvoicesMonth = monthlyInvoices.filter(inv => (inv.status || inv.paymentStatus) === "Paid");
-    const countPaid = paidInvoicesMonth.length;
-    const countPending = countGenerated - countPaid;
-    const sumRevenueMonth = paidInvoicesMonth.reduce((sum, inv) => sum + (inv.total || inv.amount || 0), 0);
+    invoices.forEach((inv) => {
+      const history = inv.paymentHistory || [];
+      const status = getInvoiceStatus(inv);
+      const isPaid = status === "PAID";
+      const net = inv.total || inv.amount || 0;
+      const paid = inv.paidAmount || 0;
+      const remaining = inv.remainingAmount !== undefined ? inv.remainingAmount : Math.max(0, net - paid);
+      const dueDateStr = inv.dueDate || inv.invoiceDate;
+      const diffDays = getDiffDays(dueDateStr, todayDate);
 
-    // Total Revenue (All-Time)
-    const allPaidInvoices = invoices.filter(inv => (inv.status || inv.paymentStatus) === "Paid");
-    const sumTotalRevenue = allPaidInvoices.reduce((sum, inv) => sum + (inv.total || inv.amount || 0), 0);
+      // Today's Collection (cash received today)
+      if (history.length > 0) {
+        history.forEach((pay) => {
+          if (pay.paymentType !== "Generated" && pay.amountReceived > 0) {
+            if (pay.paymentDate === todayStr) {
+              todayRevenue += pay.amountReceived;
+              todayPaidCount++;
+            }
+          }
+        });
+      } else if (isPaid && inv.invoiceDate === todayStr) {
+        todayRevenue += net;
+        todayPaidCount++;
+      }
 
-    // Pending Payments
-    const unpaidInvoices = invoices.filter(
-      (inv) => (inv.status || inv.paymentStatus) !== "Paid"
-    );
-    const pendingPaymentsCount = unpaidInvoices.length;
-    const pendingPaymentsAmount = unpaidInvoices.reduce((sum, inv) => sum + (inv.total || inv.amount || 0), 0);
+      // Operational metrics for active unpaid/partially paid invoices
+      if (!isPaid) {
+        pendingPaymentsCount++;
+        pendingPaymentsAmount += remaining;
+
+        if (diffDays === 0) {
+          dueTodayCount++;
+          dueTodayAmount += remaining;
+        }
+
+        if (diffDays < 0) {
+          overdueCount++;
+          overdueAmount += remaining;
+        }
+      }
+    });
 
     return {
       todayRevenue,
       todayPaidCount,
-      sumRevenueMonth,
-      countGenerated,
-      countPaid,
-      countPending,
-      sumTotalRevenue,
       pendingPaymentsCount,
       pendingPaymentsAmount,
+      dueTodayCount,
+      dueTodayAmount,
+      overdueCount,
+      overdueAmount,
     };
-  }, [invoices, todayStr, currentMonthPrefix]);
+  }, [invoices, todayStr, todayDate]);
 
-  // Pending Payments list (Sorted by urgency first, then oldest due date first)
-  const pendingPaymentsList = useMemo(() => {
-    const list: Array<{
-      patientName: string;
-      invoiceNo: string;
-      dueAmount: number;
-      status: string;
-      bgClass: string;
-      dotClass: string;
-      urgencyWeight: number;
-      dueDate: string;
-      patientId: string;
-      patientPhone: string;
-      invoiceId: string;
-    }> = [];
-
-    invoices.forEach((inv) => {
-      const invStatus = inv.status || inv.paymentStatus || "Pending";
-      if (invStatus !== "Paid") {
-        const patientObj = patients.find(p => p.id === inv.patientId);
-        const patientName = patientObj ? patientObj.name : (inv.patientName || "Unknown Patient");
-        const patientPhone = patientObj ? patientObj.phone : "";
-
-        const urgency = getInvoiceUrgency(inv.invoiceDate, invStatus);
-
-        list.push({
-          invoiceId: inv.id,
-          patientName,
-          invoiceNo: inv.id.slice(0, 8).toUpperCase(),
-          dueAmount: inv.total || inv.amount || 0,
-          status: urgency.label,
-          bgClass: urgency.bgClass,
-          dotClass: urgency.dotClass || "bg-amber-500",
-          urgencyWeight: urgency.urgencyWeight,
-          dueDate: inv.invoiceDate,
-          patientId: inv.patientId,
-          patientPhone,
-        });
-      }
-    });
-
-    // Sort by urgencyWeight ascending (highest urgency first), then by dueDate ascending (oldest first)
-    return list.sort((a, b) => {
-      if (a.urgencyWeight !== b.urgencyWeight) {
-        return a.urgencyWeight - b.urgencyWeight;
-      }
-      return a.dueDate.localeCompare(b.dueDate);
-    });
-  }, [invoices, patients]);
-
-  // Recently Paid Invoices Summary (Latest 5 paid)
-  const recentlyPaidInvoices = useMemo(() => {
-    const list = invoices
-      .filter((inv) => (inv.status === "Paid" || inv.paymentStatus === "Paid"))
-      .map((inv) => {
-        const patientObj = patients.find(p => p.id === inv.patientId);
-        const patientName = patientObj ? patientObj.name : (inv.patientName || "Unknown Patient");
-        return {
-          id: inv.id,
-          patientName,
-          total: inv.total || inv.amount || 0,
-          date: inv.invoiceDate,
-        };
-      });
-    return list.slice(0, 5);
-  }, [invoices, patients]);
-
-  // Invoice Mutation for changing payment status
-  const invoiceMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const ref = doc(db, COLLECTIONS.INVOICES, id);
-      await updateDoc(ref, {
-        status,
-        paymentStatus: status,
-      });
-      return { id, status };
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["invoices", "all"] });
-    },
-    onSuccess: (data) => {
-      showToast(`Invoice status updated to ${data.status}`);
-    },
-    onError: (err) => {
-      console.error(err);
-      showToast("Failed to update status");
-    },
-  });
-
-  const handleInvoiceStatusChange = (id: string, status: string) => {
-    invoiceMutation.mutate({ id, status });
-  };
-
-  // Filtered and searched list of all invoices
+  // ── Filtered & Searched Master Invoice Registry List ──
   const filteredInvoices = useMemo(() => {
     return invoices.filter((inv) => {
-      const patientObj = patients.find(p => p.id === inv.patientId);
+      const patientObj = patients.find((p) => p.id === inv.patientId);
       const patientName = patientObj ? patientObj.name.toLowerCase() : (inv.patientName?.toLowerCase() || "");
+      const patientPhone = patientObj ? patientObj.phone.toLowerCase() : "";
       const invoiceIdShort = inv.id.toLowerCase();
+      const searchLower = debouncedInvoiceSearch.toLowerCase();
 
       const matchesSearch =
-        patientName.includes(debouncedInvoiceSearch.toLowerCase()) ||
-        invoiceIdShort.includes(debouncedInvoiceSearch.toLowerCase());
+        patientName.includes(searchLower) ||
+        patientPhone.includes(searchLower) ||
+        invoiceIdShort.includes(searchLower);
 
-      const status = inv.status || inv.paymentStatus || "Pending";
-      const matchesStatus =
-        activeStatusFilter === "All" || status === activeStatusFilter;
+      const status = getInvoiceStatus(inv);
+      const isPaid = status === "PAID";
+      const dueDateStr = inv.dueDate || inv.invoiceDate;
+      const diffDays = getDiffDays(dueDateStr, todayDate);
+
+      let matchesStatus = true;
+      if (activeStatusFilter === "PENDING") {
+        matchesStatus = status === "PENDING" || status === "UNPAID";
+      } else if (activeStatusFilter === "PARTIAL") {
+        matchesStatus = status === "PARTIAL";
+      } else if (activeStatusFilter === "PAID") {
+        matchesStatus = isPaid;
+      } else if (activeStatusFilter === "OVERDUE") {
+        matchesStatus = !isPaid && diffDays < 0;
+      } else if (activeStatusFilter === "DUE_TODAY") {
+        matchesStatus = !isPaid && diffDays === 0;
+      } else if (activeStatusFilter === "DUE_THIS_WEEK") {
+        matchesStatus = !isPaid && diffDays >= 0 && diffDays <= 7;
+      }
 
       return matchesSearch && matchesStatus;
     });
-  }, [invoices, patients, debouncedInvoiceSearch, activeStatusFilter]);
+  }, [invoices, patients, debouncedInvoiceSearch, activeStatusFilter, todayDate]);
 
   // Paginated Invoices Slice
   const paginatedInvoices = useMemo(() => {
     const start = (invoicePage - 1) * pageSize;
     return filteredInvoices.slice(start, start + pageSize);
-  }, [filteredInvoices, invoicePage]);
+  }, [filteredInvoices, invoicePage, pageSize]);
 
   const hasNextPage = invoicePage * pageSize < filteredInvoices.length;
 
-  // Open patient detail modal
   const handleOpenPatientDetails = async (phone: string, name: string) => {
     try {
       const found = await queryClient.fetchQuery({
@@ -470,7 +335,7 @@ function BillingPageContent() {
           age: "",
           lastVisit: "",
           condition: "",
-          notes: "This patient requested a booking online but has not been added to the registry yet.",
+          notes: "Patient profile loaded from invoice records.",
           avatarColor: "bg-gray-500",
           createdAt: null as any,
           updatedAt: null as any,
@@ -520,7 +385,6 @@ function BillingPageContent() {
   const isLoading = isPatientsLoading || isInvoicesLoading;
   const showSkeleton = useDelayLoading(isLoading, 300);
 
-
   return (
     <div className="min-h-screen flex bg-[#f2f5f8] font-sans">
       {/* ── Mobile Sidebar Overlay ── */}
@@ -538,46 +402,44 @@ function BillingPageContent() {
 
       {/* ── Mobile Sidebar Drawer ── */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 w-[220px] shadow-level-2 transition-transform duration-300 md:hidden ${sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
+        className={`fixed inset-y-0 left-0 z-50 w-[220px] shadow-level-2 transition-transform duration-300 md:hidden ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
       >
-        <Sidebar
-          currentPage="billing"
-          onClose={() => setSidebarOpen(false)}
-        />
+        <Sidebar currentPage="billing" onClose={() => setSidebarOpen(false)} />
       </div>
 
-      {/* ═══ MAIN AREA ═══ */}
+      {/* ═══ MAIN WORKSPACE AREA ═══ */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Bar */}
-        <header className="bg-white border-b border-outline-variant/20 px-4 md:px-8 py-4 flex items-center gap-3 sticky top-0 z-20 shadow-sm">
-          {/* Hamburger (mobile only) */}
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="md:hidden p-2 rounded-lg hover:bg-surface-variant text-primary shrink-0 cursor-pointer"
-            aria-label="Open menu"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+        {/* Top Header Bar */}
+        <header className="bg-white border-b border-outline-variant/20 px-4 md:px-8 py-4 flex items-center justify-between sticky top-0 z-20 shadow-sm">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden p-2 rounded-lg hover:bg-surface-variant text-primary shrink-0 cursor-pointer"
+              aria-label="Open menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-lg md:text-xl font-bold text-primary flex items-center gap-2 font-sans">
+                <Receipt className="w-5 h-5 text-primary" /> Billing & Collections Workspace
+              </h1>
+              <p className="text-xs text-on-surface-variant hidden sm:block">
+                Collect payments, track outstanding dues, and issue invoice receipts
+              </p>
+            </div>
+          </div>
 
-          <h1 className="text-lg md:text-xl font-bold text-primary shrink-0 font-sans">
-            Billing & Revenue
-          </h1>
-
-          {/* Profile */}
-          <div className="flex items-center gap-2 md:gap-3 shrink-0 ml-auto">
-            <div className="text-right hidden lg:block">
+          <div className="flex items-center gap-3">
+            <div className="text-right hidden sm:block">
               <p className="text-sm font-semibold text-on-surface leading-tight">
                 {user?.email || "Admin"}
               </p>
-              <p className="text-xs text-on-surface-variant">
-                Clinic Administrator
-              </p>
+              <p className="text-xs text-on-surface-variant font-medium">Logged in Clinician</p>
             </div>
-            <div className="relative w-9 h-9 md:w-10 md:h-10 rounded-full overflow-hidden border-2 border-secondary-container shrink-0 bg-primary flex items-center justify-center">
-              <span className="text-white font-bold text-sm">
-                {user?.email?.[0]?.toUpperCase() || "A"}
-              </span>
+            <div className="w-9 h-9 md:w-10 md:h-10 rounded-full border-2 border-secondary-container shrink-0 bg-primary flex items-center justify-center text-white font-bold text-sm">
+              {user?.email?.[0]?.toUpperCase() || "A"}
             </div>
           </div>
         </header>
@@ -586,762 +448,809 @@ function BillingPageContent() {
         <main className="flex-1 p-4 md:p-8 space-y-6">
           {showSkeleton ? (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatsCardSkeleton />
                 <StatsCardSkeleton />
                 <StatsCardSkeleton />
                 <StatsCardSkeleton />
               </div>
-              <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-                <div className="xl:col-span-8 space-y-6">
-                  <TableSkeleton columns={6} rows={5} />
-                </div>
-                <div className="xl:col-span-4 space-y-6">
-                  <CardListSkeleton count={4} />
-                </div>
-              </div>
+              <TableSkeleton columns={8} rows={8} />
             </div>
           ) : (
             <>
-              {/* ── SECTION 1: REVENUE KPI CARDS ── */}
+              {/* ── 1. OPERATIONAL BILLING KPI CARDS (4 Cards Only) ── */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* 1. Today's Revenue */}
-                <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-5 flex items-center justify-between transition-transform hover:scale-[1.01]">
+                {/* 1. Today's Collection */}
+                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm p-5 flex items-center justify-between transition-all hover:border-outline-variant/30">
                   <div className="space-y-1">
-                    <span className="text-xs text-on-surface-variant font-medium block">Today's Revenue</span>
-                    <span className="text-2xl md:text-3xl font-bold font-mono text-emerald-600 block">
+                    <span className="text-xs text-on-surface-variant font-semibold uppercase tracking-wider block">Today's Collection</span>
+                    <span className="text-2xl font-bold font-mono text-emerald-600 block">
                       ₹{formatINR(stats.todayRevenue)}
                     </span>
-                    <div className="text-[10px] font-semibold text-emerald-600 uppercase">
-                      {stats.todayPaidCount} paid invoices today
+                    <div className="text-[11px] font-medium text-emerald-700 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      {stats.todayPaidCount} payments today
                     </div>
                   </div>
-                  <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0 shadow-sm">
                     <IndianRupee className="w-5 h-5 text-emerald-600" />
                   </div>
                 </div>
 
-                {/* 2. Month's Revenue */}
-                <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-5 flex items-center justify-between transition-transform hover:scale-[1.01]">
+                {/* 2. Pending Amount */}
+                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm p-5 flex items-center justify-between transition-all hover:border-outline-variant/30">
                   <div className="space-y-1">
-                    <span className="text-xs text-on-surface-variant font-medium block">Month's Revenue</span>
-                    <span className="text-2xl md:text-3xl font-bold font-mono text-emerald-600 block">
-                      ₹{formatINR(stats.sumRevenueMonth)}
-                    </span>
-                    <div className="text-[10px] font-semibold text-emerald-600 uppercase">
-                      {stats.countPaid} paid this month
-                    </div>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
-                    <TrendingUp className="w-5 h-5 text-emerald-600" />
-                  </div>
-                </div>
-
-                {/* 3. Total Revenue */}
-                <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-5 flex items-center justify-between transition-transform hover:scale-[1.01]">
-                  <div className="space-y-1">
-                    <span className="text-xs text-on-surface-variant font-medium block">Total Revenue</span>
-                    <span className="text-2xl md:text-3xl font-bold font-mono text-emerald-700 block">
-                      ₹{formatINR(stats.sumTotalRevenue)}
-                    </span>
-                    <div className="text-[10px] font-semibold text-emerald-700 uppercase">
-                      All-time collected
-                    </div>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
-                    <IndianRupee className="w-5 h-5 text-emerald-700" />
-                  </div>
-                </div>
-
-                {/* 4. Pending Payments */}
-                <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-5 flex items-center justify-between transition-transform hover:scale-[1.01]">
-                  <div className="space-y-1">
-                    <span className="text-xs text-on-surface-variant font-medium block">Pending Payments</span>
-                    <span className="text-2xl md:text-3xl font-bold font-mono text-amber-600 block">
+                    <span className="text-xs text-on-surface-variant font-semibold uppercase tracking-wider block">Pending Amount</span>
+                    <span className="text-2xl font-bold font-mono text-amber-600 block">
                       ₹{formatINR(stats.pendingPaymentsAmount)}
                     </span>
-                    <div className="text-[10px] font-semibold text-amber-600 uppercase">
+                    <div className="text-[11px] font-medium text-amber-700 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />
                       {stats.pendingPaymentsCount} outstanding invoices
                     </div>
                   </div>
-                  <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+                  <div className="w-11 h-11 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0 shadow-sm">
                     <CreditCard className="w-5 h-5 text-amber-600" />
+                  </div>
+                </div>
+
+                {/* 3. Invoices Due Today */}
+                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm p-5 flex items-center justify-between transition-all hover:border-outline-variant/30">
+                  <div className="space-y-1">
+                    <span className="text-xs text-on-surface-variant font-semibold uppercase tracking-wider block">Invoices Due Today</span>
+                    <span className="text-2xl font-bold font-mono text-blue-600 block">
+                      ₹{formatINR(stats.dueTodayAmount)}
+                    </span>
+                    <div className="text-[11px] font-medium text-blue-700 flex items-center gap-1">
+                      <CalendarDays className="w-3.5 h-3.5" />
+                      {stats.dueTodayCount} due today
+                    </div>
+                  </div>
+                  <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0 shadow-sm">
+                    <AlertTriangle className="w-5 h-5 text-blue-600" />
+                  </div>
+                </div>
+
+                {/* 4. Overdue Payments */}
+                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm p-5 flex items-center justify-between transition-all hover:border-outline-variant/30">
+                  <div className="space-y-1">
+                    <span className="text-xs text-on-surface-variant font-semibold uppercase tracking-wider block">Overdue Payments</span>
+                    <span className="text-2xl font-black font-mono text-red-600 block">
+                      ₹{formatINR(stats.overdueAmount)}
+                    </span>
+                    <div className="text-[11px] font-semibold text-red-700 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      {stats.overdueCount} overdue invoices
+                    </div>
+                  </div>
+                  <div className="w-11 h-11 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center shrink-0 shadow-sm">
+                    <AlertCircle className="w-5 h-5 text-red-600" />
                   </div>
                 </div>
               </div>
 
-              {/* ── MAIN CONTENT GRID ── */}
-              <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-
-                {/* LEFT COLUMN: Tables (col-span-8) */}
-                <div className="xl:col-span-8 space-y-6">
-
-                  {/* PENDING PAYMENTS TABLE */}
-                  <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm overflow-hidden">
-                    <div className="px-5 py-4 border-b border-outline-variant/10 flex items-center justify-between">
-                      <h2 className="text-sm font-bold text-on-surface uppercase tracking-wider flex items-center gap-2 font-sans">
-                        <IndianRupee className="w-4 h-4 text-amber-600" />
-                        Pending Payments Table
+              {/* ── 2. MASTER INVOICE REGISTRY WORKSPACE (Full Width) ── */}
+              <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden space-y-0">
+                
+                {/* Search & Filter Header Bar */}
+                <div className="p-5 border-b border-outline-variant/10 space-y-4 bg-white">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-bold text-on-surface flex items-center gap-2 font-sans">
+                        <CreditCard className="w-5 h-5 text-primary" />
+                        Master Invoice Registry
                       </h2>
-                      <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                        {pendingPaymentsList.length} Invoices
-                      </span>
-                    </div>
-
-                    {pendingPaymentsList.length === 0 ? (
-                      <div className="py-12 text-center text-on-surface-variant">
-                        <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-400 opacity-60" />
-                        <p className="text-xs font-semibold">No pending payments outstanding</p>
-                        <p className="text-[10px] mt-0.5 text-on-surface-variant/75">
-                          Excellent! All invoices have been paid in full
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                        <table className="w-full text-sm text-left border-collapse">
-                          <thead>
-                            <tr className="bg-surface-container border-b border-outline-variant/15 text-[11px] uppercase font-bold text-on-surface-variant">
-                              <th className="px-5 py-4">Patient</th>
-                              <th className="px-5 py-4 text-center">Invoice No.</th>
-                              <th className="px-5 py-4 text-right">Due Amount</th>
-                              <th className="px-5 py-4">Status</th>
-                              <th className="px-5 py-4 text-right">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-outline-variant/10">
-                            {pendingPaymentsList.map((inv, idx) => (
-                              <tr key={idx} className="hover:bg-surface-container-low/20 transition-colors">
-                                <td className="px-5 py-5 font-bold text-on-surface">
-                                  {inv.patientPhone ? (
-                                    <button
-                                      onClick={() => handleOpenPatientDetails(inv.patientPhone, inv.patientName)}
-                                      className="hover:underline text-left cursor-pointer font-bold text-sm text-on-surface"
-                                    >
-                                      {inv.patientName}
-                                    </button>
-                                  ) : (
-                                    inv.patientName
-                                  )}
-                                </td>
-                                <td className="px-5 py-5 text-center text-on-surface-variant font-semibold font-mono">
-                                  #{inv.invoiceNo}
-                                </td>
-                                <td className="px-5 py-5 text-right font-bold text-red-600 font-mono text-sm">
-                                  ₹{formatINR(inv.dueAmount)}
-                                </td>
-                                <td className="px-5 py-5">
-                                  <div className="flex flex-col gap-1 items-start">
-                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs border ${inv.bgClass}`}>
-                                      <span className={`w-1.5 h-1.5 rounded-full ${inv.dotClass}`} />
-                                      <span>{inv.status}</span>
-                                    </span>
-                                    <span className="text-[10px] text-on-surface-variant font-medium">
-                                      Due: {inv.dueDate}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td className="px-5 py-5 text-right">
-                                  <button
-                                    onClick={() => showToast(`Initiated payment collection of ₹${formatINR(inv.dueAmount)} for ${inv.patientName}`)}
-                                    className="h-12 px-6 text-xs font-black uppercase tracking-wider rounded-xl bg-primary hover:bg-primary-container text-white shadow-md hover:shadow-lg transition-all hover:scale-[1.03] active:scale-[0.97] cursor-pointer flex items-center justify-center ml-auto"
-                                    title="Collect Payment"
-                                  >
-                                    Collect Payment
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* INVOICE REGISTRY LIST (SEARCH / FILTER) */}
-                  <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm overflow-hidden">
-                    <div className="px-5 py-4 border-b border-outline-variant/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                      <h2 className="text-sm font-bold text-on-surface uppercase tracking-wider flex items-center gap-2 font-sans">
-                        <CreditCard className="w-4 h-4 text-primary" />
-                        Invoice Registry
-                      </h2>
-                      <span className="text-xs font-semibold text-on-surface-variant bg-surface-container px-2.5 py-0.5 rounded-full font-sans">
+                      <span className="bg-primary/10 text-primary px-2.5 py-0.5 rounded-full text-xs font-bold font-sans">
                         {filteredInvoices.length} Invoices Found
                       </span>
                     </div>
 
-                    {/* Filter controls */}
-                    <div className="p-4 bg-surface-container/30 border-b border-outline-variant/10 flex flex-col sm:flex-row gap-3">
-                      {/* Search Bar */}
-                      <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
-                        <input
-                          type="text"
-                          value={invoiceSearch}
-                          onChange={(e) => {
-                            setInvoiceSearch(e.target.value);
+                    {/* Search Input */}
+                    <div className="relative w-full md:w-80">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
+                      <input
+                        type="text"
+                        value={invoiceSearch}
+                        onChange={(e) => {
+                          setInvoiceSearch(e.target.value);
+                          setInvoicePage(1);
+                        }}
+                        placeholder="Search patient name, phone, invoice ID..."
+                        className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-outline-variant/30 bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface"
+                      />
+                      {invoiceSearch && (
+                        <button
+                          onClick={() => setInvoiceSearch("")}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface p-0.5 rounded-full"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 7 Operational Filter Tabs */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-t border-outline-variant/10 pt-3">
+                    {[
+                      { id: "All", label: "All Invoices", count: invoices.length },
+                      { id: "PENDING", label: "Pending", count: stats.pendingPaymentsCount },
+                      { id: "PARTIAL", label: "Partial", count: invoices.filter(i => getInvoiceStatus(i) === "PARTIAL").length },
+                      { id: "PAID", label: "Paid", count: invoices.filter(i => getInvoiceStatus(i) === "PAID").length },
+                      { id: "OVERDUE", label: "Overdue", count: stats.overdueCount, isAlert: stats.overdueCount > 0 },
+                      { id: "DUE_TODAY", label: "Due Today", count: stats.dueTodayCount },
+                      { id: "DUE_THIS_WEEK", label: "Due This Week" },
+                    ].map((tab) => {
+                      const isActive = activeStatusFilter === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          onClick={() => {
+                            setActiveStatusFilter(tab.id as FilterTab);
                             setInvoicePage(1);
                           }}
-                          placeholder="Search by patient name or invoice ID..."
-                          className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-outline-variant/40 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                        />
-                      </div>
-
-                      {/* Status filter tabs */}
-                      <div className="flex gap-1 bg-surface-container-low rounded-lg p-1 self-start sm:self-auto">
-                        {(["All", "Paid", "Pending", "Partial"] as const).map((status) => (
-                          <button
-                            key={status}
-                            onClick={() => {
-                              setActiveStatusFilter(status);
-                              setInvoicePage(1);
-                            }}
-                            className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition-all ${
-                              activeStatusFilter === status
-                                ? "bg-white text-primary shadow-sm"
-                                : "text-secondary hover:text-on-surface"
-                            }`}
-                          >
-                            {status}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {filteredInvoices.length === 0 ? (
-                      <div className="py-12 text-center text-on-surface-variant">
-                        <Search className="w-8 h-8 mx-auto mb-2 text-on-surface-variant/60" />
-                        <p className="text-xs font-semibold">No invoices matched your filters</p>
-                        <p className="text-[10px] mt-0.5 text-on-surface-variant/75">
-                          Try searching for a different keyword or resetting filters
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left border-collapse">
-                              <thead>
-                                <tr className="bg-surface-container border-b border-outline-variant/15 text-[11px] uppercase font-bold text-on-surface-variant">
-                                  <th className="px-5 py-4 w-10 text-center">
-                                    <input
-                                      type="checkbox"
-                                      checked={
-                                        paginatedInvoices.length > 0 &&
-                                        paginatedInvoices.every((inv) => !!selectedInvoiceIds[inv.id])
-                                      }
-                                      onChange={(e) => {
-                                        const checked = e.target.checked;
-                                        setSelectedInvoiceIds((prev) => {
-                                          const next = { ...prev };
-                                          paginatedInvoices.forEach((inv) => {
-                                            if (checked) {
-                                              next[inv.id] = true;
-                                            } else {
-                                              delete next[inv.id];
-                                            }
-                                          });
-                                          return next;
-                                        });
-                                      }}
-                                      className="rounded border-outline-variant/40 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
-                                    />
-                                  </th>
-                                  <th className="px-5 py-4 w-10"></th>
-                                  <th className="px-5 py-4">Patient</th>
-                                  <th className="px-5 py-4 text-right">Amount Due</th>
-                                  <th className="px-5 py-4">Status</th>
-                                  <th className="px-5 py-4">Due Date</th>
-                                  <th className="px-5 py-4 text-right w-40">Actions</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-outline-variant/10">
-                                {paginatedInvoices.map((inv, index) => {
-                                  const patientObj = patients.find(p => p.id === inv.patientId);
-                                  const patientPhone = patientObj ? patientObj.phone : "";
-                                  const patientName = patientObj ? patientObj.name : (inv.patientName || "Unknown Patient");
-                                  const invStatus = inv.status || inv.paymentStatus || "Pending";
-                                  const urgency = getInvoiceUrgency(inv.invoiceDate, invStatus);
-                                  const isExpanded = !!expandedInvoices[inv.id];
-
-                                  return (
-                                    <React.Fragment key={inv.id}>
-                                      <tr className="hover:bg-surface-container-low/20 transition-colors border-b border-outline-variant/10">
-                                        <td className="px-5 py-5 text-center">
-                                          <input
-                                            type="checkbox"
-                                            checked={!!selectedInvoiceIds[inv.id]}
-                                            onChange={(e) => {
-                                              const checked = e.target.checked;
-                                              setSelectedInvoiceIds((prev) => {
-                                                const next = { ...prev };
-                                                if (checked) {
-                                                  next[inv.id] = true;
-                                                } else {
-                                                  delete next[inv.id];
-                                                }
-                                                return next;
-                                              });
-                                            }}
-                                            className="rounded border-outline-variant/40 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
-                                          />
-                                        </td>
-                                        <td className="px-5 py-5 text-center">
-                                          <button
-                                            onClick={() => toggleInvoiceExpand(inv.id)}
-                                            className="p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant transition-transform duration-200 cursor-pointer flex items-center justify-center"
-                                            style={{ transform: isExpanded ? "rotate(90deg)" : "none" }}
-                                            title="Toggle Breakdown Details"
-                                          >
-                                            <ChevronRight className="w-4 h-4" />
-                                          </button>
-                                        </td>
-                                        <td className="px-5 py-5 font-bold text-on-surface">
-                                          <div className="flex flex-col">
-                                            {patientPhone ? (
-                                              <button
-                                                onClick={() => handleOpenPatientDetails(patientPhone, patientName)}
-                                                className="hover:underline text-left cursor-pointer font-bold text-sm text-on-surface"
-                                              >
-                                                {patientName}
-                                              </button>
-                                            ) : (
-                                              <span className="text-sm">{patientName}</span>
-                                            )}
-                                            <span className="text-[10px] text-on-surface-variant font-mono mt-0.5">
-                                              #{inv.id.slice(0, 8).toUpperCase()}
-                                            </span>
-                                          </div>
-                                        </td>
-                                        <td className="px-5 py-5 text-right font-bold text-on-surface font-mono text-sm">
-                                          ₹{formatINR(inv.total || inv.amount)}
-                                        </td>
-                                        <td className="px-5 py-5">
-                                          <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs border ${urgency.bgClass}`}>
-                                            {urgency.label}
-                                          </span>
-                                        </td>
-                                        <td className="px-5 py-5 text-on-surface-variant font-semibold text-sm whitespace-nowrap">
-                                          {inv.invoiceDate}
-                                        </td>
-                                        <td className="px-5 py-5 text-right">
-                                          <div className="flex items-center justify-end gap-2">
-                                            {/* Send WhatsApp Reminder */}
-                                            {patientPhone && invStatus !== "Paid" && (
-                                              <a
-                                                href={buildInvoiceWhatsAppUrl(patientPhone, patientName, inv)}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="w-10 h-10 rounded-xl hover:bg-surface-container text-emerald-600 flex items-center justify-center cursor-pointer transition-colors"
-                                                title="Send WhatsApp Reminder"
-                                              >
-                                                <WhatsAppIcon className="w-5 h-5 fill-current" />
-                                              </a>
-                                            )}
-                                            {/* Print invoice button */}
-                                            <button
-                                              onClick={() => handlePrintInvoice(inv.id)}
-                                              className="w-10 h-10 rounded-xl hover:bg-surface-container text-primary flex items-center justify-center cursor-pointer border-none bg-transparent"
-                                              title="Print Invoice PDF"
-                                            >
-                                              <Printer className="w-5 h-5" />
-                                            </button>
-                                            {/* Change status action */}
-                                            <InvoiceStatusDropdown
-                                              currentStatus={invStatus}
-                                              onStatusChange={(s) => handleInvoiceStatusChange(inv.id, s)}
-                                              openUp={index >= paginatedInvoices.length - 2}
-                                            />
-                                          </div>
-                                        </td>
-                                      </tr>
-
-                                      {/* Expandable breakdown row */}
-                                      {isExpanded && (
-                                        <tr className="bg-surface-container-lowest/40">
-                                          <td colSpan={7} className="px-10 py-4 border-b border-outline-variant/10">
-                                            <div className="max-w-md bg-white border border-outline-variant/15 rounded-xl p-5 shadow-sm space-y-3">
-                                              <p className="text-xs font-bold text-primary uppercase tracking-wider border-b border-outline-variant/10 pb-2 flex items-center justify-between">
-                                                <span>Invoice Breakdown</span>
-                                                <span className="font-mono text-[10px] text-on-surface-variant lowercase">id: #{inv.id}</span>
-                                              </p>
-                                              <div className="grid grid-cols-2 gap-y-2 text-xs font-medium text-on-surface-variant">
-                                                <div>Subtotal / Gross Amount:</div>
-                                                <div className="text-right font-mono font-bold text-on-surface">₹{formatINR(inv.subtotal || inv.grossAmount || 0)}</div>
-
-                                                <div>Tax (18%):</div>
-                                                <div className="text-right font-mono font-bold text-on-surface">₹{formatINR(inv.tax || inv.taxAmount || 0)}</div>
-
-                                                <div>Discount:</div>
-                                                <div className="text-right font-mono font-bold text-red-500">-₹{formatINR(inv.discount || inv.discountAmount || 0)}</div>
-
-                                                <div className="border-t border-outline-variant/10 pt-2 font-bold text-on-surface">Grand Total:</div>
-                                                <div className="border-t border-outline-variant/10 pt-2 text-right font-mono font-extrabold text-sm text-primary">
-                                                  ₹{formatINR(inv.total || inv.amount || 0)}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </td>
-                                        </tr>
-                                      )}
-                                    </React.Fragment>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                          
-                        )}
-
-                        {/* Pagination */}
-                        {filteredInvoices.length > pageSize && (
-                          <div className="px-5 py-3 border-t border-outline-variant/10 flex items-center justify-between gap-3 bg-surface-container-lowest">
-                            <p className="text-xs text-on-surface-variant font-medium">
-                              Showing Page <span className="font-semibold text-on-surface">{invoicePage}</span> · Invoices {pageSize * (invoicePage - 1) + 1}–{pageSize * (invoicePage - 1) + paginatedInvoices.length} of {filteredInvoices.length}
-                            </p>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                onClick={() => setInvoicePage(p => Math.max(1, p - 1))}
-                                disabled={invoicePage === 1}
-                                className="p-1.5 rounded-lg border border-outline-variant/30 hover:bg-surface-container text-on-surface-variant disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer flex items-center justify-center bg-white"
-                              >
-                                <ChevronLeft className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => setInvoicePage(p => p + 1)}
-                                disabled={!hasNextPage}
-                                className="p-1.5 rounded-lg border border-outline-variant/30 hover:bg-surface-container text-on-surface-variant disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer flex items-center justify-center bg-white"
-                              >
-                                <ChevronRight className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      
-                      
-                      
-                        </div>
-
-                    </div>
-
-                    {/* RIGHT COLUMN: Sidebar Insights (col-span-4) */}
-                    <div className="xl:col-span-4 space-y-6">
-
-                      {/* REVENUE ANALYTICS */}
-                      <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-5 space-y-4">
-                        <h2 className="text-sm font-bold text-on-surface uppercase tracking-wider flex items-center gap-2 font-sans">
-                          <TrendingUp className="w-4 h-4 text-emerald-600" />
-                          Revenue Analytics
-                        </h2>
-
-                        <div className="bg-emerald-50/55 p-4 rounded-xl border border-emerald-100/50 text-center space-y-1">
-                          <span className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider">Revenue This Month</span>
-                          <span className="text-3xl font-extrabold text-emerald-600 font-mono block">
-                            ₹{formatINR(stats.sumRevenueMonth)}
-                          </span>
-                        </div>
-
-                        <div className="divide-y divide-outline-variant/10 text-xs">
-                          <div className="py-2.5 flex justify-between items-center text-on-surface-variant">
-                            <span>Total Revenue (All-Time)</span>
-                            <span className="font-bold font-mono text-on-surface">₹{formatINR(stats.sumTotalRevenue)}</span>
-                          </div>
-                          <div className="py-2.5 flex justify-between items-center text-on-surface-variant">
-                            <span>Invoices Generated (Month)</span>
-                            <span className="font-bold text-on-surface">{stats.countGenerated}</span>
-                          </div>
-                          <div className="py-2.5 flex justify-between items-center text-on-surface-variant">
-                            <span>Paid Invoices (Month)</span>
-                            <span className="font-bold text-emerald-600">{stats.countPaid}</span>
-                          </div>
-                          <div className="py-2.5 flex justify-between items-center text-on-surface-variant">
-                            <span>Pending Invoices (Month)</span>
-                            <span className="font-bold text-amber-600">{stats.countPending}</span>
-                          </div>
-                        </div>
-
-                        {/* Paid Progress bar */}
-                        {(() => {
-                          const totalCount = stats.countGenerated;
-                          const paidCount = stats.countPaid;
-                          const pct = totalCount > 0 ? (paidCount / totalCount) * 100 : 0;
-                          return (
-                            <div className="space-y-1.5 pt-2">
-                              <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
-                                <span>Paid Invoices Progress</span>
-                                <span className="text-primary font-mono">{pct.toFixed(0)}%</span>
-                              </div>
-                              <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                                  style={{ width: `${pct}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-
-                      {/* PAID INVOICE LOGSUMMARY */}
-                      <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm overflow-hidden">
-                        <div className="px-5 py-4 border-b border-outline-variant/10 flex items-center justify-between">
-                          <h2 className="text-sm font-bold text-on-surface uppercase tracking-wider flex items-center gap-2 font-sans">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                            Recently Paid Invoices
-                          </h2>
-                        </div>
-
-                        {recentlyPaidInvoices.length === 0 ? (
-                          <div className="py-8 text-center text-on-surface-variant">
-                            <CreditCard className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                            <p className="text-xs font-semibold">No paid invoices recorded yet</p>
-                          </div>
-                        ) : (
-                          <div className="divide-y divide-outline-variant/10">
-                            {recentlyPaidInvoices.map((inv) => (
-                              <div
-                                key={inv.id}
-                                className="p-3.5 flex items-center justify-between hover:bg-surface-container-low/40 transition-colors"
-                              >
-                                <div className="flex-1 min-w-0">
-                                  <span className="text-xs font-bold text-on-surface block truncate">
-                                    {inv.patientName}
-                                  </span>
-                                  <span className="text-[9px] text-on-surface-variant font-medium">
-                                    Paid on: {inv.date} · #{inv.id.slice(0, 8).toUpperCase()}
-                                  </span>
-                                </div>
-                                <div className="text-right shrink-0">
-                                  <span className="text-xs font-bold text-emerald-600 block font-mono">
-                                    ₹{formatINR(inv.total)}
-                                  </span>
-                                  <span className="inline-flex px-1.5 py-0.2 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded">
-                                    Paid
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                    </div>
-
-                  </div>
-                </>
-          )}
-              </main>
-
-              {/* Footer */}
-              <footer className="bg-white border-t border-outline-variant/20 px-4 md:px-8 py-4">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-on-surface-variant">
-                  <p>© 2024 Sanjivani Dentals. All rights reserved.</p>
-                  <div className="flex items-center gap-4 font-medium">
-                    <Link href="/#privacy" className="hover:text-primary transition-colors">Privacy Policy</Link>
-                    <Link href="/#hipaa" className="hover:text-primary transition-colors">HIPAA Compliance</Link>
-                    <Link href="/#accessibility" className="hover:text-primary transition-colors">Accessibility</Link>
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer border ${
+                            isActive
+                              ? "bg-primary text-white border-primary shadow-sm"
+                              : tab.isAlert
+                              ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                              : "bg-surface-container-lowest text-on-surface-variant border-outline-variant/20 hover:bg-surface-container"
+                          }`}
+                        >
+                          <span>{tab.label}</span>
+                          {tab.count !== undefined && (
+                            <span
+                              className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                                isActive
+                                  ? "bg-white/20 text-white"
+                                  : tab.isAlert
+                                  ? "bg-red-200 text-red-800"
+                                  : "bg-surface-container text-on-surface-variant"
+                              }`}
+                            >
+                              {tab.count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-              </footer>
-            </div>
 
-          {/* Patient Details Modal */}
-          <PatientDetailsModal
-            patient={selectedPatient}
-            isOpen={isModalOpen}
-            onClose={closePatientDetails}
-          />
-
-          {/* Bulk WhatsApp Reminder Modal */}
-          {isBulkReminderOpen && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200 text-on-surface">
-                {/* Modal Header */}
-                <div className="px-6 py-4 border-b border-outline-variant/10 flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider flex items-center gap-2 font-sans">
-                    <WhatsAppIcon className="w-5 h-5 text-emerald-600 fill-current" />
-                    Send WhatsApp Reminders
-                  </h3>
-                  <button
-                    onClick={() => setIsBulkReminderOpen(false)}
-                    className="p-1 rounded-lg hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Modal Body */}
-                <div className="p-6 overflow-y-auto space-y-4">
-                  <div className="bg-emerald-50/50 border border-emerald-100/50 p-4 rounded-xl text-xs text-emerald-800 space-y-1">
-                    <p className="font-bold flex items-center gap-1">
-                      💡 Tip for bulk sending
+                {/* ── Table View / Empty States ── */}
+                {filteredInvoices.length === 0 ? (
+                  <div className="py-16 text-center bg-white p-8">
+                    <div className="w-12 h-12 rounded-2xl bg-surface-container-low flex items-center justify-center mx-auto mb-3 text-on-surface-variant/40">
+                      <Receipt className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-base font-bold text-on-surface">No invoices available.</h3>
+                    <p className="text-xs text-on-surface-variant mt-1 mb-6 max-w-sm mx-auto">
+                      Generate invoices from the Patient Clinical Workspace or adjust your active search and filter criteria.
                     </p>
-                    <p>
-                      To send to multiple patients at once, you will need to allow your browser to open multiple tabs/pop-ups. Alternatively, you can click the "Send" button next to each patient row.
-                    </p>
+                    <div className="flex flex-wrap items-center justify-center gap-3">
+                      {activeStatusFilter !== "All" || invoiceSearch ? (
+                        <button
+                          onClick={() => {
+                            setActiveStatusFilter("All");
+                            setInvoiceSearch("");
+                          }}
+                          className="px-4 py-2 text-xs font-semibold rounded-xl border border-outline-variant/30 text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
+                        >
+                          Clear Filters & Search
+                        </button>
+                      ) : null}
+                      <Link
+                        href="/admin/patients"
+                        className="px-4 py-2 text-xs font-semibold rounded-xl bg-primary text-white hover:bg-primary/90 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                      >
+                        <Users className="w-4 h-4" /> Go to Patients Directory
+                      </Link>
+                    </div>
                   </div>
-
-                  <div className="border border-outline-variant/10 rounded-xl overflow-hidden">
-                    <table className="w-full text-xs text-left border-collapse">
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left border-collapse">
                       <thead>
-                        <tr className="bg-surface-container-low text-[10px] uppercase font-bold text-on-surface-variant border-b border-outline-variant/10">
-                          <th className="px-4 py-3">Patient</th>
-                          <th className="px-4 py-3 text-right">Amount</th>
-                          <th className="px-4 py-3 text-center">Status</th>
-                          <th className="px-4 py-3 text-right w-24">Action</th>
+                        <tr className="bg-surface-container-lowest border-b border-outline-variant/15 text-[11px] uppercase font-bold text-on-surface-variant">
+                          <th className="px-4 py-4 w-10 text-center">
+                            <input
+                              type="checkbox"
+                              checked={
+                                paginatedInvoices.length > 0 &&
+                                paginatedInvoices.every((inv) => !!selectedInvoiceIds[inv.id])
+                              }
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setSelectedInvoiceIds((prev) => {
+                                  const next = { ...prev };
+                                  paginatedInvoices.forEach((inv) => {
+                                    if (checked) {
+                                      next[inv.id] = true;
+                                    } else {
+                                      delete next[inv.id];
+                                    }
+                                  });
+                                  return next;
+                                });
+                              }}
+                              className="rounded border-outline-variant/40 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                            />
+                          </th>
+                          <th className="px-2 py-4 w-8"></th>
+                          <th className="px-4 py-4">Invoice ID</th>
+                          <th className="px-4 py-4">Patient</th>
+                          <th className="px-4 py-4 text-center">Date</th>
+                          <th className="px-4 py-4 text-right">Gross Amount</th>
+                          <th className="px-4 py-4 text-right font-bold text-emerald-700">Paid Amount</th>
+                          <th className="px-4 py-4 text-right font-bold text-red-600">Remaining</th>
+                          <th className="px-4 py-4 text-center">Status</th>
+                          <th className="px-4 py-4 text-center">Due Date</th>
+                          <th className="px-4 py-4 text-center">Payment Method</th>
+                          <th className="px-4 py-4 text-right min-w-[200px]">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-outline-variant/10">
-                        {bulkReminderInvoiceIds.map((id) => {
-                          const inv = invoices.find((i) => i.id === id);
-                          if (!inv) return null;
+                        {paginatedInvoices.map((inv) => {
                           const patientObj = patients.find((p) => p.id === inv.patientId);
-                          const patientName = patientObj ? patientObj.name : inv.patientName || "Unknown Patient";
                           const patientPhone = patientObj ? patientObj.phone : "";
-                          const invStatus = inv.status || inv.paymentStatus || "Pending";
-                          const amount = inv.total || inv.amount || 0;
-                          const isSent = !!sentInvoices[id];
+                          const patientName = patientObj ? patientObj.name : (inv.patientName || "Unknown Patient");
+                          const invStatus = getInvoiceStatus(inv);
+                          const statusDetails = getInvoiceStatusDetails(inv);
+                          const isExpanded = !!expandedInvoices[inv.id];
+
+                          const gross = inv.subtotal !== undefined ? inv.subtotal : (inv.grossAmount || inv.total || inv.amount || 0);
+                          const net = inv.total !== undefined ? inv.total : (inv.netAmount || inv.amount || 0);
+                          const paidAmt = inv.paidAmount || 0;
+                          const remAmt = inv.remainingAmount !== undefined ? inv.remainingAmount : Math.max(0, net - paidAmt);
+                          const dueDateStr = inv.dueDate || inv.invoiceDate;
+                          const diffDays = getDiffDays(dueDateStr, todayDate);
+                          const paymentMethodStr = getInvoicePaymentMethod(inv);
 
                           return (
-                            <tr key={id} className="hover:bg-surface-container-lowest/50 transition-colors">
-                              <td className="px-4 py-3.5 font-semibold text-on-surface">
-                                <div className="flex flex-col">
-                                  <span>{patientName}</span>
-                                  <span className="text-[9px] text-on-surface-variant font-mono mt-0.5">
-                                    #{id.slice(0, 8).toUpperCase()}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3.5 text-right font-mono font-bold text-on-surface">
-                                ₹{formatINR(amount)}
-                              </td>
-                              <td className="px-4 py-3.5 text-center">
-                                <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  invStatus === "Paid" 
-                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
-                                    : "bg-amber-50 text-amber-700 border border-amber-100"
-                                }`}>
-                                  {invStatus}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3.5 text-right">
-                                {patientPhone ? (
-                                  <button
-                                    onClick={() => {
-                                      const url = buildInvoiceWhatsAppUrl(patientPhone, patientName, inv);
-                                      window.open(url, "_blank");
-                                      setSentInvoices((prev) => ({ ...prev, [id]: true }));
+                            <React.Fragment key={inv.id}>
+                              <tr
+                                className={`hover:bg-surface-container-low/30 transition-colors border-b border-outline-variant/10 cursor-pointer ${
+                                  isExpanded ? "bg-slate-50/80" : ""
+                                }`}
+                                onClick={() => toggleInvoiceExpand(inv.id)}
+                              >
+                                <td className="px-4 py-5 text-center" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!selectedInvoiceIds[inv.id]}
+                                    onChange={(e) => {
+                                      const checked = e.target.checked;
+                                      setSelectedInvoiceIds((prev) => {
+                                        const next = { ...prev };
+                                        if (checked) {
+                                          next[inv.id] = true;
+                                        } else {
+                                          delete next[inv.id];
+                                        }
+                                        return next;
+                                      });
                                     }}
-                                    className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-all cursor-pointer inline-flex items-center gap-1 ${
-                                      isSent
-                                        ? "bg-slate-50 text-slate-500 border-slate-200"
-                                        : "bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50"
-                                    }`}
+                                    className="rounded border-outline-variant/40 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                                  />
+                                </td>
+                                <td className="px-2 py-5 text-center">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleInvoiceExpand(inv.id);
+                                    }}
+                                    className="p-1 rounded-lg hover:bg-surface-container text-on-surface-variant transition-transform duration-200 cursor-pointer flex items-center justify-center"
+                                    style={{ transform: isExpanded ? "rotate(90deg)" : "none" }}
+                                    title="Toggle Details"
                                   >
-                                    {isSent ? (
-                                      <>
-                                        <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                                        Sent
-                                      </>
-                                    ) : (
-                                      "Send"
-                                    )}
+                                    <ChevronRight className="w-4 h-4" />
                                   </button>
-                                ) : (
-                                  <span className="text-slate-400 text-[10px]">No Phone</span>
-                                )}
-                              </td>
-                            </tr>
+                                </td>
+                                <td className="px-4 py-5 font-mono text-xs font-bold text-on-surface-variant whitespace-nowrap">
+                                  #{inv.id.slice(0, 8).toUpperCase()}
+                                </td>
+                                <td className="px-4 py-5 font-bold text-on-surface min-w-[180px]">
+                                  {patientPhone ? (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenPatientDetails(patientPhone, patientName);
+                                      }}
+                                      className="hover:underline text-left cursor-pointer font-bold text-sm text-on-surface border-none bg-transparent block"
+                                    >
+                                      <span>{patientName}</span>
+                                      <span className="text-[11px] text-on-surface-variant font-mono block font-normal">
+                                        {patientPhone}
+                                      </span>
+                                    </button>
+                                  ) : (
+                                    <div>
+                                      <span className="text-sm font-bold block">{patientName}</span>
+                                      <span className="text-[11px] text-on-surface-variant font-normal">No phone</span>
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-5 text-center text-xs text-on-surface-variant whitespace-nowrap font-medium">
+                                  {inv.invoiceDate}
+                                </td>
+                                <td className="px-4 py-5 text-right font-mono text-xs font-semibold text-on-surface">
+                                  ₹{formatINR(gross)}
+                                </td>
+                                <td className="px-4 py-5 text-right font-mono text-xs font-extrabold text-emerald-600">
+                                  ₹{formatINR(paidAmt)}
+                                </td>
+                                <td className="px-4 py-5 text-right font-mono text-xs font-extrabold text-red-600">
+                                  ₹{formatINR(remAmt)}
+                                </td>
+                                <td className="px-4 py-5 text-center whitespace-nowrap">
+                                  <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${statusDetails.bgClass}`}>
+                                    {statusDetails.label}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-5 text-center text-xs whitespace-nowrap">
+                                  <span className="font-medium text-on-surface-variant block">{dueDateStr}</span>
+                                  {invStatus !== "PAID" && diffDays < 0 && (
+                                    <span className="text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.2 rounded border border-red-200">
+                                      Overdue {Math.abs(diffDays)}d
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-5 text-center text-xs font-medium text-on-surface-variant whitespace-nowrap">
+                                  {paymentMethodStr}
+                                </td>
+                                <td className="px-4 py-5 text-right" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    {/* Primary CTA: Collect Payment */}
+                                    {invStatus !== "PAID" && (
+                                      <button
+                                        onClick={() => {
+                                          setPaymentInvoice(inv);
+                                          setIsPaymentOpen(true);
+                                        }}
+                                        className="h-8 px-3 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-semibold shadow-sm transition-all hover:scale-[1.02] active:scale-95 cursor-pointer border-none flex items-center gap-1 shrink-0"
+                                        title="Collect Payment"
+                                      >
+                                        <CreditCard className="w-3.5 h-3.5" />
+                                        Collect Payment
+                                      </button>
+                                    )}
+
+                                    {/* Send WhatsApp Reminder */}
+                                    {patientPhone && invStatus !== "PAID" && (
+                                      <a
+                                        href={buildInvoiceWhatsAppUrl(patientPhone, patientName, inv)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="w-8 h-8 rounded-lg hover:bg-emerald-50 text-emerald-600 flex items-center justify-center cursor-pointer transition-colors border border-outline-variant/20 bg-white"
+                                        title="Send WhatsApp Reminder"
+                                      >
+                                        <WhatsAppIcon className="w-4 h-4 fill-current" />
+                                      </a>
+                                    )}
+
+                                    {/* Print invoice button */}
+                                    <button
+                                      onClick={() => handlePrintInvoice(inv.id)}
+                                      className="w-8 h-8 rounded-lg hover:bg-surface-container text-on-surface-variant hover:text-primary flex items-center justify-center cursor-pointer border border-outline-variant/20 bg-white"
+                                      title="Print / Download Invoice PDF"
+                                    >
+                                      <Printer className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+
+                              {/* Expandable breakdown row */}
+                              {isExpanded && (
+                                <tr className="bg-slate-50/90 animate-in fade-in duration-200">
+                                  <td colSpan={12} className="px-6 py-5 border-b border-outline-variant/15">
+                                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                      {/* Column 1: Financial & Patient Summary */}
+                                      <div className="lg:col-span-6 bg-white border border-outline-variant/15 rounded-xl p-5 shadow-sm space-y-4">
+                                        <div className="flex items-center justify-between border-b border-outline-variant/10 pb-3">
+                                          <span className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                                            <Receipt className="w-4 h-4" /> Invoice Financial Breakdown
+                                          </span>
+                                          <span className="font-mono text-[10px] text-on-surface-variant">
+                                            ID: #{inv.id}
+                                          </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-y-2.5 text-xs font-medium text-on-surface-variant">
+                                          <div>Gross Subtotal:</div>
+                                          <div className="text-right font-mono font-bold text-on-surface">
+                                            ₹{formatINR(gross)}
+                                          </div>
+
+                                          <div>Discount Applied:</div>
+                                          <div className="text-right font-mono font-bold text-red-500">
+                                            -₹{formatINR(inv.discount !== undefined ? inv.discount : (inv.discountAmount || 0))}
+                                          </div>
+
+                                          <div>Tax (18% GST):</div>
+                                          <div className="text-right font-mono font-bold text-on-surface">
+                                            ₹{formatINR(inv.tax !== undefined ? inv.tax : (inv.taxAmount || 0))}
+                                          </div>
+
+                                          <div className="border-t border-outline-variant/10 pt-2 font-bold text-on-surface text-sm">
+                                            Net Invoice Total:
+                                          </div>
+                                          <div className="border-t border-outline-variant/10 pt-2 text-right font-mono font-extrabold text-base text-primary">
+                                            ₹{formatINR(net)}
+                                          </div>
+
+                                          <div className="border-t border-outline-variant/10 pt-2 text-[11px] text-emerald-600 font-semibold">
+                                            Amount Paid:
+                                          </div>
+                                          <div className="border-t border-outline-variant/10 pt-2 text-right font-mono font-bold text-emerald-600 text-sm">
+                                            ₹{formatINR(paidAmt)}
+                                          </div>
+
+                                          <div className="border-t border-outline-variant/10 pt-2 text-[11px] text-red-600 font-bold">
+                                            Remaining Balance Due:
+                                          </div>
+                                          <div className="border-t border-outline-variant/10 pt-2 text-right font-mono font-black text-red-600 text-base">
+                                            ₹{formatINR(remAmt)}
+                                          </div>
+                                        </div>
+
+                                        {/* Action buttons inside drawer */}
+                                        <div className="pt-3 border-t border-outline-variant/10 flex flex-wrap gap-2">
+                                          {invStatus !== "PAID" && (
+                                            <button
+                                              onClick={() => {
+                                                setPaymentInvoice(inv);
+                                                setIsPaymentOpen(true);
+                                              }}
+                                              className="px-4 py-2 bg-primary text-white rounded-xl text-xs font-semibold hover:bg-primary/90 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                                            >
+                                              <CreditCard className="w-3.5 h-3.5" /> Collect Payment
+                                            </button>
+                                          )}
+                                          <button
+                                            onClick={() => handlePrintInvoice(inv.id)}
+                                            className="px-3 py-2 border border-outline-variant/30 text-on-surface rounded-xl text-xs font-semibold hover:bg-surface-container transition-colors flex items-center gap-1.5 cursor-pointer bg-white"
+                                          >
+                                            <Printer className="w-3.5 h-3.5" /> Download / Print PDF
+                                          </button>
+                                          {patientPhone && (
+                                            <a
+                                              href={buildInvoiceWhatsAppUrl(patientPhone, patientName, inv)}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="px-3 py-2 border border-green-200 text-green-800 bg-green-50 rounded-xl text-xs font-semibold hover:bg-green-100 transition-colors flex items-center gap-1.5"
+                                            >
+                                              <WhatsAppIcon className="w-3.5 h-3.5 text-green-600 fill-current" /> WhatsApp Reminder
+                                            </a>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* Column 2: Payment History Timeline */}
+                                      <div className="lg:col-span-6 bg-white border border-outline-variant/15 rounded-xl p-5 shadow-sm space-y-4">
+                                        <div className="flex items-center justify-between border-b border-outline-variant/10 pb-3">
+                                          <span className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                                            <Clock className="w-4 h-4" /> Payment History Timeline
+                                          </span>
+                                          <span className="text-[10px] text-on-surface-variant font-medium">
+                                            Due: {dueDateStr}
+                                          </span>
+                                        </div>
+
+                                        <div className="space-y-3 relative before:content-[''] before:absolute before:left-[9px] before:top-2 before:bottom-2 before:w-[2px] before:bg-outline-variant/20 max-h-52 overflow-y-auto pr-1">
+                                          {(() => {
+                                            const history = inv.paymentHistory || [];
+                                            const timeline = [...history];
+                                            if (timeline.length === 0) {
+                                              timeline.push({
+                                                paymentDate: inv.invoiceDate,
+                                                paymentMethod: "None",
+                                                amountReceived: 0,
+                                                paymentType: "Generated",
+                                                notes: "Invoice Generated",
+                                              });
+                                            }
+                                            return timeline.map((pay, idx) => (
+                                              <div key={idx} className="relative pl-6 text-xs">
+                                                <div
+                                                  className={`absolute left-0 top-1 w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm ${
+                                                    pay.paymentType === "Generated"
+                                                      ? "bg-slate-400"
+                                                      : pay.paymentType === "Paid"
+                                                      ? "bg-emerald-500"
+                                                      : pay.paymentType === "Partial"
+                                                      ? "bg-blue-500"
+                                                      : "bg-amber-500"
+                                                  }`}
+                                                />
+                                                <div className="flex justify-between items-start">
+                                                  <span className="font-semibold text-on-surface">
+                                                    {pay.paymentType === "Generated"
+                                                      ? "Invoice Generated"
+                                                      : `Received ₹${formatINR(pay.amountReceived)} via ${pay.paymentMethod}`}
+                                                  </span>
+                                                  <span className="text-[10px] text-on-surface-variant font-medium whitespace-nowrap">
+                                                    {pay.paymentDate}
+                                                  </span>
+                                                </div>
+                                                {pay.notes && (
+                                                  <p className="text-[10px] text-on-surface-variant italic mt-0.5 font-normal">
+                                                    Note: {pay.notes}
+                                                  </p>
+                                                )}
+                                              </div>
+                                            ));
+                                          })()}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
                           );
                         })}
                       </tbody>
                     </table>
                   </div>
-                </div>
+                )}
 
-                {/* Modal Footer */}
-                <div className="px-6 py-4 border-t border-outline-variant/10 bg-surface-container-lowest flex justify-between items-center text-xs">
-                  <button
-                    onClick={() => {
-                      setSelectedInvoiceIds({});
-                      setIsBulkReminderOpen(false);
-                    }}
-                    className="text-on-surface-variant hover:text-on-surface text-xs font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer"
-                  >
-                    Reset Selection & Close
-                  </button>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setIsBulkReminderOpen(false)}
-                      className="bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer"
-                    >
-                      Close
-                    </button>
-                    <button
-                      onClick={handleSendAll}
-                      disabled={bulkReminderInvoiceIds.every((id) => {
-                        const inv = invoices.find((i) => i.id === id);
-                        if (!inv) return true;
-                        const pObj = patients.find((p) => p.id === inv.patientId);
-                        return !pObj || !pObj.phone;
-                      })}
-                      className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:hover:bg-emerald-600 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <WhatsAppIcon className="w-3.5 h-3.5 fill-current" />
-                      Send All
-                    </button>
+                {/* Pagination Controls */}
+                {filteredInvoices.length > pageSize && (
+                  <div className="px-6 py-4 border-t border-outline-variant/10 flex items-center justify-between gap-3 bg-surface-container-lowest">
+                    <p className="text-xs text-on-surface-variant font-medium">
+                      Showing Page <span className="font-semibold text-on-surface">{invoicePage}</span> · Invoices{" "}
+                      {pageSize * (invoicePage - 1) + 1}–{pageSize * (invoicePage - 1) + paginatedInvoices.length} of{" "}
+                      {filteredInvoices.length}
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setInvoicePage((p) => Math.max(1, p - 1))}
+                        disabled={invoicePage === 1}
+                        className="p-1.5 rounded-lg border border-outline-variant/30 hover:bg-surface-container text-on-surface-variant disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer flex items-center justify-center bg-white"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setInvoicePage((p) => p + 1)}
+                        disabled={!hasNextPage}
+                        className="p-1.5 rounded-lg border border-outline-variant/30 hover:bg-surface-container text-on-surface-variant disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer flex items-center justify-center bg-white"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
+              </div>
+            </>
+          )}
+        </main>
+
+        {/* Footer */}
+        <footer className="bg-white border-t border-outline-variant/20 px-4 md:px-8 py-4 mt-auto">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-on-surface-variant">
+            <p>© 2024 Sanjivani Dentals. All rights reserved.</p>
+            <div className="flex items-center gap-4 font-medium">
+              <Link href="/#privacy" className="hover:text-primary transition-colors">
+                Privacy Policy
+              </Link>
+              <Link href="/#hipaa" className="hover:text-primary transition-colors">
+                HIPAA Compliance
+              </Link>
+              <Link href="/#accessibility" className="hover:text-primary transition-colors">
+                Accessibility
+              </Link>
+            </div>
+          </div>
+        </footer>
+      </div>
+
+      {/* Patient Details Modal */}
+      <PatientDetailsModal
+        patient={selectedPatient}
+        isOpen={isModalOpen}
+        onClose={closePatientDetails}
+      />
+
+      {/* Bulk WhatsApp Reminder Modal */}
+      {isBulkReminderOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh] text-on-surface">
+            <div className="px-6 py-4 border-b border-outline-variant/10 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider flex items-center gap-2 font-sans">
+                <WhatsAppIcon className="w-5 h-5 text-emerald-600 fill-current" />
+                Send WhatsApp Reminders
+              </h3>
+              <button
+                onClick={() => setIsBulkReminderOpen(false)}
+                className="p-1 rounded-lg hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-4">
+              <div className="bg-emerald-50/50 border border-emerald-100/50 p-4 rounded-xl text-xs text-emerald-800 space-y-1">
+                <p className="font-bold flex items-center gap-1">💡 Tip for bulk sending</p>
+                <p>
+                  To send to multiple patients at once, allow pop-ups in your browser or click "Send" next to each patient row.
+                </p>
+              </div>
+
+              <div className="border border-outline-variant/10 rounded-xl overflow-hidden">
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead>
+                    <tr className="bg-surface-container-low text-[10px] uppercase font-bold text-on-surface-variant border-b border-outline-variant/10">
+                      <th className="px-4 py-3">Patient</th>
+                      <th className="px-4 py-3 text-right">Remaining Due</th>
+                      <th className="px-4 py-3 text-center">Status</th>
+                      <th className="px-4 py-3 text-right w-24">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/10">
+                    {bulkReminderInvoiceIds.map((id) => {
+                      const inv = invoices.find((i) => i.id === id);
+                      if (!inv) return null;
+                      const patientObj = patients.find((p) => p.id === inv.patientId);
+                      const patientName = patientObj ? patientObj.name : inv.patientName || "Unknown Patient";
+                      const patientPhone = patientObj ? patientObj.phone : "";
+                      const invStatus = getInvoiceStatus(inv);
+                      const amount = inv.remainingAmount !== undefined ? inv.remainingAmount : (inv.total || inv.amount || 0);
+                      const isSent = !!sentInvoices[id];
+
+                      return (
+                        <tr key={id} className="hover:bg-surface-container-lowest/50 transition-colors">
+                          <td className="px-4 py-3.5 font-semibold text-on-surface">
+                            <div className="flex flex-col">
+                              <span>{patientName}</span>
+                              <span className="text-[9px] text-on-surface-variant font-mono mt-0.5">
+                                #{id.slice(0, 8).toUpperCase()}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5 text-right font-mono font-bold text-on-surface">
+                            ₹{formatINR(amount)}
+                          </td>
+                          <td className="px-4 py-3.5 text-center">
+                            <span
+                              className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${
+                                invStatus === "PAID"
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                                  : "bg-amber-50 text-amber-700 border border-amber-100"
+                              }`}
+                            >
+                              {invStatus}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            {patientPhone ? (
+                              <button
+                                onClick={() => {
+                                  const url = buildInvoiceWhatsAppUrl(patientPhone, patientName, inv);
+                                  window.open(url, "_blank");
+                                  setSentInvoices((prev) => ({ ...prev, [id]: true }));
+                                }}
+                                className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-all cursor-pointer inline-flex items-center gap-1 ${
+                                  isSent
+                                    ? "bg-slate-50 text-slate-500 border-slate-200"
+                                    : "bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                                }`}
+                              >
+                                {isSent ? (
+                                  <>
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                    Sent
+                                  </>
+                                ) : (
+                                  "Send"
+                                )}
+                              </button>
+                            ) : (
+                              <span className="text-slate-400 text-[10px]">No Phone</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
-          )}
 
-          {/* Floating Bulk Action Bar */}
-          {Object.keys(selectedInvoiceIds).length > 0 && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-6 border border-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-300">
-              <span className="text-xs font-semibold">
-                {Object.keys(selectedInvoiceIds).length} {Object.keys(selectedInvoiceIds).length === 1 ? "invoice" : "invoices"} selected
-              </span>
-              <div className="h-4 w-px bg-slate-800" />
-              <div className="flex items-center gap-3">
+            <div className="px-6 py-4 border-t border-outline-variant/10 bg-surface-container-lowest flex justify-between items-center text-xs">
+              <button
+                onClick={() => {
+                  setSelectedInvoiceIds({});
+                  setIsBulkReminderOpen(false);
+                }}
+                className="text-on-surface-variant hover:text-on-surface text-xs font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer"
+              >
+                Reset Selection & Close
+              </button>
+              <div className="flex gap-3">
                 <button
-                  onClick={() => {
-                    const selectedIds = Object.keys(selectedInvoiceIds);
-                    setBulkReminderInvoiceIds(selectedIds);
-                    setSentInvoices({});
-                    setIsBulkReminderOpen(true);
-                  }}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer border-none"
+                  onClick={() => setIsBulkReminderOpen(false)}
+                  className="bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={handleSendAll}
+                  disabled={bulkReminderInvoiceIds.every((id) => {
+                    const inv = invoices.find((i) => i.id === id);
+                    if (!inv) return true;
+                    const pObj = patients.find((p) => p.id === inv.patientId);
+                    return !pObj || !pObj.phone;
+                  })}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:hover:bg-emerald-600 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <WhatsAppIcon className="w-3.5 h-3.5 fill-current" />
-                  Send WhatsApp Reminders
-                </button>
-                
-                <button
-                  onClick={() => {
-                    setSelectedInvoiceIds({});
-                  }}
-                  className="text-slate-400 hover:text-white text-xs font-medium px-2 py-1.5 rounded-lg transition-colors cursor-pointer"
-                >
-                  Clear
+                  Send All
                 </button>
               </div>
             </div>
-          )}
+          </div>
+        </div>
+      )}
 
-          {/* Toast */}
-          {toast && (
-            <div className="fixed bottom-6 right-4 md:right-6 z-50 bg-on-surface text-surface text-sm font-medium px-4 py-3 rounded-xl shadow-level-2 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              {toast}
-            </div>
-          )}
-      </div>
-      );
+      {/* Floating Bulk Action Bar */}
+      {Object.keys(selectedInvoiceIds).length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-6 border border-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <span className="text-xs font-semibold">
+            {Object.keys(selectedInvoiceIds).length}{" "}
+            {Object.keys(selectedInvoiceIds).length === 1 ? "invoice" : "invoices"} selected
+          </span>
+          <div className="h-4 w-px bg-slate-800" />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                const selectedIds = Object.keys(selectedInvoiceIds);
+                setBulkReminderInvoiceIds(selectedIds);
+                setSentInvoices({});
+                setIsBulkReminderOpen(true);
+              }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer border-none"
+            >
+              <WhatsAppIcon className="w-3.5 h-3.5 fill-current" />
+              Send WhatsApp Reminders
+            </button>
+
+            <button
+              onClick={() => {
+                setSelectedInvoiceIds({});
+              }}
+              className="text-slate-400 hover:text-white text-xs font-medium px-2 py-1.5 rounded-lg transition-colors cursor-pointer"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-6 right-4 md:right-6 z-50 bg-on-surface text-surface text-sm font-medium px-4 py-3 rounded-xl shadow-level-2 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          {toast}
+        </div>
+      )}
+
+      {/* Payment Dialog */}
+      <PaymentDialog
+        invoice={paymentInvoice}
+        isOpen={isPaymentOpen}
+        onClose={() => {
+          setIsPaymentOpen(false);
+          setPaymentInvoice(null);
+        }}
+      />
+    </div>
+  );
 }
 
-      /* ─── Page component export with Guard ─── */
-      export default function BillingPage() {
+export default function BillingPage() {
   return (
-      <AdminAuthGuard>
-        <BillingPageContent />
-      </AdminAuthGuard>
-      );
+    <AdminAuthGuard>
+      <BillingPageContent />
+    </AdminAuthGuard>
+  );
 }

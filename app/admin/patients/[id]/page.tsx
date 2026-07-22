@@ -5,6 +5,7 @@ import { Timestamp } from "firebase/firestore";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronLeft,
   ChevronDown,
@@ -48,14 +49,14 @@ import {
   getPatientsByReferrer,
 } from "../../../../lib/services/patientService";
 import { getDoctors } from "../../../../lib/services/doctorService";
-import { addInvoice } from "../../../../lib/services/invoiceService";
+import { addInvoice, getInvoicesByPatientId } from "../../../../lib/services/invoiceService";
 import { queryKeys } from "../../../../lib/query/queryKeys";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { calculateSubtotal, calculateTax, calculateGrandTotal } from "../../../../lib/services/billingService";
 import { sendInvoiceEmail } from "../../../../lib/services/emailService";
 import { PatientDetailsModalSkeleton } from "../../../../components/ui/Skeletons";
-import type { PatientMedicalProfile, PatientEncounter, EncounterStatus } from "../../../../lib/types";
+import type { PatientMedicalProfile, PatientEncounter, EncounterStatus, Invoice } from "../../../../lib/types";
 import { DentalChart } from "../../../../components/dental-chart/DentalChart";
 import { DentalChartModal } from "../../../../components/dental-chart/DentalChartModal";
 import type { ToothRecord } from "../../../../components/dental-chart/types";
@@ -302,6 +303,13 @@ export default function PatientProfilePage({ params }: PageProps) {
     enabled: !!patient?.referredByPatientId,
   });
 
+  // 7. Invoices list for payment summary
+  const { data: patientInvoices = [] } = useQuery<Invoice[]>({
+    queryKey: queryKeys.invoices.byPatientId(patientId),
+    queryFn: () => getInvoicesByPatientId(patientId),
+    enabled: !!patientId,
+  });
+
   // Derive latest active encounter details
   const activeEncounter = encounters.find((e) => e.status === "In Progress");
   const currentTreatmentText = activeEncounter
@@ -400,6 +408,7 @@ export default function PatientProfilePage({ params }: PageProps) {
       const discount = discountPercentage; // Flat discount input amount in ₹
       const total = calculateGrandTotal(subtotal, tax, discount);
 
+      const invoiceDateStr = new Date().toISOString().split("T")[0];
       // Create new invoice in Firestore invoices collection matching the required schema
       const invoiceData = {
         patientId: patient.id,
@@ -412,14 +421,25 @@ export default function PatientProfilePage({ params }: PageProps) {
         discount,
         total,
         amount: total, // for backward compatibility
-        status: "Pending" as const,
-        paymentStatus: "Pending" as const, // for backward compatibility
+        status: "UNPAID" as const,
+        paymentStatus: "UNPAID" as const, // for backward compatibility
         paymentMethod: "None" as const, // for backward compatibility
-        invoiceDate: new Date().toISOString().split("T")[0],
+        invoiceDate: invoiceDateStr,
         treatments: selectedTreatments.map(t => t.treatmentName),
         items: selectedTreatments,
         createdAt: Timestamp.now(),
         emailSent: false,
+        
+        // Extended payment fields
+        grossAmount: subtotal,
+        netAmount: total,
+        paidAmount: 0,
+        remainingAmount: total,
+        dueDate: invoiceDateStr,
+        paymentHistory: [],
+        installmentPlan: null,
+        updatedAt: Timestamp.now(),
+        invoiceGenerated: true,
       };
 
       // Save document to Firestore using the existing invoices collection configuration
@@ -797,215 +817,192 @@ export default function PatientProfilePage({ params }: PageProps) {
           <main className="flex-grow p-6 lg:p-8 space-y-6">
             
             {/* CLINICAL PATIENT HEADER */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-white p-6 rounded-2xl border border-outline-variant/15 shadow-sm">
-              <div className="flex items-center gap-4">
-                <div className={`w-20 h-20 rounded-2xl ${patient.avatarColor || "bg-primary"} flex items-center justify-center text-white font-bold text-2xl shadow-sm shrink-0`}>
-                  {initials}
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-on-surface leading-tight">{patient.name}</h1>
-                  <div className="flex flex-wrap items-center gap-2 mt-1.5 text-sm text-on-surface-variant font-medium">
-                    <span className="bg-secondary-container text-primary px-2.5 py-0.5 rounded-full text-xs font-semibold">
-                      Basic Info Verified
-                    </span>
-                    <span className="text-outline-variant/60">•</span>
-                    <span className="text-on-surface">Registered: {formatTimestamp(patient.createdAt)}</span>
+            <div className="bg-white p-6 rounded-2xl border border-outline-variant/15 shadow-sm space-y-5">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                <div className="flex items-center gap-4">
+                  <div className={`w-20 h-20 rounded-2xl ${patient.avatarColor || "bg-primary"} flex items-center justify-center text-white font-bold text-2xl shadow-sm shrink-0`}>
+                    {initials}
                   </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-2xl font-bold text-on-surface leading-tight">{patient.name}</h1>
+                      <span className="bg-secondary-container text-primary px-2.5 py-0.5 rounded-full text-xs font-semibold">
+                        Verified Patient
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-on-surface-variant font-medium">
+                      <span>Registered: {formatTimestamp(patient.createdAt)}</span>
+                      {patient.referralSource && (
+                        <span>• Referral: <strong className="text-on-surface font-semibold">{patient.referralSource}</strong></span>
+                      )}
+                      {referrer && (
+                        <span>• Referred By: <Link href={`/admin/patients/${referrer.id}`} className="text-primary font-bold hover:underline">{referrer.name}</Link></span>
+                      )}
+                      {referredPatients.length > 0 && (
+                        <span>• Referred ({referredPatients.length}): <span className="text-on-surface font-semibold">{referredPatients.map(rp => rp.name).join(", ")}</span></span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-wrap gap-2.5">
+                  <button
+                    onClick={openEditProfile}
+                    className="flex items-center gap-1.5 px-4 py-2 border border-primary text-primary hover:bg-secondary-container rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    <Edit2 className="w-4 h-4" /> Edit Medical Profile
+                  </button>
+                  <button
+                    onClick={openAddEncounter}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl text-sm font-semibold transition-all shadow-sm active:scale-98 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" /> Log Patient Encounter
+                  </button>
+                  <button
+                    onClick={() => setIsDentalChartOpen(true)}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer"
+                  >
+                    <Activity className="w-4 h-4" /> Log Treatment
+                  </button>
+                  <a
+                    href={whatsappUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-4 py-2 bg-[#dcfce7] hover:bg-green-200 text-green-800 rounded-xl text-sm font-semibold transition-colors border border-green-200"
+                  >
+                    <WhatsAppIcon className="w-4 h-4 text-green-600" /> Patient WhatsApp
+                  </a>
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={openEditProfile}
-                  className="flex items-center gap-1.5 px-4 py-2 border border-primary text-primary hover:bg-secondary-container rounded-xl text-sm font-semibold transition-colors cursor-pointer"
-                >
-                  <Edit2 className="w-4 h-4" /> Edit Medical Profile
-                </button>
-                <button
-                  onClick={openAddEncounter}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl text-sm font-semibold transition-all shadow-sm active:scale-98 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" /> Log Patient Encounter
-                </button>
-                <button
-                  onClick={() => setIsDentalChartOpen(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer"
-                >
-                  <Activity className="w-4 h-4" /> Log Treatment
-                </button>
-                <a
-                  href={whatsappUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-4 py-2 bg-[#dcfce7] hover:bg-green-200 text-green-800 rounded-xl text-sm font-semibold transition-colors border border-green-200"
-                >
-                  <WhatsAppIcon className="w-4 h-4 text-green-600" /> Patient WhatsApp
-                </a>
+              {/* Quick Basic Information Row Bar */}
+              <div className="pt-4 border-t border-outline-variant/10 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 text-xs">
+                <div className="bg-slate-50/80 p-3 rounded-xl border border-outline-variant/10">
+                  <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-0.5">Age / DOB</span>
+                  <span className="font-semibold text-on-surface text-sm">{patient.age || "—"}</span>
+                </div>
+                <div className="bg-slate-50/80 p-3 rounded-xl border border-outline-variant/10">
+                  <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-0.5">Gender</span>
+                  <span className="font-semibold text-on-surface text-sm">{patient.gender || "—"}</span>
+                </div>
+                <div className="bg-slate-50/80 p-3 rounded-xl border border-outline-variant/10">
+                  <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-0.5">Phone Number</span>
+                  <span className="font-semibold text-on-surface text-sm">{patient.phone}</span>
+                </div>
+                <div className="bg-slate-50/80 p-3 rounded-xl border border-outline-variant/10">
+                  <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-0.5">Email Address</span>
+                  <span className="font-semibold text-on-surface text-sm truncate block" title={patient.email || "—"}>{patient.email || "—"}</span>
+                </div>
+                <div className="bg-slate-50/80 p-3 rounded-xl border border-outline-variant/10 col-span-2 sm:col-span-4 lg:col-span-1">
+                  <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-0.5">Address</span>
+                  <span className="font-semibold text-on-surface text-sm truncate block" title={patient.address || "—"}>{patient.address || "No address provided"}</span>
+                </div>
               </div>
             </div>
 
             {/* CLINICAL SPEC GRID */}
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               
-              {/* Left Column: Basic & Medical Profile Info (4 Cols) */}
-              <div className="xl:col-span-4 space-y-6">
+              {/* Left Column: Medical Profile & Clinical Notes Only (4 Cols) */}
+              <div className="lg:col-span-4 space-y-6">
                 
-                {/* Basic Details Card */}
-                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden">
-                  <div className="p-4 bg-surface-container-lowest border-b border-outline-variant/10">
-                    <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-2">
-                      <User className="w-4 h-4 text-primary" /> Basic Information
-                    </h3>
-                  </div>
-                  <div className="p-5 space-y-3.5 text-sm font-medium text-on-surface">
-                    <p><span className="text-on-surface-variant">Age / DOB:</span> {patient.age || "—"}</p>
-                    <p><span className="text-on-surface-variant">Gender:</span> {patient.gender || "—"}</p>
-                    <p><span className="text-on-surface-variant">Phone:</span> {patient.phone}</p>
-                    {patient.email && <p className="truncate"><span className="text-on-surface-variant">Email:</span> {patient.email}</p>}
-                    <p><span className="text-on-surface-variant">Address:</span> {patient.address || <span className="text-on-surface-variant/60 italic font-normal">No address provided</span>}</p>
-                  </div>
-                </div>
+                {/* Unified Card: Medical Profile & Clinical Notes */}
+                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden flex flex-col h-fit">
+                  <div className="p-6 space-y-6">
 
-                {/* Referral Information Card */}
-                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden">
-                  <div className="p-4 bg-surface-container-lowest border-b border-outline-variant/10">
-                    <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4 text-primary" /> Referral Information
-                    </h3>
-                  </div>
-                  <div className="p-5 space-y-3.5 text-sm font-medium text-on-surface">
-                    <p>
-                      <span className="text-on-surface-variant">Referral Source:</span>{" "}
-                      {patient.referralSource ? (
-                        <span className="inline-flex px-2 py-0.5 rounded bg-secondary-container text-primary text-xs font-bold">
-                          {patient.referralSource}
-                        </span>
-                      ) : (
-                        <span className="text-on-surface-variant/60 italic font-normal">Not recorded</span>
-                      )}
-                    </p>
-                    {patient.referralSource === "Existing Patient" && (
-                      <p>
-                        <span className="text-on-surface-variant">Referred By:</span>{" "}
-                        {referrer ? (
-                          <Link
-                            href={`/admin/patients/${referrer.id}`}
-                            className="text-primary hover:underline font-bold inline-flex items-center gap-1"
-                          >
-                            {referrer.name}
-                          </Link>
-                        ) : patient.referredByPatientId ? (
-                          <span className="text-on-surface-variant/60 italic font-normal">Loading referrer profile…</span>
+                    {/* Section 1: Medical Profile */}
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-2">
+                          <ShieldAlert className="w-4 h-4 text-primary" /> Medical Profile
+                        </h3>
+                        <button onClick={openEditProfile} className="text-primary text-xs font-bold hover:underline cursor-pointer">
+                          Edit
+                        </button>
+                      </div>
+                      <div className="space-y-3 pl-6">
+                        <div>
+                          <span className="text-on-surface-variant font-normal text-xs block mb-1">Blood Group</span>
+                          {medicalProfile?.bloodGroup ? (
+                            <span className="bg-red-50 text-red-700 px-2.5 py-0.5 rounded border border-red-200 text-xs font-bold inline-block">
+                              {medicalProfile.bloodGroup}
+                            </span>
+                          ) : (
+                            <p className="text-xs text-on-surface-variant/75 italic font-normal">No blood group added</p>
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-on-surface-variant font-normal text-xs block mb-1">Allergies</span>
+                          {medicalProfile?.allergies ? (
+                            <p className="text-xs text-red-800 bg-red-50 border border-red-200/50 p-2 rounded-lg leading-relaxed font-semibold">
+                              {medicalProfile.allergies}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-on-surface-variant/75 italic font-normal">No allergies recorded</p>
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-on-surface-variant font-normal text-xs block mb-1">Chronic Diseases</span>
+                          {medicalProfile?.chronicDiseases && medicalProfile.chronicDiseases !== "None" ? (
+                            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200/50 p-2 rounded-lg leading-relaxed font-semibold">
+                              {medicalProfile.chronicDiseases}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-on-surface-variant/75 italic font-normal">No chronic conditions</p>
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-on-surface-variant font-normal text-xs block mb-1">Medical Conditions</span>
+                          <p className="text-xs text-on-surface font-medium">
+                            {medicalProfile?.medicalConditions || <span className="italic font-normal text-on-surface-variant/70">No medical conditions recorded</span>}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-on-surface-variant font-normal text-xs block mb-1">Current Treatment Status</span>
+                          <p className={`text-xs font-semibold ${activeEncounter ? "text-primary" : "text-on-surface-variant/75 italic font-normal"}`}>
+                            {currentTreatmentText}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-on-surface-variant font-normal text-xs block mb-1">Emergency Contact</span>
+                          <p className="text-xs text-on-surface font-semibold flex items-center gap-1">
+                            <Phone className="w-3.5 h-3.5 text-primary" />
+                            {medicalProfile?.emergencyContact || <span className="text-on-surface-variant/75 italic font-normal">No emergency contact added</span>}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-outline-variant/10" />
+
+                    {/* Section 2: Clinical Notes */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-primary" /> Clinical Notes
+                      </h3>
+                      <div className="pl-6">
+                        {medicalProfile?.clinicalNotes ? (
+                          <p className="text-xs text-on-surface font-medium leading-relaxed whitespace-pre-wrap">
+                            {medicalProfile.clinicalNotes}
+                          </p>
                         ) : (
-                          <span className="text-on-surface-variant/60 italic font-normal">No referrer linked</span>
+                          <p className="text-xs text-on-surface-variant/75 italic font-normal">No clinical notes recorded</p>
                         )}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Medical Profile Card */}
-                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden">
-                  <div className="p-4 bg-surface-container-lowest border-b border-outline-variant/10 flex justify-between items-center">
-                    <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-2">
-                      <ShieldAlert className="w-4 h-4 text-primary" /> Medical Profile
-                    </h3>
-                    <button onClick={openEditProfile} className="text-primary text-xs font-bold hover:underline cursor-pointer">
-                      Edit
-                    </button>
-                  </div>
-                  
-                  <div className="p-5 space-y-4 text-sm font-medium text-on-surface">
-                    {/* Blood Group */}
-                    <div>
-                      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">Blood Group</p>
-                      {medicalProfile?.bloodGroup ? (
-                        <span className="bg-red-50 text-red-700 px-2.5 py-0.5 rounded border border-red-200 text-xs font-bold inline-block">
-                          {medicalProfile.bloodGroup}
-                        </span>
-                      ) : (
-                        <p className="text-xs text-on-surface-variant/75 italic font-normal">No blood group added</p>
-                      )}
+                      </div>
                     </div>
 
-                    {/* Allergies */}
-                    <div>
-                      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">Allergies</p>
-                      {medicalProfile?.allergies ? (
-                        <p className="text-xs text-red-800 bg-red-50 border border-red-200/50 p-2 rounded-lg leading-relaxed font-semibold">
-                          {medicalProfile.allergies}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-on-surface-variant/75 italic font-normal">No allergies recorded</p>
-                      )}
-                    </div>
-
-                    {/* Chronic Conditions */}
-                    <div>
-                      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">Chronic Diseases</p>
-                      {medicalProfile?.chronicDiseases && medicalProfile.chronicDiseases !== "None" ? (
-                        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200/50 p-2 rounded-lg leading-relaxed font-semibold">
-                          {medicalProfile.chronicDiseases}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-on-surface-variant/75 italic font-normal">No chronic conditions</p>
-                      )}
-                    </div>
-
-                    {/* Medical Conditions */}
-                    <div>
-                      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">Medical Conditions</p>
-                      <p className="text-xs text-on-surface-variant font-medium">
-                        {medicalProfile?.medicalConditions || <span className="italic font-normal">No medical conditions recorded</span>}
-                      </p>
-                    </div>
-
-                    {/* Current Treatment */}
-                    <div>
-                      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">Current Treatment Status</p>
-                      <p className={`text-xs font-semibold ${activeEncounter ? "text-primary" : "text-on-surface-variant/75 italic font-normal"}`}>
-                        {currentTreatmentText}
-                      </p>
-                    </div>
-
-                    {/* Emergency Contact */}
-                    <div>
-                      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">Emergency Contact</p>
-                      <p className="text-xs text-on-surface font-semibold flex items-center gap-1">
-                        <Phone className="w-3.5 h-3.5 text-primary" />
-                        {medicalProfile?.emergencyContact || <span className="text-on-surface-variant/75 italic font-normal">No emergency contact added</span>}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Clinical Notes */}
-                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden">
-                  <div className="p-4 bg-surface-container-lowest border-b border-outline-variant/10">
-                    <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-primary" /> Clinical Notes
-                    </h3>
-                  </div>
-                  <div className="p-5">
-                    {medicalProfile?.clinicalNotes ? (
-                      <p className="text-xs text-on-surface font-medium leading-relaxed whitespace-pre-wrap">
-                        {medicalProfile.clinicalNotes}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-on-surface-variant/75 italic font-normal">No clinical notes</p>
-                    )}
                   </div>
                 </div>
 
               </div>
 
               {/* Right Column: Dynamic visit encounters (8 Cols) */}
-              <div className="xl:col-span-8 space-y-6">
+              <div className="lg:col-span-8 space-y-6">
                 
                 {/* Timeline Card */}
-                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm p-6 space-y-6">
-                  <div className="flex justify-between items-center border-b border-outline-variant/10 pb-4">
+                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm p-6 flex flex-col h-[350px]">
+                  <div className="flex justify-between items-center border-b border-outline-variant/10 pb-4 shrink-0">
                     <h2 className="text-lg font-bold text-on-surface flex items-center gap-2">
                       <Activity className="w-5 h-5 text-primary" />
                       Patient Visit Encounter Logs
@@ -1017,6 +1014,8 @@ export default function PatientProfilePage({ params }: PageProps) {
                       <Plus className="w-3.5 h-3.5" /> Log Visit
                     </button>
                   </div>
+
+                  <div className="flex-1 overflow-y-auto mt-4 pr-1 scrollbar-thin">
 
                   {isEncountersLoading ? (
                     <div className="space-y-4 py-8">
@@ -1301,11 +1300,12 @@ export default function PatientProfilePage({ params }: PageProps) {
                       })}
                     </div>
                   )}
+                  </div>
                 </div>
 
-                {/* ── Dental Chart Section ── */}
-                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden select-none">
-                  <div className="p-4 bg-[#1b5e20] text-white flex items-center justify-between">
+                {/* 2. Dental Chart Section (DOMINATING, height 480px) */}
+                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden select-none flex flex-col h-[480px]">
+                  <div className="p-4 bg-[#1b5e20] text-white flex items-center justify-between shrink-0">
                     <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-2 font-sans">
                       <Activity className="w-4 h-4" />
                       Dental Chart & Interactive Diagnostics
@@ -1314,72 +1314,185 @@ export default function PatientProfilePage({ params }: PageProps) {
                       Interactive Workspace
                     </span>
                   </div>
-                  <div className="p-6 text-center space-y-4">
-                    <p className="text-xs font-medium text-on-surface-variant max-w-md mx-auto leading-relaxed">
-                      Access the full anatomical 32-tooth and pediatric dental chart workspace to log specific tooth conditions, treatments, and plans.
-                    </p>
+                  <div className="p-8 flex-1 flex flex-col items-center justify-between text-center bg-slate-50">
+                    <div className="space-y-2">
+                      <h4 className="text-base font-bold text-on-surface">Visual Dental Chart Workspace</h4>
+                      <p className="text-xs font-medium text-on-surface-variant max-w-md mx-auto leading-relaxed">
+                        Access the full anatomical 32-tooth and pediatric dental chart workspace to diagnose specific tooth conditions, log treatments, and schedule restorations.
+                      </p>
+                    </div>
+                    
+                    {/* Stylized representation of dental arches */}
+                    <div className="w-full max-w-sm py-4 opacity-75 hover:opacity-100 transition-opacity">
+                      <svg viewBox="0 0 200 100" className="w-full h-auto text-primary">
+                        <path d="M20,90 Q100,10 180,90" fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray="4 6" className="text-[#1b5e20]/40" />
+                        <path d="M30,90 Q100,30 170,90" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="3 4" className="text-[#1b5e20]/20" />
+                        {/* Draw stylized teeth */}
+                        {[30, 50, 70, 90, 110, 130, 150, 170].map((cx, i) => {
+                          const t = (cx - 20) / 160;
+                          const cy = (1-t)*(1-t)*90 + 2*(1-t)*t*10 + t*t*90;
+                          return (
+                            <g key={i}>
+                              <circle cx={cx} cy={cy} r="6" fill="#ffffff" stroke="#1b5e20" strokeWidth="1.5" className="hover:fill-[#1b5e20]/10 cursor-pointer" onClick={() => setIsDentalChartOpen(true)} />
+                              <rect x={cx-1.5} y={cy+6} width="3" height="10" fill="#1b5e20" />
+                            </g>
+                          );
+                        })}
+                      </svg>
+                    </div>
+
                     <button
                       onClick={() => setIsDentalChartOpen(true)}
-                      className="px-5 py-2 bg-[#1b5e20] hover:bg-[#123f15] text-white text-xs font-bold rounded-lg transition-colors cursor-pointer shadow-sm inline-flex items-center gap-1.5"
+                      className="px-6 py-3 bg-[#1b5e20] hover:bg-[#123f15] text-white text-sm font-semibold rounded-xl transition-all hover:scale-[1.01] active:scale-95 cursor-pointer shadow-sm flex items-center gap-2"
                     >
                       <Activity className="w-4 h-4" /> Open Dental Chart Workspace
                     </button>
                   </div>
                 </div>
 
-                {/* Patients Referred Card */}
+                {/* 3. Payment Summary (KPI-style card relocated below Dental Chart) */}
                 <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden">
                   <div className="p-4 bg-surface-container-lowest border-b border-outline-variant/10 flex justify-between items-center">
-                    <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-2">
-                      <Users className="w-4 h-4 text-primary" /> Patients Referred
+                    <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-2 font-sans">
+                      <IndianRupee className="w-4 h-4 text-primary" /> Financial Overview & Payments
                     </h3>
-                    <span className="bg-primary/10 text-primary px-2.5 py-0.5 rounded-full text-xs font-bold">
-                      {referredPatients.length} Referral{referredPatients.length !== 1 ? "s" : ""}
+                    <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold">
+                      {patientInvoices.length} Invoice{patientInvoices.length !== 1 ? "s" : ""}
                     </span>
                   </div>
                   
-                  <div className="p-5">
-                    {referredPatients.length === 0 ? (
-                      <p className="text-xs text-on-surface-variant/75 italic font-normal py-4 text-center">
-                        This patient has not referred any other patients yet.
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {referredPatients.map((p) => (
-                          <div
-                            key={p.id}
-                            className="flex items-center justify-between p-3 rounded-xl border border-outline-variant/10 hover:border-outline-variant/20 transition-all bg-surface-container-lowest"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <Link
-                                href={`/admin/patients/${p.id}`}
-                                className={`w-8 h-8 rounded-lg ${p.avatarColor || "bg-primary"} flex items-center justify-center text-white text-xs font-bold shrink-0 hover:opacity-90 active:scale-95 transition-all`}
-                              >
-                                {getInitials(p.name)}
-                              </Link>
-                              <div className="min-w-0">
-                                <Link
-                                  href={`/admin/patients/${p.id}`}
-                                  className="text-xs font-bold text-on-surface hover:text-primary hover:underline block truncate leading-tight"
-                                >
-                                  {p.name}
-                                </Link>
-                                <p className="text-[10px] text-on-surface-variant font-mono mt-0.5">{p.phone}</p>
+                  <div className="p-6 space-y-6">
+                    {(() => {
+                      const totalBilled = patientInvoices.reduce((sum, inv: Invoice) => sum + (inv.total || inv.amount || 0), 0);
+                      const totalPaid = patientInvoices.reduce((sum, inv: Invoice) => {
+                        const history = inv.paymentHistory || [];
+                        if (history.length > 0) {
+                          return sum + history.reduce((s: number, pay: any) => pay.paymentType !== "Generated" ? s + pay.amountReceived : s, 0);
+                        }
+                        return sum + ((inv.paymentStatus === "Paid" || inv.paymentStatus === "PAID") ? (inv.total || inv.amount || 0) : (inv.paidAmount || 0));
+                      }, 0);
+                      const outstanding = Math.max(0, totalBilled - totalPaid);
+
+                      // Partial payments calculation
+                      const partialInvoices = patientInvoices.filter((inv: Invoice) => {
+                        const paidAmt = inv.paidAmount || 0;
+                        const totAmt = inv.total || inv.amount || 0;
+                        return paidAmt > 0 && paidAmt < totAmt;
+                      });
+                      const partialCount = partialInvoices.length;
+                      const partialBalance = partialInvoices.reduce((sum, inv: Invoice) => sum + (inv.remainingAmount !== undefined ? inv.remainingAmount : ((inv.total || inv.amount || 0) - (inv.paidAmount || 0))), 0);
+
+                      // Overdue amount calculation
+                      const overdueInvoices = patientInvoices.filter((inv: Invoice) => {
+                        const paidAmt = inv.paidAmount || 0;
+                        const totAmt = inv.total || inv.amount || 0;
+                        if (paidAmt >= totAmt) return false;
+                        
+                        const dueDateStr = inv.dueDate || inv.invoiceDate;
+                        if (!dueDateStr) return false;
+
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        const [year, month, day] = dueDateStr.split("-").map(Number);
+                        const due = new Date(year, month - 1, day);
+                        due.setHours(0, 0, 0, 0);
+                        return due.getTime() < today.getTime();
+                      });
+                      const overdueAmount = overdueInvoices.reduce((sum, inv: Invoice) => sum + (inv.remainingAmount !== undefined ? inv.remainingAmount : ((inv.total || inv.amount || 0) - (inv.paidAmount || 0))), 0);
+
+                      // Combined payment events
+                      const allPayments: Array<{ date: string; amount: number; method: string; invoiceNo: string }> = [];
+                      patientInvoices.forEach((inv: Invoice) => {
+                        const history = inv.paymentHistory || [];
+                        const invNo = inv.id.slice(0, 8).toUpperCase();
+                        history.forEach((pay: any) => {
+                          if (pay.paymentType !== "Generated" && pay.amountReceived > 0) {
+                            allPayments.push({
+                              date: pay.paymentDate,
+                              amount: pay.amountReceived,
+                              method: pay.paymentMethod,
+                              invoiceNo: invNo,
+                            });
+                          }
+                        });
+                      });
+                      // Sort by date descending
+                      allPayments.sort((a, b) => b.date.localeCompare(a.date));
+                      const recentPayments = allPayments.slice(0, 3);
+
+                      return (
+                        <div className="space-y-6">
+                          {/* KPI Cards Grid */}
+                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="p-4 bg-slate-50 border border-outline-variant/10 rounded-xl shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)]">
+                              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Total Billed</span>
+                              <span className="font-extrabold text-on-surface text-xl font-mono block">₹{formatINR(totalBilled)}</span>
+                            </div>
+                            <div className="p-4 bg-emerald-50/40 border border-emerald-100/50 rounded-xl shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)]">
+                              <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">Total Paid</span>
+                              <span className="font-extrabold text-emerald-600 text-xl font-mono block">₹{formatINR(totalPaid)}</span>
+                            </div>
+                            <div className="p-4 bg-red-50/40 border border-red-100/50 rounded-xl shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)]">
+                              <span className="text-[10px] font-bold text-red-800 uppercase tracking-wider block mb-1">Outstanding Balance</span>
+                              <span className="font-black text-red-600 text-xl font-mono block">₹{formatINR(outstanding)}</span>
+                            </div>
+                            <div className="p-4 bg-amber-50/40 border border-amber-100/50 rounded-xl shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)]">
+                              <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block mb-1">Overdue Amount</span>
+                              <span className="font-extrabold text-amber-700 text-xl font-mono block">₹{formatINR(overdueAmount)}</span>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-outline-variant/10">
+                            {/* Left Col: Partial Payments Info */}
+                            <div className="space-y-3">
+                              <h4 className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
+                                <Receipt className="w-3.5 h-3.5 text-primary" /> Partial Payments Status
+                              </h4>
+                              <div className="bg-slate-50 border border-outline-variant/10 p-4 rounded-xl text-xs space-y-2 font-medium">
+                                <div className="flex justify-between items-center text-on-surface-variant">
+                                  <span>Partial Payment Invoices:</span>
+                                  <span className="font-bold text-on-surface text-sm">{partialCount}</span>
+                                </div>
+                                <div className="flex justify-between items-center text-on-surface-variant">
+                                  <span>Remaining Due on Partials:</span>
+                                  <span className="font-bold text-red-600 font-mono text-sm">₹{formatINR(partialBalance)}</span>
+                                </div>
                               </div>
                             </div>
-                            <span className="text-[10px] text-on-surface-variant font-medium whitespace-nowrap bg-surface-container px-2 py-0.5 rounded-full">
-                              Referred: {formatVisitDate(p.createdAt?.toDate ? p.createdAt.toDate().toISOString().split("T")[0] : p.createdAt?.seconds ? new Date(p.createdAt.seconds * 1000).toISOString().split("T")[0] : "")}
-                            </span>
+
+                            {/* Right Col: Recent Payments timeline */}
+                            <div className="space-y-3">
+                              <h4 className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5 text-primary" /> Recent Payments History
+                              </h4>
+                              {recentPayments.length === 0 ? (
+                                <p className="text-xs text-on-surface-variant italic font-normal py-3 bg-slate-50/50 border border-dashed border-outline-variant/10 rounded-xl text-center">No payment history recorded</p>
+                              ) : (
+                                <div className="space-y-2.5">
+                                  {recentPayments.map((p, idx) => (
+                                    <div key={idx} className="flex justify-between items-center bg-slate-50 border border-outline-variant/10 p-3 rounded-xl text-xs shadow-sm hover:shadow-md transition-shadow">
+                                      <div className="min-w-0">
+                                        <span className="font-bold text-on-surface block truncate">₹{formatINR(p.amount)} via {p.method}</span>
+                                        <span className="text-[10px] text-on-surface-variant/80 font-medium">Invoice #{p.invoiceNo} · {p.date}</span>
+                                      </div>
+                                      <span className="px-2 py-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md shrink-0">
+                                        Received
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
-              </div>{/* end right column xl:col-span-8 */}
+              </div>{/* end right column lg:col-span-8 */}
 
-            </div>{/* end grid xl:grid-cols-12 */}
+            </div>{/* end grid lg:grid-cols-12 */}
 
           </main>
         </div>

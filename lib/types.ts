@@ -104,8 +104,8 @@ export interface Doctor {
 }
 
 /* ─── Invoice ─── */
-export type InvoiceStatus = "Paid" | "Pending" | "Failed";
-export type PaymentMethod = "Cash" | "Card" | "UPI" | "Net Banking" | "Insurance" | "None";
+export type InvoiceStatus = "Paid" | "Pending" | "Failed" | "Partial" | "Overdue" | "Due Today";
+export type PaymentMethod = "Cash" | "Card" | "UPI" | "Net Banking" | "Insurance" | "None" | "Bank Transfer" | "Cheque";
 
 export interface InvoiceItem {
   id: string;
@@ -114,13 +114,28 @@ export interface InvoiceItem {
   fee: number;
 }
 
+export interface PaymentHistoryEntry {
+  paymentDate: string; // YYYY-MM-DD
+  paymentMethod: PaymentMethod | string;
+  amountReceived: number;
+  paymentType: "Paid" | "Partial" | "Installment" | "Pending" | "Generated";
+  notes?: string;
+}
+
+export interface InstallmentPlan {
+  totalInstallments: number;
+  currentInstallment: number;
+  remainingInstallments: number;
+  installmentAmount: number;
+}
+
 export interface Invoice {
   id: string;
   patientId: string;
   encounterId?: string;
   appointmentId?: string;
   amount: number;
-  paymentStatus: InvoiceStatus;
+  paymentStatus: InvoiceStatus | string;
   paymentMethod: PaymentMethod;
   invoiceDate: string; // YYYY-MM-DD
   createdAt: Timestamp;
@@ -141,6 +156,14 @@ export interface Invoice {
   subtotal?: number;
   discount?: number;
   tax?: number;
+
+  // Extended payment workflow fields
+  paidAmount?: number;
+  remainingAmount?: number;
+  dueDate?: string;
+  paymentHistory?: PaymentHistoryEntry[];
+  installmentPlan?: InstallmentPlan | null;
+  updatedAt?: Timestamp;
 }
 
 /* ─── Appointment ─── */

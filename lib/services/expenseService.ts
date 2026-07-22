@@ -97,10 +97,18 @@ export async function getFinancialSummary(): Promise<FinancialStats> {
   // 2. Compute aggregate values
   let totalRevenuePaid = 0;
   let totalRevenueBilled = 0;
+  
   invoices.forEach((inv) => {
-    totalRevenueBilled += inv.amount || 0;
-    if (inv.paymentStatus === "Paid") {
-      totalRevenuePaid += inv.amount || 0;
+    totalRevenueBilled += inv.total || inv.amount || 0;
+    const history = inv.paymentHistory || [];
+    if (history.length > 0) {
+      history.forEach((pay) => {
+        if (pay.paymentType !== "Generated" && pay.amountReceived > 0) {
+          totalRevenuePaid += pay.amountReceived;
+        }
+      });
+    } else if (inv.paymentStatus === "Paid" || inv.status === "Paid" || inv.paymentStatus === "PAID" || inv.status === "PAID") {
+      totalRevenuePaid += inv.total || inv.amount || 0;
     }
   });
 
@@ -112,14 +120,35 @@ export async function getFinancialSummary(): Promise<FinancialStats> {
   const monthMap = new Map<string, { revenuePaid: number; revenueBilled: number; expensesList: Expense[] }>();
 
   invoices.forEach((inv) => {
-    const month = (inv.invoiceDate || "").substring(0, 7); // "YYYY-MM"
-    if (!month || month.length < 7) return;
-    const existing = monthMap.get(month) ?? { revenuePaid: 0, revenueBilled: 0, expensesList: [] };
-    existing.revenueBilled += inv.amount || 0;
-    if (inv.paymentStatus === "Paid") {
-      existing.revenuePaid += inv.amount || 0;
+    // Billed/Accrual goes to invoice date month
+    const billedMonth = (inv.invoiceDate || "").substring(0, 7); // "YYYY-MM"
+    if (billedMonth && billedMonth.length === 7) {
+      const existing = monthMap.get(billedMonth) ?? { revenuePaid: 0, revenueBilled: 0, expensesList: [] };
+      existing.revenueBilled += inv.total || inv.amount || 0;
+      monthMap.set(billedMonth, existing);
     }
-    monthMap.set(month, existing);
+
+    // Cash received goes to payment date month
+    const history = inv.paymentHistory || [];
+    if (history.length > 0) {
+      history.forEach((pay) => {
+        if (pay.paymentType !== "Generated" && pay.amountReceived > 0) {
+          const payMonth = (pay.paymentDate || "").substring(0, 7);
+          if (payMonth && payMonth.length === 7) {
+            const existing = monthMap.get(payMonth) ?? { revenuePaid: 0, revenueBilled: 0, expensesList: [] };
+            existing.revenuePaid += pay.amountReceived;
+            monthMap.set(payMonth, existing);
+          }
+        }
+      });
+    } else if (inv.paymentStatus === "Paid" || inv.status === "Paid" || inv.paymentStatus === "PAID" || inv.status === "PAID") {
+      const payMonth = (inv.invoiceDate || "").substring(0, 7);
+      if (payMonth && payMonth.length === 7) {
+        const existing = monthMap.get(payMonth) ?? { revenuePaid: 0, revenueBilled: 0, expensesList: [] };
+        existing.revenuePaid += inv.total || inv.amount || 0;
+        monthMap.set(payMonth, existing);
+      }
+    }
   });
 
   expenses.forEach((exp) => {

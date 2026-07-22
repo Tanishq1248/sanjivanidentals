@@ -26,7 +26,7 @@ import {
 import type { Patient, Appointment, Invoice } from "../../lib/types";
 import { getAppointmentsByPhone } from "../../lib/services/appointmentService";
 import { getPatientMedicalProfile, getPatientEncounters } from "../../lib/services/patientService";
-import { getInvoicesByPatientId } from "../../lib/services/invoiceService";
+import { getInvoicesByPatientId, getInvoiceStatusDetails } from "../../lib/services/invoiceService";
 import { queryKeys } from "../../lib/query/queryKeys";
 import { PatientDetailsModalSkeleton, useDelayLoading } from "../ui/Skeletons";
 
@@ -46,51 +46,7 @@ function formatINR(amount: any): string {
   });
 }
 
-function getInvoiceUrgency(invoiceDateStr: string, status: string) {
-  if (status === "Paid") {
-    return {
-      label: "Paid",
-      bgClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
-      dotClass: "bg-emerald-500",
-      urgencyWeight: 4,
-    };
-  }
 
-  // Calculate local day differences to prevent timezone shifting
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const [dYear, dMonth, dDay] = invoiceDateStr.split("-").map(Number);
-  const due = new Date(dYear, dMonth - 1, dDay);
-  due.setHours(0, 0, 0, 0);
-
-  const diffTime = due.getTime() - today.getTime();
-  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-
-  if (diffDays < 0) {
-    const days = Math.abs(diffDays);
-    return {
-      label: `Overdue • ${days} ${days === 1 ? "day" : "days"}`,
-      bgClass: "bg-red-50 text-red-700 border-red-200 font-bold",
-      dotClass: "bg-red-500",
-      urgencyWeight: 1,
-    };
-  } else if (diffDays <= 7) {
-    return {
-      label: "Due This Week",
-      bgClass: "bg-amber-50 text-amber-700 border-amber-200 font-semibold",
-      dotClass: "bg-amber-500",
-      urgencyWeight: 2,
-    };
-  } else {
-    return {
-      label: "Upcoming",
-      bgClass: "bg-slate-50 text-slate-600 border-slate-200 font-medium",
-      dotClass: "bg-slate-400",
-      urgencyWeight: 3,
-    };
-  }
-}
 
 interface PatientDetailsModalProps {
   patient: Patient | null;
@@ -449,7 +405,7 @@ export function PatientDetailsModal({
                   </div>
                 ) : (
                   invoicesList.map((inv) => {
-                    const urgency = getInvoiceUrgency(inv.invoiceDate, inv.paymentStatus);
+                    const urgency = getInvoiceStatusDetails(inv);
                     return (
                       <div key={inv.id} className="py-2.5 flex items-center justify-between gap-2 first:pt-0 last:pb-0">
                         <div>

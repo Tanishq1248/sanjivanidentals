@@ -67,3 +67,53 @@ export async function updateInvoice(
 export async function deleteInvoice(id: string): Promise<void> {
   await deleteDoc(doc(db, COLLECTION, id));
 }
+
+/** Calculate real-time payment status and UI styles dynamically */
+export function getInvoiceStatusDetails(inv: Invoice) {
+  const total = inv.total !== undefined ? inv.total : (inv.netAmount !== undefined ? inv.netAmount : (inv.amount || 0));
+  const paid = inv.paidAmount || 0;
+  const remaining = inv.remainingAmount !== undefined ? inv.remainingAmount : Math.max(0, total - paid);
+
+  if (remaining <= 0) {
+    return {
+      status: "PAID",
+      label: "PAID",
+      bgClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      dotClass: "bg-emerald-500",
+      colorClass: "text-emerald-700",
+    };
+  }
+
+  // Doctor chose "Keep Pending" or invoice was explicitly kept pending
+  if (inv.paymentStatus === "PENDING" || inv.status === "PENDING" || inv.paymentStatus === "Pending" || inv.status === "Pending") {
+    return {
+      status: "PENDING",
+      label: "PENDING",
+      bgClass: "bg-amber-50 text-amber-700 border-amber-200",
+      dotClass: "bg-amber-500",
+      colorClass: "text-amber-700",
+    };
+  }
+
+  if (paid > 0) {
+    return {
+      status: "PARTIAL",
+      label: "PARTIAL",
+      bgClass: "bg-blue-50 text-blue-700 border-blue-200",
+      dotClass: "bg-blue-500",
+      colorClass: "text-blue-700",
+    };
+  }
+
+  return {
+    status: "UNPAID",
+    label: "UNPAID",
+    bgClass: "bg-red-50 text-red-700 border-red-200 font-bold",
+    dotClass: "bg-red-500",
+    colorClass: "text-red-700",
+  };
+}
+
+export function getInvoiceStatus(inv: Invoice): string {
+  return getInvoiceStatusDetails(inv).status;
+}
