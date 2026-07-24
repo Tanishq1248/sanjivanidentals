@@ -35,11 +35,16 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+
 import { AdminAuthGuard } from "../../../../components/auth/AdminAuthGuard";
 import { useAuth } from "../../../../lib/context/AuthContext";
+import { PatientEncounterLog } from "../../../../components/admin/encounters/PatientEncounterLog";
+
 import {
   getPatientById,
+
   getPatientMedicalProfile,
+
   savePatientMedicalProfile,
   getPatientEncounters,
   addPatientEncounter,
@@ -1000,308 +1005,33 @@ export default function PatientProfilePage({ params }: PageProps) {
               {/* Right Column: Dynamic visit encounters (8 Cols) */}
               <div className="lg:col-span-8 space-y-6">
                 
-                {/* Timeline Card */}
-                <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm p-6 flex flex-col h-[350px]">
-                  <div className="flex justify-between items-center border-b border-outline-variant/10 pb-4 shrink-0">
-                    <h2 className="text-lg font-bold text-on-surface flex items-center gap-2">
-                      <Activity className="w-5 h-5 text-primary" />
-                      Patient Visit Encounter Logs
-                    </h2>
-                    <button
-                      onClick={openAddEncounter}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-xs font-bold transition-colors cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Log Visit
-                    </button>
-                  </div>
+                {/* Patient Visit Encounter Logs */}
+                <PatientEncounterLog
+                  encounters={encounters}
+                  isLoading={isEncountersLoading}
+                  onLogFirstVisit={openAddEncounter}
+                  selectedBillingItems={selectedBillingItems}
+                  onToggleBillingItem={handleToggleBillingItem}
+                  isEncounterAllBillingSelected={isEncounterAllBillingSelected}
+                  onToggleAllBillingItems={handleToggleAllBillingItems}
+                  calculateTotalFees={calculateTotalFees}
+                  getTeethNumbers={getTeethNumbers}
+                  onStatusChange={handleStatusChange}
+                  onEditEncounter={openEditEncounter}
+                  onDeleteEncounter={handleDeleteEncounter}
+                  onPrescription={(e) => {
+                    if (e.prescriptionId) {
+                      router.push(`/admin/prescriptions?id=${e.prescriptionId}`);
+                    } else {
+                      router.push(`/admin/prescriptions?appointmentId=${e.appointmentId || ""}&patientId=${patientId}`);
+                    }
+                  }}
+                  onInvoice={(e) => handleOpenBillingReview(e)}
+                  onPrint={() => window.print()}
+                  formatVisitDate={formatVisitDate}
+                  formatINR={formatINR}
+                />
 
-                  <div className="flex-1 overflow-y-auto mt-4 pr-1 scrollbar-thin">
-
-                  {isEncountersLoading ? (
-                    <div className="space-y-4 py-8">
-                      <div className="h-16 bg-surface-container animate-pulse rounded-lg"></div>
-                      <div className="h-16 bg-surface-container animate-pulse rounded-lg"></div>
-                    </div>
-                  ) : encounters.length === 0 ? (
-                    <div className="py-16 text-center border-2 border-dashed border-outline-variant/20 rounded-2xl">
-                      <FileSpreadsheet className="w-12 h-12 text-on-surface-variant/30 mx-auto mb-3" />
-                      <h3 className="font-bold text-on-surface text-base">No Visit Encounters</h3>
-                      <p className="text-xs text-on-surface-variant mt-1 mb-5">
-                        This patient has no registered visit records. Log an encounter to create a clinical timeline.
-                      </p>
-                      <button
-                        onClick={openAddEncounter}
-                        className="bg-primary text-white font-semibold py-2 px-4 rounded-lg text-xs hover:bg-primary/95 transition-all cursor-pointer shadow-sm"
-                      >
-                        Log First Clinical Visit
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {encounters.map((e) => {
-                        const isCompleted = e.status === "Completed";
-                        const isInProgress = e.status === "In Progress";
-                        const isCancelled = e.status === "Cancelled";
-                        const isExpanded = expandedEncounterId === e.id;
-                        const totalFees = calculateTotalFees(e);
-                        const teethNums = getTeethNumbers(e);
-
-                        // Compact treatment summary: first 3 with • separator
-                        const treatments = e.treatments || [];
-                        const treatmentPreview = treatments.slice(0, 3).join(" • ");
-                        const hasMoreTreatments = treatments.length > 3;
-
-                        const statusColor = isCompleted
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : isInProgress
-                          ? "bg-blue-50 text-blue-700 border-blue-200"
-                          : isCancelled
-                          ? "bg-red-50 text-red-700 border-red-200"
-                          : "bg-gray-50 text-gray-700 border-gray-200";
-
-                        const statusDot = isCompleted
-                          ? "bg-emerald-500"
-                          : isInProgress
-                          ? "bg-blue-500 animate-pulse"
-                          : isCancelled
-                          ? "bg-red-500"
-                          : "bg-gray-400";
-
-                        return (
-                          <div
-                            key={e.id}
-                            className={`border rounded-xl overflow-hidden transition-all duration-200 ${
-                              isExpanded
-                                ? "border-primary/25 shadow-md bg-white"
-                                : "border-outline-variant/15 bg-white hover:border-outline-variant/30 hover:shadow-sm"
-                            }`}
-                          >
-                            {/* ─── Compact Summary Header ─── */}
-                            <div className="flex items-center gap-2 px-3 py-2.5">
-                              {/* Billing checkbox */}
-                              <input
-                                type="checkbox"
-                                checked={isEncounterAllBillingSelected(e)}
-                                onChange={() => handleToggleAllBillingItems(e)}
-                                className="w-3.5 h-3.5 rounded border-outline-variant/30 cursor-pointer shrink-0"
-                                title="Toggle all completed treatments for billing"
-                                onClick={(ev) => ev.stopPropagation()}
-                              />
-
-                              {/* Status dot */}
-                              <div className={`w-2 h-2 rounded-full shrink-0 ${statusDot}`} />
-
-                              {/* Clickable summary content */}
-                              <button
-                                type="button"
-                                onClick={() => setExpandedEncounterId(isExpanded ? null : e.id)}
-                                className="flex-1 min-w-0 text-left cursor-pointer focus:outline-none group"
-                              >
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  {/* Date */}
-                                  <span className="text-[13px] font-semibold text-on-surface whitespace-nowrap">
-                                    {formatVisitDate(e.visitDate)}
-                                  </span>
-
-                                  <span className="text-outline-variant/40 text-xs">|</span>
-
-                                  {/* Doctor */}
-                                  <span className="text-xs text-on-surface-variant font-medium whitespace-nowrap">
-                                    {e.doctorName || "Dr. Moore"}
-                                  </span>
-
-                                  <span className="text-outline-variant/40 text-xs">|</span>
-
-                                  {/* Status */}
-                                  <span className={`inline-flex px-1.5 py-px rounded text-[9px] font-bold border ${statusColor}`}>
-                                    {e.status}
-                                  </span>
-
-                                  {/* Fees */}
-                                  {totalFees > 0 && (
-                                    <>
-                                      <span className="text-outline-variant/40 text-xs">|</span>
-                                      <span className="text-xs font-bold text-on-surface whitespace-nowrap">
-                                        ₹{formatINR(totalFees)}
-                                      </span>
-                                    </>
-                                  )}
-                                </div>
-
-                                {/* Second line: Treatments + Teeth */}
-                                <div className="flex items-center gap-2 mt-1 text-[11px]">
-                                  {treatmentPreview && (
-                                    <span className="text-on-surface-variant font-medium truncate max-w-[280px]" title={treatments.join(", ")}>
-                                      {treatmentPreview}{hasMoreTreatments ? ` +${treatments.length - 3}` : ""}
-                                    </span>
-                                  )}
-                                  {teethNums.length > 0 && (
-                                    <>
-                                      <span className="text-outline-variant/30">|</span>
-                                      <span className="text-on-surface-variant/70 font-medium whitespace-nowrap">
-                                        Teeth: <span className="text-on-surface font-semibold">{teethNums.join(", ")}</span>
-                                      </span>
-                                    </>
-                                  )}
-                                </div>
-                              </button>
-
-                              {/* Expand chevron */}
-                              <button
-                                type="button"
-                                onClick={() => setExpandedEncounterId(isExpanded ? null : e.id)}
-                                className="shrink-0 p-1 rounded text-on-surface-variant/40 hover:text-primary hover:bg-primary/5 transition-colors cursor-pointer"
-                              >
-                                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                              </button>
-                            </div>
-
-                            {/* ─── Expanded Detail Panel ─── */}
-                            {isExpanded && (
-                              <div className="border-t border-outline-variant/10 bg-surface-container-low/30 px-4 py-2 space-y-2">
-
-                                {/* Treatment Table — main content */}
-                                {e.toothTreatments && e.toothTreatments.length > 0 ? (
-                                  <div className="rounded-lg border border-outline-variant/10 overflow-hidden">
-                                    {/* Table header */}
-                                    <div className="grid grid-cols-[50px_1fr_80px_70px_60px] gap-1 px-3 py-1.5 bg-surface-container-lowest text-[10px] font-bold text-on-surface-variant uppercase tracking-wider border-b border-outline-variant/10">
-                                      <span>Tooth</span>
-                                      <span>Treatment</span>
-                                      <span>Status</span>
-                                      <span className="text-right">Fee</span>
-                                      <span className="text-center">Billing</span>
-                                    </div>
-                                    {/* Table rows */}
-                                    {e.toothTreatments.map((tt) => (
-                                      <div key={tt.id} className="grid grid-cols-[50px_1fr_80px_70px_60px] gap-1 px-3 py-1.5 text-xs border-b border-outline-variant/5 last:border-b-0 items-center">
-                                        <span className="text-on-surface-variant font-medium">{tt.toothNumber}</span>
-                                        <span className="text-on-surface font-semibold">{tt.treatmentName}</span>
-                                        <span className={`inline-flex items-center px-1.5 py-px rounded text-[9px] font-bold w-fit ${
-                                          tt.status === "Completed" ? "bg-emerald-50 text-emerald-700" :
-                                          tt.status === "In Progress" ? "bg-blue-50 text-blue-700" :
-                                          "bg-gray-50 text-gray-600"
-                                        }`}>{tt.status}</span>
-                                        <span className="text-right font-bold text-on-surface">₹{formatINR(tt.fee)}</span>
-                                        <span className="flex justify-center">
-                                          <input
-                                            type="checkbox"
-                                            disabled={tt.status !== "Completed"}
-                                            checked={!!selectedBillingItems[`tt-${tt.id}`]}
-                                            onChange={() => handleToggleBillingItem(`tt-${tt.id}`)}
-                                            className={`w-3.5 h-3.5 rounded border-outline-variant/30 cursor-pointer ${
-                                              tt.status !== "Completed" ? "opacity-30 cursor-not-allowed" : ""
-                                            }`}
-                                            title={tt.status !== "Completed" ? "Only completed treatments can be billed" : "Select for billing"}
-                                          />
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : treatments.length > 0 ? (
-                                  /* Fallback: if only manual treatments exist (no toothTreatments) */
-                                  <div className="flex items-center justify-between text-xs py-1 px-1 bg-surface-container-lowest rounded border border-outline-variant/10">
-                                    <div className="flex items-baseline gap-2">
-                                      <span className="text-on-surface-variant/70 font-bold uppercase tracking-wider text-[10px] shrink-0">Treatments</span>
-                                      <span className="text-on-surface font-medium">{treatments.join(" • ")}</span>
-                                    </div>
-                                    <span className="flex items-center gap-1 text-[10px] text-on-surface-variant font-medium">
-                                      Billing:{" "}
-                                      <input
-                                        type="checkbox"
-                                        checked={!!selectedBillingItems[`fallback-${e.id}`]}
-                                        onChange={() => handleToggleBillingItem(`fallback-${e.id}`)}
-                                        className="w-3.5 h-3.5 rounded border-outline-variant/30 cursor-pointer"
-                                      />
-                                    </span>
-                                  </div>
-                                ) : null}
-
-                                {/* Follow-up — simple inline text below the table */}
-                                <div className="text-xs text-on-surface-variant/80 font-medium">
-                                  <span>Follow-up: </span>
-                                  <span className="text-on-surface font-semibold">
-                                    {e.followUpDate ? formatVisitDate(e.followUpDate) : "None scheduled"}
-                                  </span>
-                                </div>
-
-                                {/* Actions row */}
-                                <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-outline-variant/10">
-                                  {/* Status actions */}
-                                  <div className="flex items-center gap-1.5">
-                                    {!isCompleted && (
-                                      <button
-                                        onClick={() => handleStatusChange(e.id, "Completed")}
-                                        className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-500 hover:text-white border border-emerald-200 text-emerald-700 transition-colors text-[10px] font-bold cursor-pointer"
-                                      >
-                                        Mark Completed
-                                      </button>
-                                    )}
-                                    {!isInProgress && !isCompleted && (
-                                      <button
-                                        onClick={() => handleStatusChange(e.id, "In Progress")}
-                                        className="px-2 py-1 rounded bg-blue-50 hover:bg-blue-500 hover:text-white border border-blue-200 text-blue-700 transition-colors text-[10px] font-bold cursor-pointer"
-                                      >
-                                        Start
-                                      </button>
-                                    )}
-                                    {!isCancelled && (
-                                      <button
-                                        onClick={() => handleStatusChange(e.id, "Cancelled")}
-                                        className="px-2 py-1 rounded bg-red-50 hover:bg-red-500 hover:text-white border border-red-200 text-red-700 transition-colors text-[10px] font-bold cursor-pointer"
-                                      >
-                                        Cancel
-                                      </button>
-                                    )}
-                                  </div>
-
-                                  {/* Edit / Delete / Generate Invoice */}
-                                  <div className="flex items-center gap-1.5">
-                                    <button
-                                      onClick={() => openEditEncounter(e)}
-                                      className="p-1 rounded bg-white hover:bg-surface-container border border-outline-variant/30 text-on-surface-variant transition-colors cursor-pointer"
-                                      title="Edit"
-                                    >
-                                      <Edit2 className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteEncounter(e.id)}
-                                      className="p-1 rounded bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-600 border border-outline-variant/30 text-on-surface-variant transition-colors cursor-pointer"
-                                      title="Delete"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                    {(() => {
-                                      const selectedItems = getSelectedTreatmentsForEncounter(e);
-                                      const hasSelected = selectedItems.length > 0;
-                                      return (
-                                        <button
-                                          type="button"
-                                          disabled={!hasSelected}
-                                          onClick={() => handleOpenBillingReview(e)}
-                                          className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border transition-colors ${
-                                            hasSelected
-                                              ? "bg-emerald-50 hover:bg-emerald-500 hover:text-white border-emerald-200 text-emerald-700 cursor-pointer"
-                                              : "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed opacity-50"
-                                          }`}
-                                          title={hasSelected ? "Open Billing Review" : "Select completed treatments to bill"}
-                                        >
-                                          <Receipt className="w-3 h-3" />
-                                          Generate Invoice
-                                        </button>
-                                      );
-                                    })()}
-                                  </div>
-                                </div>
-
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  </div>
-                </div>
 
                 {/* 2. Dental Chart Section (DOMINATING, height 480px) */}
                 <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden select-none flex flex-col h-[480px]">
