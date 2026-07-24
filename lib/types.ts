@@ -144,6 +144,7 @@ export interface Invoice {
   patientName?: string;
   visitDate?: string;
   items?: InvoiceItem[];
+  treatments?: string[];
   grossAmount?: number;
   taxAmount?: number;
   discountPercentage?: number;
