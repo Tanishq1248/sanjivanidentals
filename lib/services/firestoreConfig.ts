@@ -21,6 +21,9 @@ export const COLLECTIONS = {
   CLINIC_REFERRALS: "clinicReferrals",
   CLINIC_REFERRAL_CONFIG: "clinicReferralConfig",
   SUBSCRIPTION_INFO: "subscriptionInfo",
+  TEAM_MEMBERS: "teamMembers",
+  ROLES: "roles",
+
 
   // Archived Collections (designed for future expansion)
   ARCHIVED_APPOINTMENTS: "archived_appointments",

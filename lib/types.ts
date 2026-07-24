@@ -403,3 +403,60 @@ export interface SubscriptionInfo {
   totalSuccessfulReferrals: number;
   updatedAt: Timestamp;
 }
+
+/* ─── Settings, Team & Roles ─── */
+export type MemberStatus = "Active" | "Inactive" | "Invited" | "Suspended";
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  role: string;          // Role name e.g. "Doctor", "Receptionist", "Admin"
+  roleId: string;        // Matching Role ID
+  status: MemberStatus;
+  avatarColor: string;
+  lastLogin: string;     // e.g. "Today, 02:15 PM" or "Yesterday"
+  createdAt?: Timestamp | string;
+  updatedAt?: Timestamp | string;
+}
+
+export type TeamMemberFormData = Omit<TeamMember, "id" | "avatarColor" | "lastLogin" | "createdAt" | "updatedAt">;
+
+export type PermissionAction = "View" | "Add" | "Edit" | "Delete" | "Export" | string;
+
+export type PermissionGroupKey =
+  | "Dashboard"
+  | "Patients"
+  | "Appointments"
+  | "Treatments"
+  | "Billing"
+  | "Prescriptions"
+  | "Reports"
+  | "Inventory"
+  | "Settings";
+
+export interface RolePermission {
+  id: string;
+  name: string;
+  description: string;
+  memberCount: number;
+  permissionCount: number;
+  isSystem?: boolean;    // System roles like "Admin" cannot be deleted
+  permissions: Record<string, string[]>; // e.g. { Patients: ["View", "Add", "Edit"], Billing: ["View", "Create"] }
+  createdAt?: Timestamp | string;
+  updatedAt?: Timestamp | string;
+}
+
+export interface ClinicSettingsData {
+  clinicName: string;
+  doctorTitle: string;
+  phone: string;
+  email: string;
+  address: string;
+  gstin: string;
+  website: string;
+  timing: string;
+  chairsCount: number;
+}
+

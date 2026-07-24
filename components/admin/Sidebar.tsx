@@ -10,17 +10,27 @@ import {
   CreditCard,
   LogOut,
   TrendingUp,
-  ChevronDown,
   X,
   IndianRupee,
   Layers,
   Gift,
+  Settings,
 } from "lucide-react";
 import { useAuth } from "../../lib/context/AuthContext";
 import { getInvoices } from "../../lib/services/invoiceService";
 import { queryKeys } from "../../lib/query/queryKeys";
 
-export type SidebarPage = "dashboard" | "calendar" | "patients" | "referrals" | "refer-earn" | "billing" | "expenses" | "pnl";
+export type SidebarPage =
+  | "dashboard"
+  | "calendar"
+  | "patients"
+  | "referrals"
+  | "refer-earn"
+  | "billing"
+  | "expenses"
+  | "pnl"
+  | "settings"
+  | string;
 
 interface SidebarProps {
   currentPage: SidebarPage | string;
@@ -48,8 +58,14 @@ export function Sidebar({ currentPage, onClose }: SidebarProps) {
     }
   };
 
-  const navItems = [
-    { href: "/admin", label: "Dashboard", icon: <Layers className="w-4 h-4 shrink-0" />, key: "dashboard" },
+  const dashboardItem = {
+    href: "/admin",
+    label: "Dashboard",
+    icon: <Layers className="w-4 h-4 shrink-0" />,
+    key: "dashboard",
+  };
+
+  const clinicalItems = [
     { href: "/admin/calendar", label: "Calendar", icon: <CalendarDays className="w-4 h-4 shrink-0" />, key: "calendar" },
     { href: "/admin/patients", label: "Patients", icon: <Users className="w-4 h-4 shrink-0" />, key: "patients" },
     { href: "/admin/referrals", label: "Referrals", icon: <TrendingUp className="w-4 h-4 shrink-0" />, key: "referrals" },
@@ -66,6 +82,10 @@ export function Sidebar({ currentPage, onClose }: SidebarProps) {
     },
     { href: "/admin/finance/expenses", label: "Expenses", icon: <IndianRupee className="w-4 h-4 shrink-0" />, key: "expenses" },
     { href: "/admin/finance/profit-loss", label: "Profit & Loss", icon: <TrendingUp className="w-4 h-4 shrink-0" />, key: "pnl" },
+  ];
+
+  const adminItems = [
+    { href: "/admin/settings", label: "Settings", icon: <Settings className="w-4 h-4 shrink-0" />, key: "settings" },
   ];
 
   return (
@@ -90,32 +110,53 @@ export function Sidebar({ currentPage, onClose }: SidebarProps) {
       </div>
 
       {/* Navigation Groups */}
-      <div className="flex-grow overflow-y-auto py-3 px-3 space-y-3" style={{ scrollbarWidth: "thin", scrollbarColor: "#bfc7d4 transparent" }}>
-        {/* Core Sections */}
+      <div className="flex-grow overflow-y-auto py-4 px-3 space-y-5" style={{ scrollbarWidth: "thin", scrollbarColor: "#bfc7d4 transparent" }}>
+        {/* Top level Dashboard */}
         <div className="space-y-0.5">
-          {navItems.map(({ href, label, icon, key }) => {
-            const isActive = currentPage === key;
-            return (
-              <Link
-                key={key}
-                href={href}
-                onClick={onClose}
-                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
-                  isActive
-                    ? "bg-secondary-container text-primary shadow-sm"
-                    : "text-secondary hover:bg-surface-container-low hover:text-on-surface"
-                }`}
-              >
-                {icon}
-                <span className="flex-1">{label}</span>
-              </Link>
-            );
-          })}
+          <Link
+            href={dashboardItem.href}
+            onClick={onClose}
+            className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
+              currentPage === dashboardItem.key
+                ? "bg-secondary-container text-primary shadow-sm"
+                : "text-secondary hover:bg-surface-container-low hover:text-on-surface"
+            }`}
+          >
+            {dashboardItem.icon}
+            <span className="flex-1">{dashboardItem.label}</span>
+          </Link>
         </div>
 
-        {/* Finance Group */}
+        {/* Clinical Workspace Section */}
         <div className="space-y-1">
-          <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/40">
+          <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/50">
+            Clinical Workspace
+          </div>
+          <div className="space-y-0.5">
+            {clinicalItems.map(({ href, label, icon, key }) => {
+              const isActive = currentPage === key;
+              return (
+                <Link
+                  key={key}
+                  href={href}
+                  onClick={onClose}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
+                    isActive
+                      ? "bg-secondary-container text-primary shadow-sm"
+                      : "text-secondary hover:bg-surface-container-low hover:text-on-surface"
+                  }`}
+                >
+                  {icon}
+                  <span className="flex-1">{label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Finance & Accounts Section */}
+        <div className="space-y-1">
+          <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/50">
             Finance & Accounts
           </div>
           <div className="space-y-0.5">
@@ -139,6 +180,33 @@ export function Sidebar({ currentPage, onClose }: SidebarProps) {
                       {badge}
                     </span>
                   )}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Administration Section */}
+        <div className="space-y-1">
+          <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/50">
+            Administration
+          </div>
+          <div className="space-y-0.5">
+            {adminItems.map(({ href, label, icon, key }) => {
+              const isActive = currentPage === key;
+              return (
+                <Link
+                  key={key}
+                  href={href}
+                  onClick={onClose}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
+                    isActive
+                      ? "bg-secondary-container text-primary shadow-sm"
+                      : "text-secondary hover:bg-surface-container-low hover:text-on-surface"
+                  }`}
+                >
+                  {icon}
+                  <span className="flex-1">{label}</span>
                 </Link>
               );
             })}
@@ -168,3 +236,4 @@ export function Sidebar({ currentPage, onClose }: SidebarProps) {
     </aside>
   );
 }
+

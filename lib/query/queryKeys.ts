@@ -152,4 +152,14 @@ export const queryKeys = {
     /** Subscription info singleton. */
     subscription: ["clinicReferrals", "subscription"] as const,
   },
+
+  // ── Settings ──────────────────────────────────────────────────────────────
+  settings: {
+    all: ["settings"] as const,
+    teamMembers: ["settings", "teamMembers"] as const,
+    roles: ["settings", "roles"] as const,
+    clinicInfo: ["settings", "clinicInfo"] as const,
+  },
 } as const;
+
+
