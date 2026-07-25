@@ -122,10 +122,10 @@ export function AddTreatmentTab({ toothNumber, onSaveTreatment, isSaving, onSucc
         </select>
       </div>
 
-      {/* Status Dropdown */}
+      {/* Treatment Status (Clinical) Dropdown */}
       <div>
         <label htmlFor="select-status" className="block text-xs font-bold text-slate-600 mb-1">
-          Status <span className="text-red-500">*</span>
+          Treatment Status (Clinical) <span className="text-red-500">*</span>
         </label>
         <select
           id="select-status"

@@ -15,6 +15,7 @@ interface EncounterDesktopTableProps {
   calculateTotalFees: (e: PatientEncounter) => number;
   getTeethNumbers: (e: PatientEncounter) => number[];
   onStatusChange: (id: string, status: EncounterStatus) => void;
+  onToothTreatmentStatusChange?: (encounterId: string, treatmentId: string, status: "Planned" | "In Progress" | "Completed") => void;
   onEdit: (e: PatientEncounter) => void;
   onDelete: (id: string) => void;
   onPrescription?: (e: PatientEncounter) => void;
@@ -35,6 +36,7 @@ export const EncounterDesktopTable = memo(function EncounterDesktopTable({
   calculateTotalFees,
   getTeethNumbers,
   onStatusChange,
+  onToothTreatmentStatusChange,
   onEdit,
   onDelete,
   onPrescription,
@@ -153,43 +155,79 @@ export const EncounterDesktopTable = memo(function EncounterDesktopTable({
               <div className="border-t border-outline-variant/15 bg-surface-container-lowest p-5 space-y-4">
                 {e.toothTreatments && e.toothTreatments.length > 0 ? (
                   <div className="rounded-xl border border-outline-variant/15 overflow-hidden bg-white shadow-xs">
-                    <div className="grid grid-cols-[60px_1fr_100px_90px_70px] gap-2 px-4 py-2.5 bg-surface-container-low text-xs font-bold text-on-surface-variant uppercase tracking-wider border-b border-outline-variant/15">
+                    <div className="grid grid-cols-[60px_1fr_120px_80px_90px_80px] gap-2 px-4 py-2.5 bg-surface-container-low text-[11px] font-bold text-on-surface-variant uppercase tracking-wider border-b border-outline-variant/15 items-center">
                       <span>Tooth</span>
                       <span>Procedure</span>
-                      <span>Status</span>
+                      <span>Treatment Status</span>
                       <span className="text-right">Fee</span>
+                      <span className="text-center">Add to Bill</span>
                       <span className="text-center">Billing</span>
                     </div>
-                    {e.toothTreatments.map((tt) => (
-                      <div
-                        key={tt.id}
-                        className="grid grid-cols-[60px_1fr_100px_90px_70px] gap-2 px-4 py-2.5 text-xs border-b border-outline-variant/10 last:border-b-0 items-center hover:bg-surface-container-lowest"
-                      >
-                        <span className="font-bold text-on-surface">Tooth {tt.toothNumber}</span>
-                        <span className="font-semibold text-on-surface">{tt.treatmentName}</span>
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold w-fit ${
-                            tt.status === "Completed"
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : tt.status === "In Progress"
-                              ? "bg-blue-50 text-blue-700 border border-blue-200"
-                              : "bg-slate-100 text-slate-700 border border-slate-200"
-                          }`}
+                    {e.toothTreatments.map((tt) => {
+                      const tStatus = e.status === "Completed"
+                        ? "Completed"
+                        : (tt.treatmentStatus || (tt.status === "Completed" || tt.status === "In Progress" || tt.status === "Planned" ? tt.status : "Planned"));
+                      const bStatus = tt.billingStatus || "Unbilled";
+                      const isComp = tStatus === "Completed";
+                      const isBilled = bStatus === "Billed";
+
+                      return (
+                        <div
+                          key={tt.id}
+                          className="grid grid-cols-[60px_1fr_125px_80px_90px_80px] gap-2 px-4 py-2.5 text-xs border-b border-outline-variant/10 last:border-b-0 items-center hover:bg-surface-container-lowest"
                         >
-                          {tt.status}
-                        </span>
-                        <span className="text-right font-extrabold text-on-surface">₹{formatINR(tt.fee)}</span>
-                        <span className="flex justify-center">
-                          <input
-                            type="checkbox"
-                            disabled={tt.status !== "Completed"}
-                            checked={!!selectedBillingItems[`tt-${tt.id}`]}
-                            onChange={() => onToggleBillingItem(`tt-${tt.id}`)}
-                            className="w-4 h-4 rounded border-outline-variant/30 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                          />
-                        </span>
-                      </div>
-                    ))}
+                          <span className="font-bold text-on-surface">Tooth {tt.toothNumber}</span>
+                          <span className="font-semibold text-on-surface">{tt.treatmentName}</span>
+                          <select
+                            value={tStatus}
+                            onChange={(ev) => {
+                              const val = ev.target.value as "Planned" | "In Progress" | "Completed";
+                              if (onToothTreatmentStatusChange) {
+                                onToothTreatmentStatusChange(e.id, tt.id, val);
+                              }
+                            }}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border cursor-pointer focus:outline-none w-fit ${
+                              tStatus === "Completed"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : tStatus === "In Progress"
+                                ? "bg-blue-50 text-blue-700 border-blue-200"
+                                : "bg-slate-100 text-slate-700 border-slate-200"
+                            }`}
+                          >
+                            <option value="Planned">Planned</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Completed">Completed</option>
+                          </select>
+                          <span className="text-right font-extrabold text-on-surface">₹{formatINR(tt.fee)}</span>
+                          <span className="flex justify-center items-center">
+                            {isBilled ? (
+                              <span className="text-[10px] font-bold text-indigo-700">Invoiced</span>
+                            ) : !isComp ? (
+                              <span className="text-[10px] font-medium text-slate-400" title="Must be Completed to bill">N/A</span>
+                            ) : (
+                              <input
+                                type="checkbox"
+                                checked={!!selectedBillingItems[`tt-${tt.id}`]}
+                                onChange={() => onToggleBillingItem(`tt-${tt.id}`)}
+                                className="w-4 h-4 rounded border-outline-variant/30 cursor-pointer"
+                                title="Add completed treatment to bill"
+                              />
+                            )}
+                          </span>
+                          <span className="flex justify-center">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                isBilled
+                                  ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                  : "bg-slate-100 text-slate-600 border border-slate-200"
+                              }`}
+                            >
+                              {bStatus}
+                            </span>
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : null}
 

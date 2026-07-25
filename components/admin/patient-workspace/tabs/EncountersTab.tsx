@@ -15,6 +15,7 @@ interface EncountersTabProps {
   calculateTotalFees: (encounter: PatientEncounter) => number;
   getTeethNumbers: (encounter: PatientEncounter) => number[];
   onStatusChange: (id: string, status: EncounterStatus) => void;
+  onToothTreatmentStatusChange?: (encounterId: string, treatmentId: string, status: "Planned" | "In Progress" | "Completed") => void;
   onEditEncounter: (encounter: PatientEncounter) => void;
   onDeleteEncounter: (id: string) => void;
   onPrescription: (encounter: PatientEncounter) => void;

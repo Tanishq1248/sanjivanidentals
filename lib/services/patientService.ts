@@ -297,6 +297,9 @@ export async function logToothTreatment(
     toothNumber,
     treatmentName: treatmentData.treatmentName,
     status: treatmentData.status,
+    treatmentStatus: (treatmentData.status as any) || "Completed",
+    billingStatus: "Unbilled" as const,
+    invoiceId: null,
     fee: treatmentData.fee,
     notes: treatmentData.notes || "",
     date: displayDateStr,
@@ -491,4 +494,12 @@ export async function getReferralStats(): Promise<ReferralStats> {
     topReferrer: leaderboard[0] ?? null,
     topSource: sourceDistribution[0]?.source ?? null,
   };
+}
+
+/** Fetch recent patient encounters across the clinic for analytics & reports */
+export async function getAllEncounters(limitCount: number = 200): Promise<PatientEncounter[]> {
+  const encountersRef = collection(db, COLLECTIONS.PATIENT_ENCOUNTERS);
+  const q = query(encountersRef, orderBy("createdAt", "desc"), limit(limitCount));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as PatientEncounter);
 }

@@ -17,6 +17,7 @@ interface PatientEncounterLogProps {
   calculateTotalFees: (e: PatientEncounter) => number;
   getTeethNumbers: (e: PatientEncounter) => number[];
   onStatusChange: (id: string, status: EncounterStatus) => void;
+  onToothTreatmentStatusChange?: (encounterId: string, treatmentId: string, status: "Planned" | "In Progress" | "Completed") => void;
   onEditEncounter: (e: PatientEncounter) => void;
   onDeleteEncounter: (id: string) => void;
   onPrescription?: (e: PatientEncounter) => void;
@@ -37,6 +38,7 @@ export function PatientEncounterLog({
   calculateTotalFees,
   getTeethNumbers,
   onStatusChange,
+  onToothTreatmentStatusChange,
   onEditEncounter,
   onDeleteEncounter,
   onPrescription,
@@ -124,6 +126,7 @@ export function PatientEncounterLog({
                   isAllBillingSelected={isEncounterAllBillingSelected(e)}
                   onToggleAllBilling={() => onToggleAllBillingItems(e)}
                   onStatusChange={onStatusChange}
+                  onToothTreatmentStatusChange={onToothTreatmentStatusChange}
                   onEdit={onEditEncounter}
                   onDelete={onDeleteEncounter}
                   onPrescription={onPrescription}
@@ -149,6 +152,7 @@ export function PatientEncounterLog({
               calculateTotalFees={calculateTotalFees}
               getTeethNumbers={getTeethNumbers}
               onStatusChange={onStatusChange}
+              onToothTreatmentStatusChange={onToothTreatmentStatusChange}
               onEdit={onEditEncounter}
               onDelete={onDeleteEncounter}
               onPrescription={onPrescription}

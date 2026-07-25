@@ -26,8 +26,8 @@ interface ProcessedTreatmentItem {
   assignedDoctor: string;
   estimatedCost: number;
   date: string;
-  status: "Planned" | "In Progress" | "Completed" | "Billed";
-  billingStatus: "Billed" | "Unbilled" | "Partial";
+  status: "Planned" | "In Progress" | "Completed";
+  billingStatus: "Billed" | "Unbilled";
   notes?: string;
 }
 
@@ -68,11 +68,16 @@ export const TreatmentPlanTab: React.FC<TreatmentPlanTabProps> = ({
   encounters.forEach((enc) => {
     if (enc.toothTreatments && enc.toothTreatments.length > 0) {
       enc.toothTreatments.forEach((tt) => {
-        let derivedStatus: "Planned" | "In Progress" | "Completed" | "Billed" =
-          (tt.status as any) || "Completed";
-        if (tt.status === "Planned" || tt.status === "In Progress" || tt.status === "Completed") {
-          derivedStatus = tt.status;
-        }
+        const clinicalStatus: "Planned" | "In Progress" | "Completed" =
+          enc.status === "Completed"
+            ? "Completed"
+            : (tt.treatmentStatus as any) ||
+              (tt.status === "Planned" || tt.status === "In Progress" || tt.status === "Completed"
+                ? tt.status
+                : "Planned");
+
+        const billingStatus: "Billed" | "Unbilled" =
+          tt.billingStatus === "Billed" ? "Billed" : "Unbilled";
 
         treatmentItems.push({
           id: tt.id || `${enc.id}-${tt.toothNumber}`,
@@ -81,15 +86,19 @@ export const TreatmentPlanTab: React.FC<TreatmentPlanTabProps> = ({
           assignedDoctor: enc.doctorName || "Dr. Julian Moore",
           estimatedCost: tt.fee || 0,
           date: tt.date || enc.visitDate,
-          status: derivedStatus,
-          billingStatus: enc.status === "Completed" ? "Billed" : "Unbilled",
+          status: clinicalStatus,
+          billingStatus,
           notes: tt.notes,
         });
       });
     } else if (enc.treatments && enc.treatments.length > 0) {
       enc.treatments.forEach((tName, idx) => {
-        let derivedStatus: "Planned" | "In Progress" | "Completed" | "Billed" =
-          enc.status === "In Progress" ? "In Progress" : enc.status === "Pending" ? "Planned" : "Completed";
+        const clinicalStatus: "Planned" | "In Progress" | "Completed" =
+          enc.status === "In Progress"
+            ? "In Progress"
+            : enc.status === "Pending"
+            ? "Planned"
+            : "Completed";
 
         treatmentItems.push({
           id: `${enc.id}-t-${idx}`,
@@ -97,8 +106,8 @@ export const TreatmentPlanTab: React.FC<TreatmentPlanTabProps> = ({
           assignedDoctor: enc.doctorName || "Dr. Julian Moore",
           estimatedCost: 0,
           date: enc.visitDate,
-          status: derivedStatus,
-          billingStatus: enc.status === "Completed" ? "Billed" : "Unbilled",
+          status: clinicalStatus,
+          billingStatus: "Unbilled",
           notes: enc.notes,
         });
       });
@@ -109,7 +118,7 @@ export const TreatmentPlanTab: React.FC<TreatmentPlanTabProps> = ({
   const plannedList = treatmentItems.filter((t) => t.status === "Planned");
   const inProgressList = treatmentItems.filter((t) => t.status === "In Progress");
   const completedList = treatmentItems.filter((t) => t.status === "Completed");
-  const billedList = treatmentItems.filter((t) => t.status === "Billed" || t.billingStatus === "Billed");
+  const billedList = treatmentItems.filter((t) => t.billingStatus === "Billed");
 
   const getFilteredItems = () => {
     switch (activeStatusFilter) {
@@ -241,8 +250,8 @@ export const TreatmentPlanTab: React.FC<TreatmentPlanTabProps> = ({
                   <th className="p-3.5">Assigned Doctor</th>
                   <th className="p-3.5 text-right">Fee / Cost</th>
                   <th className="p-3.5 text-center">Date</th>
-                  <th className="p-3.5 text-center">Status</th>
-                  <th className="p-3.5 text-center">Billing</th>
+                  <th className="p-3.5 text-center">Treatment Status</th>
+                  <th className="p-3.5 text-center">Billing Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">

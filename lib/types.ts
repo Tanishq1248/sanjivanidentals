@@ -61,11 +61,17 @@ export interface PatientMedicalProfile {
 /* ─── Patient Encounter ─── */
 export type EncounterStatus = "Pending" | "In Progress" | "Completed" | "Cancelled";
 
+export type ClinicalTreatmentStatus = "Planned" | "In Progress" | "Completed";
+export type BillingStatus = "Unbilled" | "Billed";
+
 export interface ToothTreatmentEntry {
   id: string;
   toothNumber: number;
   treatmentName: string;
-  status: string; // "Completed" | "In Progress" | "Planned"
+  status: string; // Clinical status ("Completed" | "In Progress" | "Planned") for backward compatibility
+  treatmentStatus?: ClinicalTreatmentStatus; // Explicit Clinical Status
+  billingStatus?: BillingStatus; // Explicit Financial Status ("Unbilled" | "Billed")
+  invoiceId?: string | null; // Generated Invoice ID link
   fee: number;
   notes?: string;
   date: string; // DD/MM/YYYY

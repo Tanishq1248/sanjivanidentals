@@ -19,6 +19,7 @@ interface EncounterCardProps {
   isAllBillingSelected?: boolean;
   onToggleAllBilling?: () => void;
   onStatusChange: (id: string, status: EncounterStatus) => void;
+  onToothTreatmentStatusChange?: (encounterId: string, treatmentId: string, status: "Planned" | "In Progress" | "Completed") => void;
   onEdit: (encounter: PatientEncounter) => void;
   onDelete: (id: string) => void;
   onPrescription?: (encounter: PatientEncounter) => void;
@@ -39,6 +40,7 @@ export const EncounterCard = memo(function EncounterCard({
   isAllBillingSelected,
   onToggleAllBilling,
   onStatusChange,
+  onToothTreatmentStatusChange,
   onEdit,
   onDelete,
   onPrescription,
@@ -97,6 +99,11 @@ export const EncounterCard = memo(function EncounterCard({
                       treatment={tt}
                       isBillingSelected={!!selectedBillingItems[`tt-${tt.id}`]}
                       onToggleBilling={() => onToggleBillingItem(`tt-${tt.id}`)}
+                      onStatusChange={
+                        onToothTreatmentStatusChange
+                          ? (newSt) => onToothTreatmentStatusChange(encounter.id, tt.id, newSt)
+                          : undefined
+                      }
                       formatINR={formatINR}
                     />
                   ))}

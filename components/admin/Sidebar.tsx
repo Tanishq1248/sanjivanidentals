@@ -68,8 +68,7 @@ export function Sidebar({ currentPage, onClose }: SidebarProps) {
   const clinicalItems = [
     { href: "/admin/calendar", label: "Calendar", icon: <CalendarDays className="w-4 h-4 shrink-0" />, key: "calendar" },
     { href: "/admin/patients", label: "Patients", icon: <Users className="w-4 h-4 shrink-0" />, key: "patients" },
-    { href: "/admin/referrals", label: "Referrals", icon: <TrendingUp className="w-4 h-4 shrink-0" />, key: "referrals" },
-    { href: "/admin/refer-earn", label: "Refer & Earn", icon: <Gift className="w-4 h-4 shrink-0" />, key: "refer-earn" },
+    { href: "/admin/finance/analytics", label: "Analytics", icon: <TrendingUp className="w-4 h-4 shrink-0" />, key: "analytics" },
   ];
 
   const financeItems = [
@@ -81,7 +80,6 @@ export function Sidebar({ currentPage, onClose }: SidebarProps) {
       badge: pendingBillingCount > 0 ? (pendingBillingCount > 99 ? "99+" : String(pendingBillingCount)) : null,
     },
     { href: "/admin/finance/expenses", label: "Expenses", icon: <IndianRupee className="w-4 h-4 shrink-0" />, key: "expenses" },
-    { href: "/admin/finance/profit-loss", label: "Profit & Loss", icon: <TrendingUp className="w-4 h-4 shrink-0" />, key: "pnl" },
   ];
 
   const adminItems = [
@@ -212,6 +210,23 @@ export function Sidebar({ currentPage, onClose }: SidebarProps) {
             })}
           </div>
         </div>
+      </div>
+
+      {/* Bottom CTA: Refer & Earn (Secondary Entry Point) */}
+      <div className="px-3 py-2 shrink-0 border-t border-outline-variant/10">
+        <Link
+          href="/admin/refer-earn"
+          onClick={onClose}
+          className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+            currentPage === "refer-earn" || currentPage === "referrals"
+              ? "bg-amber-50 text-amber-900 border-amber-200/80 shadow-xs"
+              : "bg-surface-container-lowest text-on-surface-variant/80 border-outline-variant/20 hover:bg-amber-50/60 hover:text-amber-900 hover:border-amber-200/60"
+          }`}
+        >
+          <Gift className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+          <span className="flex-1 truncate">Refer & Earn</span>
+          <span className="px-1.5 py-0.5 rounded-full bg-amber-100/80 text-amber-800 text-[9px] font-bold">New</span>
+        </Link>
       </div>
 
       {/* Footer Profile & Logout */}

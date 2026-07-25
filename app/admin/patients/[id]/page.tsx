@@ -220,11 +220,60 @@ export default function PatientProfilePage({ params }: PageProps) {
     }));
   };
 
+  const getAllUnbilledCompletedTreatments = () => {
+    const list: Array<{
+      id: string;
+      encounterId: string;
+      treatmentName: string;
+      toothNumber?: number;
+      fee: number;
+      visitDate: string;
+    }> = [];
+
+    encounters.forEach((enc) => {
+      if (enc.toothTreatments && enc.toothTreatments.length > 0) {
+        enc.toothTreatments.forEach((tt) => {
+          const isCompleted =
+            enc.status === "Completed" ||
+            tt.treatmentStatus === "Completed" ||
+            tt.status === "Completed";
+          const isUnbilled = tt.billingStatus !== "Billed" && !tt.invoiceId;
+
+          if (isCompleted && isUnbilled) {
+            list.push({
+              id: tt.id,
+              encounterId: enc.id,
+              treatmentName: tt.treatmentName,
+              toothNumber: tt.toothNumber,
+              fee: tt.fee || 0,
+              visitDate: tt.date || enc.visitDate,
+            });
+          }
+        });
+      } else if (enc.treatments && enc.treatments.length > 0 && enc.status === "Completed") {
+        list.push({
+          id: `fallback-${enc.id}`,
+          encounterId: enc.id,
+          treatmentName: enc.treatments.join(" • "),
+          fee: 0,
+          visitDate: enc.visitDate,
+        });
+      }
+    });
+
+    return list;
+  };
+
   const isEncounterAllBillingSelected = (encounter: PatientEncounter) => {
     if (encounter.toothTreatments && encounter.toothTreatments.length > 0) {
-      const completedTTs = encounter.toothTreatments.filter((tt) => tt.status === "Completed");
-      if (completedTTs.length === 0) return false;
-      return completedTTs.every((tt) => !!selectedBillingItems[`tt-${tt.id}`]);
+      const eligibleTTs = encounter.toothTreatments.filter(
+        (tt) =>
+          (encounter.status === "Completed" || tt.treatmentStatus === "Completed" || tt.status === "Completed") &&
+          tt.billingStatus !== "Billed" &&
+          !tt.invoiceId
+      );
+      if (eligibleTTs.length === 0) return false;
+      return eligibleTTs.every((tt) => !!selectedBillingItems[`tt-${tt.id}`]);
     } else if (encounter.treatments && encounter.treatments.length > 0) {
       return !!selectedBillingItems[`fallback-${encounter.id}`];
     }
@@ -236,8 +285,13 @@ export default function PatientProfilePage({ params }: PageProps) {
     const updated = { ...selectedBillingItems };
 
     if (encounter.toothTreatments && encounter.toothTreatments.length > 0) {
-      const completedTTs = encounter.toothTreatments.filter((tt) => tt.status === "Completed");
-      completedTTs.forEach((tt) => {
+      const eligibleTTs = encounter.toothTreatments.filter(
+        (tt) =>
+          (encounter.status === "Completed" || tt.treatmentStatus === "Completed" || tt.status === "Completed") &&
+          tt.billingStatus !== "Billed" &&
+          !tt.invoiceId
+      );
+      eligibleTTs.forEach((tt) => {
         if (allSelected) {
           delete updated[`tt-${tt.id}`];
         } else {
@@ -254,33 +308,51 @@ export default function PatientProfilePage({ params }: PageProps) {
     setSelectedBillingItems(updated);
   };
 
-  const getSelectedTreatmentsForEncounter = (encounter: PatientEncounter) => {
-    const list: Array<{ id: string; treatmentName: string; toothNumber?: number; fee: number }> = [];
-    if (encounter.toothTreatments && encounter.toothTreatments.length > 0) {
-      encounter.toothTreatments.forEach((tt) => {
-        if (tt.status === "Completed" && selectedBillingItems[`tt-${tt.id}`]) {
-          list.push({
-            id: tt.id,
-            treatmentName: tt.treatmentName,
-            toothNumber: tt.toothNumber,
-            fee: tt.fee || 0,
-          });
-        }
-      });
-    } else if (encounter.treatments && encounter.treatments.length > 0) {
-      if (selectedBillingItems[`fallback-${encounter.id}`]) {
-        list.push({
-          id: `fallback-${encounter.id}`,
-          treatmentName: encounter.treatments.join(" • "),
-          fee: 0,
-        });
-      }
+  const getSelectedTreatmentsForEncounter = (encounter?: PatientEncounter | null) => {
+    const allUnbilled = getAllUnbilledCompletedTreatments();
+    if (!encounter) {
+      return allUnbilled.filter(
+        (item) =>
+          !!selectedBillingItems[`tt-${item.id}`] ||
+          !!selectedBillingItems[`fallback-${item.encounterId}`] ||
+          !!selectedBillingItems[item.id]
+      );
     }
-    return list;
+    return allUnbilled.filter((item) => {
+      const isSelected =
+        !!selectedBillingItems[`tt-${item.id}`] ||
+        !!selectedBillingItems[`fallback-${item.encounterId}`] ||
+        !!selectedBillingItems[item.id];
+      return isSelected && item.encounterId === encounter.id;
+    });
   };
 
-  const handleOpenBillingReview = (encounter: PatientEncounter) => {
-    setBillingEncounter(encounter);
+  const handleOpenBillingReview = (encounter?: PatientEncounter) => {
+    const unbilled = getAllUnbilledCompletedTreatments();
+    const targetEnc =
+      encounter ||
+      (unbilled.length > 0 ? encounters.find((e) => e.id === unbilled[0].encounterId) : encounters[0]) ||
+      null;
+
+    setBillingEncounter(targetEnc);
+
+    // Auto-select unbilled completed items for targetEnc
+    if (unbilled.length > 0) {
+      const updated = { ...selectedBillingItems };
+      let anySelected = unbilled.some(
+        (item) => !!updated[`tt-${item.id}`] || !!updated[`fallback-${item.encounterId}`]
+      );
+      if (!anySelected) {
+        unbilled.forEach((item) => {
+          if (!targetEnc || item.encounterId === targetEnc.id) {
+            updated[`tt-${item.id}`] = true;
+            updated[`fallback-${item.encounterId}`] = true;
+          }
+        });
+        setSelectedBillingItems(updated);
+      }
+    }
+
     setDiscountPercentage(0);
     setInMemoryPdf(null);
     setGeneratedInvoiceId(null);
@@ -465,6 +537,47 @@ export default function PatientProfilePage({ params }: PageProps) {
 
       const invoiceId = await addInvoice(invoiceData);
       setGeneratedInvoiceId(invoiceId);
+
+      // Update billingStatus & invoiceId on selected toothTreatments across all encounter documents in Firestore
+      const selectedItemIds = new Set(selectedTreatments.map((st) => st.id));
+
+      await Promise.all(
+        encounters.map(async (enc) => {
+          if (!enc.toothTreatments || enc.toothTreatments.length === 0) return;
+
+          let hasChanges = false;
+          const updatedToothTreatments = enc.toothTreatments.map((tt) => {
+            if (selectedItemIds.has(tt.id) || selectedItemIds.has(`tt-${tt.id}`)) {
+              hasChanges = true;
+              return {
+                ...tt,
+                billingStatus: "Billed" as const,
+                invoiceId: invoiceId,
+              };
+            }
+            return tt;
+          });
+
+          if (hasChanges) {
+            await updatePatientEncounter(enc.id, {
+              toothTreatments: updatedToothTreatments,
+            });
+          }
+        })
+      );
+
+      // Clean up selected state for billed items
+      setSelectedBillingItems((prev) => {
+        const next = { ...prev };
+        selectedTreatments.forEach((st) => {
+          delete next[`tt-${st.id}`];
+          delete next[st.id];
+        });
+        if (billingEncounter) delete next[`fallback-${billingEncounter.id}`];
+        return next;
+      });
+
+      queryClient.invalidateQueries({ queryKey: queryKeys.patients.encounters(patient.id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.byPatientId(patient.id) });
 
       const doc = new jsPDF({
@@ -711,9 +824,18 @@ export default function PatientProfilePage({ params }: PageProps) {
     };
 
     if (selectedEncounterId) {
+      const existingEnc = encounters.find((e) => e.id === selectedEncounterId);
+      let payloadData: Partial<PatientEncounter> = { ...payload };
+      if (payload.status === "Completed" && existingEnc?.toothTreatments && existingEnc.toothTreatments.length > 0) {
+        payloadData.toothTreatments = existingEnc.toothTreatments.map((tt) => ({
+          ...tt,
+          status: "Completed",
+          treatmentStatus: "Completed" as const,
+        }));
+      }
       updateEncounterMutation.mutate({
         id: selectedEncounterId,
-        data: payload,
+        data: payloadData,
       });
     } else {
       addEncounterMutation.mutate(payload);
@@ -721,7 +843,54 @@ export default function PatientProfilePage({ params }: PageProps) {
   };
 
   const handleStatusChange = (id: string, status: EncounterStatus) => {
-    updateEncounterMutation.mutate({ id, data: { status } });
+    const target = encounters.find((e) => e.id === id);
+    if (target) {
+      let dataToUpdate: Partial<PatientEncounter> = { status };
+      if (status === "Completed" && target.toothTreatments && target.toothTreatments.length > 0) {
+        dataToUpdate.toothTreatments = target.toothTreatments.map((tt) => ({
+          ...tt,
+          status: "Completed",
+          treatmentStatus: "Completed" as const,
+        }));
+      }
+      updateEncounterMutation.mutate({ id, data: dataToUpdate });
+    } else {
+      updateEncounterMutation.mutate({ id, data: { status } });
+    }
+  };
+
+  const handleToothTreatmentStatusChange = (
+    encounterId: string,
+    treatmentId: string,
+    newStatus: "Planned" | "In Progress" | "Completed"
+  ) => {
+    const target = encounters.find((e) => e.id === encounterId);
+    if (!target || !target.toothTreatments) return;
+
+    const updatedTTs = target.toothTreatments.map((tt) => {
+      if (tt.id === treatmentId) {
+        return {
+          ...tt,
+          status: newStatus,
+          treatmentStatus: newStatus,
+        };
+      }
+      return tt;
+    });
+
+    const allCompleted = updatedTTs.every(
+      (tt) => (tt.treatmentStatus || tt.status) === "Completed"
+    );
+
+    const dataToUpdate: Partial<PatientEncounter> = {
+      toothTreatments: updatedTTs,
+    };
+
+    if (allCompleted) {
+      dataToUpdate.status = "Completed";
+    }
+
+    updateEncounterMutation.mutate({ id: encounterId, data: dataToUpdate });
   };
 
   const handleDeleteEncounter = (id: string) => {
@@ -883,6 +1052,7 @@ export default function PatientProfilePage({ params }: PageProps) {
                     calculateTotalFees={calculateTotalFees}
                     getTeethNumbers={getTeethNumbers}
                     onStatusChange={handleStatusChange}
+                    onToothTreatmentStatusChange={handleToothTreatmentStatusChange}
                     onEditEncounter={openEditEncounter}
                     onDeleteEncounter={handleDeleteEncounter}
                     onPrescription={(e) => {
@@ -1323,37 +1493,59 @@ export default function PatientProfilePage({ params }: PageProps) {
               </div>
 
               <div className="space-y-1.5">
-                <h4 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Selected Treatments</h4>
-                <div className="border border-outline-variant/15 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
-                  <table className="w-full text-xs text-left border-collapse">
-                    <thead>
-                      <tr className="bg-surface-container border-b border-outline-variant/15 text-[10px] uppercase font-bold text-on-surface-variant">
-                        <th className="p-2 border-r border-outline-variant/10 w-16 text-center">Tooth</th>
-                        <th className="p-2 border-r border-outline-variant/10">Treatment</th>
-                        <th className="p-2 text-right w-28">Unit Price</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-outline-variant/10">
-                      {getSelectedTreatmentsForEncounter(billingEncounter).map((item, idx) => (
-                        <tr key={item.id || idx} className="hover:bg-surface-container-low/20">
-                          <td className="p-2 border-r border-outline-variant/10 text-center text-on-surface-variant font-medium">
-                            {item.toothNumber !== undefined ? item.toothNumber : "—"}
-                          </td>
-                          <td className="p-2 border-r border-outline-variant/10 text-on-surface font-semibold">
-                            {item.treatmentName}
-                          </td>
-                          <td className="p-2 text-right font-bold text-on-surface font-mono">
-                            ₹{formatINR(item.fee)}
-                          </td>
+                <h4 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Select Completed Unbilled Treatments</h4>
+                <div className="border border-outline-variant/15 rounded-lg overflow-hidden max-h-48 overflow-y-auto font-sans">
+                  {getAllUnbilledCompletedTreatments().length === 0 ? (
+                    <div className="p-4 text-center text-xs text-on-surface-variant/70 italic bg-surface-container-lowest">
+                      No unbilled completed treatments found for this patient.
+                    </div>
+                  ) : (
+                    <table className="w-full text-xs text-left border-collapse">
+                      <thead>
+                        <tr className="bg-surface-container border-b border-outline-variant/15 text-[10px] uppercase font-bold text-on-surface-variant">
+                          <th className="p-2 w-10 text-center">Include</th>
+                          <th className="p-2 border-r border-outline-variant/10 w-16 text-center">Tooth</th>
+                          <th className="p-2 border-r border-outline-variant/10">Treatment</th>
+                          <th className="p-2 text-right w-28">Unit Price</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-outline-variant/10 font-medium">
+                        {getAllUnbilledCompletedTreatments().map((item) => {
+                          const isChecked =
+                            !!selectedBillingItems[`tt-${item.id}`] ||
+                            !!selectedBillingItems[`fallback-${item.encounterId}`] ||
+                            !!selectedBillingItems[item.id];
+                          return (
+                            <tr key={item.id} className="hover:bg-surface-container-low/20">
+                              <td className="p-2 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => handleToggleBillingItem(`tt-${item.id}`)}
+                                  className="w-4 h-4 rounded text-primary cursor-pointer"
+                                />
+                              </td>
+                              <td className="p-2 border-r border-outline-variant/10 text-center text-on-surface-variant font-semibold">
+                                {item.toothNumber !== undefined ? `#${item.toothNumber}` : "General"}
+                              </td>
+                              <td className="p-2 border-r border-outline-variant/10 text-on-surface font-semibold">
+                                <div>{item.treatmentName}</div>
+                                <div className="text-[10px] text-on-surface-variant/70 font-normal">Date: {formatVisitDate(item.visitDate)}</div>
+                              </td>
+                              <td className="p-2 text-right font-extrabold text-on-surface font-mono">
+                                ₹{formatINR(item.fee)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </div>
 
               {(() => {
-                const selectedItems = getSelectedTreatmentsForEncounter(billingEncounter);
+                const selectedItems = getSelectedTreatmentsForEncounter();
                 const subtotal = calculateSubtotal(selectedItems);
                 const tax = calculateTax(subtotal);
                 const discount = discountPercentage;
