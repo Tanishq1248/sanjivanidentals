@@ -17,6 +17,7 @@ import {
   FileText,
   CreditCard,
   Sparkles,
+  MessageSquare,
 } from "lucide-react";
 import { AdminAuthGuard } from "../../../../components/auth/AdminAuthGuard";
 import { useSidebarStore } from "../../../../lib/store/useSidebarStore";
@@ -297,9 +298,12 @@ export function AnalyticsPageContent() {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 text-primary text-xs font-bold">
-              <Sparkles className="w-3.5 h-3.5" /> Clinic Active
-            </span>
+            <Link
+              href="/admin/analytics/messaging"
+              className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all flex items-center gap-1.5 border border-slate-200/80 cursor-pointer"
+            >
+              <MessageSquare className="w-3.5 h-3.5 text-teal-600" /> Messaging Analytics
+            </Link>
           </div>
         </header>
 

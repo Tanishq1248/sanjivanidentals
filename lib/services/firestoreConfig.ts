@@ -29,6 +29,8 @@ export const COLLECTIONS = {
   AUDIT_LOGS: "auditLogs",
   SECURITY_SETTINGS: "securitySettings",
   SECURITY_SESSIONS: "securitySessions",
+  MESSAGING_USAGE: "messagingUsage",
+  MESSAGE_LOGS: "messageLogs",
 
   // Archived Collections (designed for future expansion)
   ARCHIVED_APPOINTMENTS: "archived_appointments",

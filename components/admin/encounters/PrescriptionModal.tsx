@@ -40,6 +40,7 @@ import {
   savePrescription,
   generatePrescriptionNumber,
 } from "../../../lib/services/prescriptionService";
+import { sendWhatsAppMessage } from "../../../lib/services/whatsappService";
 import { queryKeys } from "../../../lib/query/queryKeys";
 
 interface PrescriptionModalProps {
@@ -99,6 +100,7 @@ export function PrescriptionModal({
   const [followUpDate, setFollowUpDate] = useState<string>("");
   const [followUpReason, setFollowUpReason] = useState<string>("");
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -294,23 +296,53 @@ export function PrescriptionModal({
 
   // ── WhatsApp Handler ───────────────────────────────────────────────────
   const handleWhatsApp = async () => {
-    let targetId = prescriptionId;
-    if (targetId === "temp") {
-      const savedId = await handleSave();
-      if (!savedId) return;
-      targetId = savedId;
+    if (isSendingWhatsApp) {
+      showToast("Message is already being sent.");
+      return;
     }
 
-    const cleanPhone = patient.phone.replace(/\D/g, "");
-    const publicUrl = `${window.location.origin}/prescriptions/${targetId}`;
-    const validMeds = medications.filter((m) => m.medicine.trim() !== "");
-    const medSummary = validMeds
-      .map((m) => `• ${m.medicine} (${m.dosage}) - ${m.frequency} for ${m.duration}`)
-      .join("\n");
+    setIsSendingWhatsApp(true);
 
-    const message = `Hello *${patient.name}*! 👋\nHere is your digital prescription from *${clinicInfo?.clinicName || "Sanjivani Dentals"}*:\n\n*Diagnosis:* ${diagnosis || "Consultation"}\n\n*Medications:*\n${medSummary || "See full document"}\n\n📄 *View/Download Full Prescription:* ${publicUrl}\n\nWish you a speedy recovery! 😊`;
+    try {
+      let targetId = prescriptionId;
+      if (targetId === "temp") {
+        const savedId = await handleSave();
+        if (!savedId) return;
+        targetId = savedId;
+      }
 
-    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, "_blank");
+      showToast("Sending WhatsApp message via Twilio...");
+      const publicUrl = `${window.location.origin}/prescriptions/${targetId}`;
+
+      const res = await sendWhatsAppMessage({
+        messageType: "prescription",
+        recipient: patient.phone,
+        patientId: patient.id,
+        patientName: patient.name,
+        encounterId: encounter.id,
+        clinicName: clinicInfo?.clinicName || "Sanjivani Dentals",
+        doctorName: encounter.doctorName || clinicInfo?.doctorName || "Dr. Julian Moore",
+        mediaUrl: publicUrl,
+      });
+
+      if (res.success) {
+        showToast(res.message);
+      } else if (res.code === "REQUEST_ALREADY_IN_PROGRESS") {
+        showToast("Message is already being sent.");
+      } else {
+        // Graceful fallback to direct WhatsApp Web if Twilio credentials not set or error
+        showToast(res.message || "Twilio unconfigured. Opening WhatsApp Web fallback...");
+        const cleanPhone = patient.phone.replace(/\D/g, "");
+        const validMeds = medications.filter((m) => m.medicine.trim() !== "");
+        const medSummary = validMeds
+          .map((m) => `• ${m.medicine} (${m.dosage}) - ${m.frequency} for ${m.duration}`)
+          .join("\n");
+        const fallbackMsg = `Hello *${patient.name}*! 👋\nHere is your digital prescription from *${clinicInfo?.clinicName || "Sanjivani Dentals"}*:\n\n*Diagnosis:* ${diagnosis || "Consultation"}\n\n*Medications:*\n${medSummary || "See full document"}\n\n📄 *View/Download Full Prescription:* ${publicUrl}\n\nWish you a speedy recovery! 😊`;
+        window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(fallbackMsg)}`, "_blank");
+      }
+    } finally {
+      setIsSendingWhatsApp(false);
+    }
   };
 
   // ── Email Handler ──────────────────────────────────────────────────────
@@ -903,9 +935,11 @@ export function PrescriptionModal({
             <button
               type="button"
               onClick={handleWhatsApp}
-              className="px-3.5 py-2 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white font-bold text-xs border border-emerald-200 transition-all cursor-pointer flex items-center gap-1.5"
+              disabled={isSendingWhatsApp}
+              className="px-3.5 py-2 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white font-bold text-xs border border-emerald-200 transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
             >
-              <Share2 className="w-3.5 h-3.5" /> WhatsApp
+              {isSendingWhatsApp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Share2 className="w-3.5 h-3.5" />}
+              {isSendingWhatsApp ? "Sending..." : "WhatsApp"}
             </button>
 
             <button

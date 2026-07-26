@@ -53,11 +53,17 @@ const BackupSettingsSection = dynamic(
   { loading: () => <SettingsSkeleton /> }
 );
 
+const MessageTemplatesSection = dynamic(
+  () => import("../../../components/admin/settings/sections/MessageTemplatesSection"),
+  { loading: () => <SettingsSkeleton /> }
+);
+
 // Map section IDs to lazy loaded components
 const SECTION_COMPONENTS: Record<string, React.ComponentType> = {
   "clinic-info": ClinicInfoSection,
   team: TeamManagementSection,
   appointments: AppointmentSettingsSection,
+  "message-templates": MessageTemplatesSection,
   billing: BillingSettingsSection,
   prescription: PrescriptionSettingsSection,
   notifications: NotificationSettingsSection,

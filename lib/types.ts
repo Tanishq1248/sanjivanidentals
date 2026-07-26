@@ -601,7 +601,92 @@ export interface ClinicBasicInfo {
   updatedAt?: Timestamp;
 }
 
+/* ─── Twilio WhatsApp Messaging ─── */
+export type WhatsAppMessageType = "prescription" | "invoice" | "appointment_reminder";
+
+export interface WhatsAppMessagePayload {
+  messageType: WhatsAppMessageType;
+  recipient: string;
+  patientId: string;
+  patientName: string;
+  encounterId?: string;
+  invoiceId?: string;
+  appointmentId?: string;
+  clinicName?: string;
+  doctorName?: string;
+  clinicPhone?: string;
+  date?: string;
+  time?: string;
+  invoiceNumber?: string;
+  invoiceAmount?: number | string;
+  followUpDate?: string;
+  mediaUrl?: string;
+  customText?: string;
+}
+
+export interface MessagingQuotaInfo {
+  clinicId: string;
+  month: string; // YYYY-MM
+  monthlyLimit: number;
+  messagesSent: number;
+  updatedAt: Timestamp;
+}
+
+export type WhatsAppDeliveryStatus =
+  | "queued"
+  | "sending"
+  | "sent"
+  | "delivered"
+  | "read"
+  | "failed"
+  | "quota_exceeded";
+
+export interface MessageLogEntry {
+  id?: string;
+  messageId?: string;
+  patientId: string;
+  encounterId?: string;
+  invoiceId?: string;
+  appointmentId?: string;
+  messageType: WhatsAppMessageType;
+  recipient: string;
+  twilioMessageSid?: string;
+  status: WhatsAppDeliveryStatus;
+  sentAt?: Timestamp;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  deliveredAt?: Timestamp;
+  failedAt?: Timestamp;
+  lastAttemptAt?: Timestamp;
+  attemptCount?: number;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
+export type MessageChannel = "whatsapp" | "email";
+export type MessageTemplateType = "prescription" | "invoice" | "appointment_reminder";
+
+export interface MessageTemplate {
+  id: string; // e.g., "prescription_whatsapp"
+  name: string;
+  channel: MessageChannel;
+  messageType: MessageTemplateType;
+  subject?: string; // Email only
+  body: string;
+  signature?: string; // Email only
+  footer?: string; // Email only
+  status: "active" | "inactive";
+  updatedAt?: Timestamp;
+  updatedBy?: string;
+}
+
+export type MessageTemplatesDocument = Record<string, MessageTemplate>;
+
 export interface ClinicSettingsData extends ClinicBasicInfo {
+  currencySymbol?: string;
+  gstNumber?: string;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
   // Backward compatibility alias fields
   doctorTitle?: string;
   address?: string;

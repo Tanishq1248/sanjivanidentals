@@ -19,7 +19,7 @@ import {
 export interface SettingsNavItem {
   id: string;
   label: string;
-  category: "General" | "Billing" | "Security" | "Integrations" | "Practice Management";
+  category: "General" | "Communication" | "Billing" | "Security" | "Practice Management";
   description: string;
   icon: React.ComponentType<{ className?: string }>;
   componentPath: string; // Used for dynamic resolution or tracking
@@ -49,6 +49,14 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     description: "Slot duration, chair configuration, buffer time, and cancellation rules.",
     icon: Calendar,
     componentPath: "./sections/AppointmentSettingsSection",
+  },
+  {
+    id: "message-templates",
+    label: "Message Templates",
+    category: "Communication",
+    description: "Configure dynamic WhatsApp & Email templates for Prescriptions, Invoices, and Reminders.",
+    icon: MessageSquare,
+    componentPath: "./sections/MessageTemplatesSection",
   },
   {
     id: "billing",

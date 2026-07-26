@@ -13,13 +13,17 @@ import {
   Plus,
   ChevronRight,
   Filter,
+  MessageSquare,
+  Loader2,
 } from "lucide-react";
 import type { Appointment } from "../../../../lib/types";
+import { sendWhatsAppMessage } from "../../../../lib/services/whatsappService";
 
 interface AppointmentsTabProps {
   appointments: Appointment[];
   patientId: string;
   patientPhone: string;
+  patientName?: string;
 }
 
 function formatVisitDate(dateStr: string): string {
@@ -40,8 +44,53 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
   appointments,
   patientId,
   patientPhone,
+  patientName = "Patient",
 }) => {
   const [filterGroup, setFilterGroup] = useState<"all" | "upcoming" | "completed" | "cancelled">("all");
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3000);
+  };
+
+  const handleSendReminder = async (apt: Appointment) => {
+    if (sendingId === apt.id) {
+      showToast("Message is already being sent.");
+      return;
+    }
+
+    setSendingId(apt.id);
+    showToast("Sending WhatsApp appointment reminder via Twilio...");
+
+    try {
+      const res = await sendWhatsAppMessage({
+        messageType: "appointment_reminder",
+        recipient: patientPhone,
+        patientId,
+        patientName: apt.patientName || patientName,
+        appointmentId: apt.id,
+        clinicName: "Sanjivani Dentals",
+        doctorName: apt.doctorName || "Dr. Julian Moore",
+        date: apt.date,
+        time: apt.time,
+      });
+
+      if (res.success) {
+        showToast(res.message);
+      } else if (res.code === "REQUEST_ALREADY_IN_PROGRESS") {
+        showToast("Message is already being sent.");
+      } else {
+        showToast(res.message || "Opening WhatsApp Web fallback...");
+        const digits = patientPhone.replace(/\D/g, "");
+        const msg = `Hello ${apt.patientName || patientName}!\n\nReminder: You have an appointment at Sanjivani Dentals on ${apt.date} at ${apt.time}.\n\nRegards,\nSanjivani Dentals`;
+        window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, "_blank");
+      }
+    } finally {
+      setSendingId(null);
+    }
+  };
 
   const todayStr = new Date().toISOString().split("T")[0];
 
@@ -176,17 +225,41 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {isUp && (
+                      <button
+                        type="button"
+                        onClick={() => handleSendReminder(apt)}
+                        disabled={sendingId === apt.id}
+                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 rounded-lg text-xs font-bold transition-all flex items-center gap-1 border border-emerald-200 cursor-pointer disabled:opacity-50"
+                        title="Send WhatsApp appointment reminder to patient"
+                      >
+                        {sendingId === apt.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <MessageSquare className="w-3.5 h-3.5" />
+                        )}
+                        WhatsApp Reminder
+                      </button>
+                    )}
                     <Link
                       href={`/admin/patients/${patientId}?tab=encounters`}
                       className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
                     >
-                      <FileText className="w-3.5 h-3.5" /> Encounter Prescriptions
+                      <FileText className="w-3.5 h-3.5" /> Prescriptions
                     </Link>
                   </div>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Toast Alert */}
+      {toastMsg && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3">
+          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+          {toastMsg}
         </div>
       )}
     </div>

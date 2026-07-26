@@ -13,6 +13,7 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import type { Invoice, PatientEncounter, Patient } from "../../../../lib/types";
+import { sendWhatsAppMessage } from "../../../../lib/services/whatsappService";
 
 interface InvoicesPaymentsTabProps {
   invoices: Invoice[];
@@ -50,6 +51,7 @@ export const InvoicesPaymentsTab: React.FC<InvoicesPaymentsTabProps> = ({
   patient,
   onOpenBillingReview,
 }) => {
+  const [sendingInvoiceId, setSendingInvoiceId] = React.useState<string | null>(null);
   // Financial metrics
   const totalBilled = invoices.reduce(
     (sum, inv) => sum + (inv.total || inv.amount || 0),
@@ -206,6 +208,7 @@ export const InvoicesPaymentsTab: React.FC<InvoicesPaymentsTabProps> = ({
                     <th className="p-3">Treatments</th>
                     <th className="p-3 text-right">Amount</th>
                     <th className="p-3 text-center">Status</th>
+                    <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -233,6 +236,41 @@ export const InvoicesPaymentsTab: React.FC<InvoicesPaymentsTabProps> = ({
                         >
                           {inv.paymentStatus || "UNPAID"}
                         </span>
+                      </td>
+                      <td className="p-3 text-right">
+                        <button
+                          type="button"
+                          disabled={sendingInvoiceId === inv.id}
+                          onClick={async () => {
+                            if (sendingInvoiceId === inv.id) return;
+                            setSendingInvoiceId(inv.id);
+                            try {
+                              const res = await sendWhatsAppMessage({
+                                messageType: "invoice",
+                                recipient: patient.phone,
+                                patientId: patient.id,
+                                patientName: patient.name,
+                                invoiceId: inv.id,
+                                clinicName: "Sanjivani Dentals",
+                              });
+                              if (res.success) {
+                                alert(res.message);
+                              } else if (res.code === "REQUEST_ALREADY_IN_PROGRESS") {
+                                alert("Message is already being sent.");
+                              } else {
+                                const digits = patient.phone.replace(/\D/g, "");
+                                const msg = `Hello ${patient.name}!\n\nYour invoice #${inv.id.slice(0, 8).toUpperCase()} for ₹${formatINR(inv.total || inv.amount)} from Sanjivani Dentals has been generated.\n\nThank you!`;
+                                window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, "_blank");
+                              }
+                            } finally {
+                              setSendingInvoiceId(null);
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 rounded-lg text-[11px] font-bold border border-emerald-200 transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1 ml-auto"
+                          title="Send invoice via WhatsApp"
+                        >
+                          {sendingInvoiceId === inv.id ? "Sending..." : "WhatsApp Invoice"}
+                        </button>
                       </td>
                     </tr>
                   ))}
