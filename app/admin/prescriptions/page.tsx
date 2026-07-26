@@ -3,15 +3,19 @@
 import { useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { AdminAuthGuard } from "../../../../components/auth/AdminAuthGuard";
+import { AdminAuthGuard } from "../../../components/auth/AdminAuthGuard";
 
-function LegacyEditPrescriptionRedirector() {
+function PrescriptionsRedirector() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   useEffect(() => {
+    const id = searchParams.get("id");
     const patientId = searchParams.get("patientId");
-    if (patientId) {
+
+    if (id) {
+      router.replace(`/prescriptions/${id}`);
+    } else if (patientId) {
       router.replace(`/admin/patients/${patientId}?tab=encounters`);
     } else {
       router.replace("/admin/patients");
@@ -25,7 +29,7 @@ function LegacyEditPrescriptionRedirector() {
   );
 }
 
-export default function LegacyEditPrescriptionPage() {
+export default function PrescriptionsIndexPage() {
   return (
     <AdminAuthGuard>
       <Suspense
@@ -35,7 +39,7 @@ export default function LegacyEditPrescriptionPage() {
           </div>
         }
       >
-        <LegacyEditPrescriptionRedirector />
+        <PrescriptionsRedirector />
       </Suspense>
     </AdminAuthGuard>
   );

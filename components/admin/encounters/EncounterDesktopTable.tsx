@@ -3,6 +3,7 @@
 import React, { memo } from "react";
 import { ChevronDown, ChevronUp, MoreVertical, Pencil, FileText, Receipt, Printer, Trash2 } from "lucide-react";
 import type { PatientEncounter, ToothTreatmentEntry, EncounterStatus } from "../../../lib/types";
+import { getTreatmentStatus } from "../../../lib/types";
 
 interface EncounterDesktopTableProps {
   encounters: PatientEncounter[];
@@ -164,9 +165,7 @@ export const EncounterDesktopTable = memo(function EncounterDesktopTable({
                       <span className="text-center">Billing</span>
                     </div>
                     {e.toothTreatments.map((tt) => {
-                      const tStatus = e.status === "Completed"
-                        ? "Completed"
-                        : (tt.treatmentStatus || (tt.status === "Completed" || tt.status === "In Progress" || tt.status === "Planned" ? tt.status : "Planned"));
+                      const tStatus = getTreatmentStatus(tt, e.status);
                       const bStatus = tt.billingStatus || "Unbilled";
                       const isComp = tStatus === "Completed";
                       const isBilled = bStatus === "Billed";

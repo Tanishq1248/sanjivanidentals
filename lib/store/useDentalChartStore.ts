@@ -6,6 +6,7 @@
 
 import { create } from "zustand";
 import type { SelectedTooth, ToothModalTab, ToothRecord, ToothTreatment, ToothPlan, ToothNumber, ToothConditionCode } from "../../components/dental-chart/types";
+import { getTreatmentStatus } from "../types";
 
 interface DentalChartState {
   selectedTooth: SelectedTooth | null;
@@ -90,16 +91,17 @@ export const useDentalChartStore = create<DentalChartState>((set) => ({
           }
 
           // Build UI objects
+          const status = getTreatmentStatus(tt, enc.status);
           const uiItem = {
             id: tt.id,
             treatment: tt.treatmentName,
-            status: tt.status,
+            status,
             date: tt.date,
             fee: tt.fee,
             notes: tt.notes,
           };
 
-          if (tt.status === "Planned") {
+          if (status === "Planned") {
             recordsMap[num].plans = [...(recordsMap[num].plans || []), uiItem as ToothPlan];
             // If currently healthy, plan sets condition to watch
             if (recordsMap[num].condition === "healthy") {

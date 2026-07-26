@@ -97,6 +97,7 @@ export const EncounterCard = memo(function EncounterCard({
                       key={tt.id}
                       index={idx}
                       treatment={tt}
+                      encounterStatus={encounter.status}
                       isBillingSelected={!!selectedBillingItems[`tt-${tt.id}`]}
                       onToggleBilling={() => onToggleBillingItem(`tt-${tt.id}`)}
                       onStatusChange={

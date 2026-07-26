@@ -177,10 +177,10 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
 
                   <div className="flex items-center gap-2">
                     <Link
-                      href={`/admin/prescriptions?appointmentId=${apt.id}&patientId=${patientId}`}
+                      href={`/admin/patients/${patientId}?tab=encounters`}
                       className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
                     >
-                      <FileText className="w-3.5 h-3.5" /> Prescription
+                      <FileText className="w-3.5 h-3.5" /> Encounter Prescriptions
                     </Link>
                   </div>
                 </div>

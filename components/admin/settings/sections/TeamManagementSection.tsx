@@ -44,7 +44,7 @@ export default function TeamManagementSection() {
   // Queries using TanStack Query
   const { data: members = [] } = useQuery({
     queryKey: queryKeys.settings.teamMembers,
-    queryFn: getTeamMembers,
+    queryFn: () => getTeamMembers(),
     staleTime: 5 * 60_000,
   });
 

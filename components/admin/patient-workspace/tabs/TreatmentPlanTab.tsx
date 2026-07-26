@@ -13,6 +13,7 @@ import {
   Stethoscope,
 } from "lucide-react";
 import type { PatientEncounter, ToothTreatmentEntry } from "../../../../lib/types";
+import { getTreatmentStatus } from "../../../../lib/types";
 
 interface TreatmentPlanTabProps {
   encounters: PatientEncounter[];
@@ -68,13 +69,7 @@ export const TreatmentPlanTab: React.FC<TreatmentPlanTabProps> = ({
   encounters.forEach((enc) => {
     if (enc.toothTreatments && enc.toothTreatments.length > 0) {
       enc.toothTreatments.forEach((tt) => {
-        const clinicalStatus: "Planned" | "In Progress" | "Completed" =
-          enc.status === "Completed"
-            ? "Completed"
-            : (tt.treatmentStatus as any) ||
-              (tt.status === "Planned" || tt.status === "In Progress" || tt.status === "Completed"
-                ? tt.status
-                : "Planned");
+        const clinicalStatus = getTreatmentStatus(tt, enc.status);
 
         const billingStatus: "Billed" | "Unbilled" =
           tt.billingStatus === "Billed" ? "Billed" : "Unbilled";

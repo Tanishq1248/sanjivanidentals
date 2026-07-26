@@ -41,8 +41,9 @@ import jsPDF from "jspdf";
 import { calculateSubtotal, calculateTax, calculateGrandTotal } from "../../../../lib/services/billingService";
 import { sendInvoiceEmail } from "../../../../lib/services/emailService";
 import { PatientDetailsModalSkeleton } from "../../../../components/ui/Skeletons";
-import type { PatientMedicalProfile, PatientEncounter, EncounterStatus, Invoice, Appointment } from "../../../../lib/types";
+import { getTreatmentStatus, type PatientMedicalProfile, type PatientEncounter, type EncounterStatus, type Invoice, type Appointment } from "../../../../lib/types";
 import { DentalChartModal } from "../../../../components/dental-chart/DentalChartModal";
+import { PrescriptionModal } from "../../../../components/admin/encounters/PrescriptionModal";
 
 /* ─── Loading Skeleton for Dynamic Tab Loading ─── */
 function TabLoadingSkeleton() {
@@ -178,6 +179,7 @@ export default function PatientProfilePage({ params }: PageProps) {
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isEncounterModalOpen, setIsEncounterModalOpen] = useState(false);
   const [isDentalChartOpen, setIsDentalChartOpen] = useState(false);
+  const [prescriptionEncounter, setPrescriptionEncounter] = useState<PatientEncounter | null>(null);
   
   // Billing review workflow states
   const [selectedBillingItems, setSelectedBillingItems] = useState<Record<string, boolean>>({});
@@ -233,10 +235,7 @@ export default function PatientProfilePage({ params }: PageProps) {
     encounters.forEach((enc) => {
       if (enc.toothTreatments && enc.toothTreatments.length > 0) {
         enc.toothTreatments.forEach((tt) => {
-          const isCompleted =
-            enc.status === "Completed" ||
-            tt.treatmentStatus === "Completed" ||
-            tt.status === "Completed";
+          const isCompleted = getTreatmentStatus(tt, enc.status) === "Completed";
           const isUnbilled = tt.billingStatus !== "Billed" && !tt.invoiceId;
 
           if (isCompleted && isUnbilled) {
@@ -268,7 +267,7 @@ export default function PatientProfilePage({ params }: PageProps) {
     if (encounter.toothTreatments && encounter.toothTreatments.length > 0) {
       const eligibleTTs = encounter.toothTreatments.filter(
         (tt) =>
-          (encounter.status === "Completed" || tt.treatmentStatus === "Completed" || tt.status === "Completed") &&
+          getTreatmentStatus(tt, encounter.status) === "Completed" &&
           tt.billingStatus !== "Billed" &&
           !tt.invoiceId
       );
@@ -287,7 +286,7 @@ export default function PatientProfilePage({ params }: PageProps) {
     if (encounter.toothTreatments && encounter.toothTreatments.length > 0) {
       const eligibleTTs = encounter.toothTreatments.filter(
         (tt) =>
-          (encounter.status === "Completed" || tt.treatmentStatus === "Completed" || tt.status === "Completed") &&
+          getTreatmentStatus(tt, encounter.status) === "Completed" &&
           tt.billingStatus !== "Billed" &&
           !tt.invoiceId
       );
@@ -824,18 +823,9 @@ export default function PatientProfilePage({ params }: PageProps) {
     };
 
     if (selectedEncounterId) {
-      const existingEnc = encounters.find((e) => e.id === selectedEncounterId);
-      let payloadData: Partial<PatientEncounter> = { ...payload };
-      if (payload.status === "Completed" && existingEnc?.toothTreatments && existingEnc.toothTreatments.length > 0) {
-        payloadData.toothTreatments = existingEnc.toothTreatments.map((tt) => ({
-          ...tt,
-          status: "Completed",
-          treatmentStatus: "Completed" as const,
-        }));
-      }
       updateEncounterMutation.mutate({
         id: selectedEncounterId,
-        data: payloadData,
+        data: payload,
       });
     } else {
       addEncounterMutation.mutate(payload);
@@ -843,20 +833,7 @@ export default function PatientProfilePage({ params }: PageProps) {
   };
 
   const handleStatusChange = (id: string, status: EncounterStatus) => {
-    const target = encounters.find((e) => e.id === id);
-    if (target) {
-      let dataToUpdate: Partial<PatientEncounter> = { status };
-      if (status === "Completed" && target.toothTreatments && target.toothTreatments.length > 0) {
-        dataToUpdate.toothTreatments = target.toothTreatments.map((tt) => ({
-          ...tt,
-          status: "Completed",
-          treatmentStatus: "Completed" as const,
-        }));
-      }
-      updateEncounterMutation.mutate({ id, data: dataToUpdate });
-    } else {
-      updateEncounterMutation.mutate({ id, data: { status } });
-    }
+    updateEncounterMutation.mutate({ id, data: { status } });
   };
 
   const handleToothTreatmentStatusChange = (
@@ -878,16 +855,26 @@ export default function PatientProfilePage({ params }: PageProps) {
       return tt;
     });
 
-    const allCompleted = updatedTTs.every(
-      (tt) => (tt.treatmentStatus || tt.status) === "Completed"
-    );
-
     const dataToUpdate: Partial<PatientEncounter> = {
       toothTreatments: updatedTTs,
     };
 
+    const allCompleted = updatedTTs.every(
+      (tt) => getTreatmentStatus(tt) === "Completed"
+    );
+    const anyInProgress = updatedTTs.some(
+      (tt) => getTreatmentStatus(tt) === "In Progress"
+    );
+    const anyCompleted = updatedTTs.some(
+      (tt) => getTreatmentStatus(tt) === "Completed"
+    );
+
     if (allCompleted) {
       dataToUpdate.status = "Completed";
+    } else if (anyInProgress || anyCompleted) {
+      dataToUpdate.status = "In Progress";
+    } else {
+      dataToUpdate.status = "Pending";
     }
 
     updateEncounterMutation.mutate({ id: encounterId, data: dataToUpdate });
@@ -1055,13 +1042,7 @@ export default function PatientProfilePage({ params }: PageProps) {
                     onToothTreatmentStatusChange={handleToothTreatmentStatusChange}
                     onEditEncounter={openEditEncounter}
                     onDeleteEncounter={handleDeleteEncounter}
-                    onPrescription={(e) => {
-                      if (e.prescriptionId) {
-                        router.push(`/admin/prescriptions?id=${e.prescriptionId}`);
-                      } else {
-                        router.push(`/admin/prescriptions?appointmentId=${e.appointmentId || ""}&patientId=${patientId}`);
-                      }
-                    }}
+                    onPrescription={(e) => setPrescriptionEncounter(e)}
                     onInvoice={(e) => handleOpenBillingReview(e)}
                     onPrint={() => window.print()}
                     formatVisitDate={formatVisitDate}
@@ -1651,6 +1632,16 @@ export default function PatientProfilePage({ params }: PageProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Prescription Modal */}
+      {prescriptionEncounter && patient && (
+        <PrescriptionModal
+          isOpen={!!prescriptionEncounter}
+          onClose={() => setPrescriptionEncounter(null)}
+          encounter={prescriptionEncounter}
+          patient={patient}
+        />
       )}
 
       {/* Toast Alert */}

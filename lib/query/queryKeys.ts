@@ -77,6 +77,10 @@ export const queryKeys = {
     /** Prescription associated with a specific appointment. */
     byAppointment: (appointmentId: string) =>
       ["prescriptions", "appointment", appointmentId] as const,
+
+    /** Prescription associated with a specific encounter. */
+    byEncounter: (encounterId: string) =>
+      ["prescriptions", "encounter", encounterId] as const,
   },
 
   // ── Doctors ────────────────────────────────────────────────────────────────
@@ -159,6 +163,16 @@ export const queryKeys = {
     teamMembers: ["settings", "teamMembers"] as const,
     roles: ["settings", "roles"] as const,
     clinicInfo: ["settings", "clinicInfo"] as const,
+    appointmentSettings: ["settings", "appointmentSettings"] as const,
+    billingSettings: ["settings", "billingSettings"] as const,
+    securitySettings: ["settings", "securitySettings"] as const,
+  },
+
+  // ── Security ───────────────────────────────────────────────────────────────
+  security: {
+    loginHistory: (filter?: string) => ["security", "loginHistory", filter ?? "all"] as const,
+    auditLogs: (filter?: string) => ["security", "auditLogs", filter ?? "all"] as const,
+    activeSessions: ["security", "activeSessions"] as const,
   },
 } as const;
 

@@ -26,6 +26,7 @@ import { getPatients } from "../../../../lib/services/patientService";
 import { getAppointments } from "../../../../lib/services/appointmentService";
 import { getInvoices } from "../../../../lib/services/invoiceService";
 import { getAllEncounters, getFollowUpsDueThisWeek } from "../../../../lib/services/patientService";
+import { getTreatmentStatus } from "../../../../lib/types";
 
 // Helper to format currency
 function formatINR(val: number) {
@@ -131,7 +132,7 @@ export function AnalyticsPageContent() {
     encounters.forEach((enc) => {
       if (enc.toothTreatments && enc.toothTreatments.length > 0) {
         enc.toothTreatments.forEach((tt) => {
-          const st = enc.status === "Completed" ? "Completed" : tt.treatmentStatus || tt.status || "Planned";
+          const st = getTreatmentStatus(tt, enc.status);
           const isComp = st === "Completed";
           if (isComp) compCount++;
           else pendCount++;

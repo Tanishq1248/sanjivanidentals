@@ -17,12 +17,13 @@ import {
   ChevronRight,
   AlertTriangle,
 } from "lucide-react";
-import type {
-  Patient,
-  PatientMedicalProfile,
-  PatientEncounter,
-  Invoice,
-  Appointment,
+import {
+  getTreatmentStatus,
+  type Patient,
+  type PatientMedicalProfile,
+  type PatientEncounter,
+  type Invoice,
+  type Appointment,
 } from "../../../../lib/types";
 
 interface OverviewTabProps {
@@ -86,11 +87,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   encounters.forEach((e) => {
     if (e.toothTreatments && e.toothTreatments.length > 0) {
       e.toothTreatments.forEach((tt) => {
-        if (tt.status === "In Progress" || tt.status === "Planned") {
+        const st = getTreatmentStatus(tt, e.status);
+        if (st === "In Progress" || st === "Planned") {
           allActiveToothTreatments.push({
             toothNumber: tt.toothNumber,
             treatmentName: tt.treatmentName,
-            status: tt.status,
+            status: st,
             doctorName: e.doctorName,
           });
         }

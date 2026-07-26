@@ -78,6 +78,28 @@ export interface ToothTreatmentEntry {
   timestamp: string; // ISO string
 }
 
+/**
+ * Helper to derive clinical treatment status for a tooth treatment entry.
+ * Priority:
+ * 1. Explicit tt.treatmentStatus ("Planned" | "In Progress" | "Completed")
+ * 2. Explicit tt.status ("Planned" | "In Progress" | "Completed")
+ * 3. Fallback to encounterStatus ONLY if treatment row has no explicit status
+ */
+export function getTreatmentStatus(
+  treatment: { status?: string; treatmentStatus?: ClinicalTreatmentStatus },
+  fallbackEncounterStatus?: string
+): ClinicalTreatmentStatus {
+  if (treatment.treatmentStatus === "Planned" || treatment.treatmentStatus === "In Progress" || treatment.treatmentStatus === "Completed") {
+    return treatment.treatmentStatus;
+  }
+  if (treatment.status === "Planned" || treatment.status === "In Progress" || treatment.status === "Completed") {
+    return treatment.status as ClinicalTreatmentStatus;
+  }
+  if (fallbackEncounterStatus === "Completed") return "Completed";
+  if (fallbackEncounterStatus === "In Progress") return "In Progress";
+  return "Planned";
+}
+
 export interface PatientEncounter {
   id: string;
   patientId: string;
@@ -275,20 +297,36 @@ export interface Medication {
   dosage: string;
   frequency: string;
   duration: string;
+  timing?: string; // e.g., "After Food", "Before Food", "At Bedtime"
+  notes?: string;   // e.g., "If pain persists"
 }
 
 export interface Prescription {
   prescriptionId: string;
+  encounterId?: string;
   patientId: string;
   patientName: string;
   patientPhone: string;
   patientAge?: string;
-  appointmentId: string;
-  doctorId: string;
+  patientGender?: string;
+  appointmentId?: string;
+  doctorId?: string;
+  doctorName?: string;
+  doctorSpecialization?: string;
+  doctorRegistrationNumber?: string;
+  clinicName?: string;
+  clinicAddress?: string;
+  clinicPhone?: string;
   prescriptionNumber: string;
+  chiefComplaint?: string;
   diagnosis: string;
   medications: Medication[];
+  advice?: string;
+  dietInstructions?: string;
+  oralHygieneInstructions?: string;
   additionalInstructions: string;
+  followUpDate?: string;
+  followUpReason?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -455,15 +493,120 @@ export interface RolePermission {
   updatedAt?: Timestamp | string;
 }
 
-export interface ClinicSettingsData {
+export interface AppointmentSettingsData {
+  defaultSlotDurationMinutes: number; // 15, 30, 45, 60
+  bufferTimeMinutes: number;          // 0, 5, 10, 15
+  autoConfirmWebBookings: boolean;    // true / false
+  allowChairOverbooking: boolean;     // true / false
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+export interface BillingSettingsData {
+  invoiceNumberPrefix: string;     // e.g., "DP-INV-"
+  nextInvoiceNumber: number;        // e.g., 1001
+  defaultGstRate: number;           // e.g., 0, 5, 12, 18
+  systemCurrency: string;           // e.g., "INR"
+  currencySymbol: string;           // e.g., "₹"
+  taxIncludedMode?: boolean;        // whether prices include tax
+  invoiceFooterText?: string;       // footer note
+  paymentInstructions?: string;     // bank transfer / UPI payment instructions
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+/* ─── Security Module ─── */
+
+export type LoginStatus = "success" | "failed" | "logged_out" | "session_expired";
+
+export interface LoginHistoryEntry {
+  id?: string;
+  userId: string;
+  userName: string;
+  userRole: string;
+  deviceInfo: string;       // e.g., "Windows 10 / Chrome 120"
+  browserName: string;      // e.g., "Chrome"
+  status: LoginStatus;
+  loginTime: Timestamp;
+  logoutTime?: Timestamp;
+  ipAddress?: string;       // approximate, optional
+  createdAt: Timestamp;
+}
+
+export interface AuditLogEntry {
+  id?: string;
+  actorUserId: string;
+  actorName: string;
+  actorRole: string;
+  actionType: string;       // e.g., "patient_created", "invoice_generated"
+  entityType: string;       // e.g., "Patient", "Invoice", "Settings"
+  entityId?: string;
+  entityName?: string;
+  message: string;          // human-readable description
+  timestamp: Timestamp;
+  metadata?: Record<string, unknown>;
+  success: boolean;
+}
+
+export interface SecuritySettingsData {
+  sessionTimeoutMinutes: number;   // 15, 30, 60, 120
+  auditLoggingEnabled: boolean;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+/* ─── Session Lifecycle ─── */
+export type SessionStatus = "active" | "inactive" | "expired" | "revoked";
+
+export interface SecuritySession {
+  id?: string;
+  sessionId: string;         // unique ID (matches Firestore doc ID)
+  userId: string;
+  userName: string;
+  role: string;
+  deviceId: string;          // stable ID stored in localStorage
+  deviceName: string;        // e.g. "Windows / Chrome"
+  browserName: string;
+  platform: string;          // e.g. "Windows"
+  createdAt: Timestamp;
+  lastActiveAt: Timestamp;
+  expiresAt: Timestamp;
+  status: SessionStatus;
+  isCurrent: boolean;
+  isRevoked: boolean;
+  revokedAt?: Timestamp;
+  revokeReason?: string;
+}
+
+export interface ClinicBasicInfo {
   clinicName: string;
-  doctorTitle: string;
+  clinicLogoUrl?: string;
+  doctorName: string;
+  qualification?: string;
+  registrationNumber?: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  state: string;
+  pincode: string;
   phone: string;
+  whatsappNumber?: string;
   email: string;
-  address: string;
-  gstin: string;
-  website: string;
-  timing: string;
-  chairsCount: number;
+  website?: string;
+  invoiceFooterText?: string;
+  prescriptionFooterText?: string;
+  currencySymbol?: string;
+  gstNumber?: string;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+export interface ClinicSettingsData extends ClinicBasicInfo {
+  // Backward compatibility alias fields
+  doctorTitle?: string;
+  address?: string;
+  gstin?: string;
+  timing?: string;
+  chairsCount?: number;
 }
 

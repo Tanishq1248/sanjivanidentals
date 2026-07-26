@@ -25,6 +25,7 @@ import type {
   PaginatedResult,
 } from "../types";
 import { COLLECTIONS, getCollectionRef } from "./firestoreConfig";
+import { getAppointmentSettings } from "./settingsService";
 
 /** Extended creation payload including calendar-specific fields. */
 export type AppointmentAdminPayload = AppointmentFormData &
@@ -195,16 +196,20 @@ export async function getAppointmentsByPhone(
 
 /**
  * Create a new appointment from the booking form.
- * Status defaults to "Pending", source to "online_booking".
+ * Respects autoConfirmWebBookings and defaultSlotDurationMinutes settings.
  */
 export async function createAppointment(
   data: AppointmentFormData
 ): Promise<string> {
+  const settings = await getAppointmentSettings();
+  const initialStatus = settings.autoConfirmWebBookings ? "Confirmed" : "Pending";
+  const slotDuration = settings.defaultSlotDurationMinutes || 30;
   const now = Timestamp.now();
   const docRef = await addDoc(appointmentsRef, {
     ...data,
     patientId: "",
-    status: "Pending" as AppointmentStatus,
+    status: initialStatus as AppointmentStatus,
+    duration: slotDuration,
     source: "online_booking",
     createdAt: now,
     updatedAt: now,
@@ -214,21 +219,23 @@ export async function createAppointment(
 
 /**
  * Create an appointment from the admin panel.
- * Status defaults to "Confirmed", source to "admin_created".
- * Accepts optional chair, duration, patientId, doctorId, doctorName.
+ * Respects defaultSlotDurationMinutes if duration is not explicitly specified.
  */
 export async function createAppointmentByAdmin(
   data: AppointmentAdminPayload
 ): Promise<string> {
+  const settings = await getAppointmentSettings();
   const now = Timestamp.now();
   const { status, chair, duration, patientId, doctorId, doctorName, ...rest } = data;
+  const effectiveDuration = duration || settings.defaultSlotDurationMinutes || 30;
+
   const docRef = await addDoc(appointmentsRef, {
     ...rest,
     patientId: patientId || "",
     status: status || ("Confirmed" as AppointmentStatus),
     source: "admin_created",
+    duration: effectiveDuration,
     ...(chair ? { chair } : {}),
-    ...(duration ? { duration } : {}),
     ...(doctorId ? { doctorId } : {}),
     ...(doctorName ? { doctorName } : {}),
     createdAt: now,

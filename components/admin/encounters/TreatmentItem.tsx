@@ -2,10 +2,12 @@
 
 import React from "react";
 import type { ToothTreatmentEntry } from "../../../lib/types";
+import { getTreatmentStatus } from "../../../lib/types";
 
 interface TreatmentItemProps {
   index: number;
   treatment: ToothTreatmentEntry | { id: string; treatmentName: string; status?: string; fee?: number; toothNumber?: number };
+  encounterStatus?: string;
   isBillingSelected?: boolean;
   onToggleBilling?: () => void;
   onStatusChange?: (newStatus: "Planned" | "In Progress" | "Completed") => void;
@@ -15,15 +17,13 @@ interface TreatmentItemProps {
 export function TreatmentItem({
   index,
   treatment,
+  encounterStatus,
   isBillingSelected,
   onToggleBilling,
   onStatusChange,
   formatINR,
 }: TreatmentItemProps) {
-  const treatmentStatus =
-    ("treatmentStatus" in treatment && treatment.treatmentStatus) ||
-    treatment.status ||
-    "Planned";
+  const treatmentStatus = getTreatmentStatus(treatment, encounterStatus);
   const billingStatus =
     ("billingStatus" in treatment && treatment.billingStatus) || "Unbilled";
   const fee = treatment.fee || 0;

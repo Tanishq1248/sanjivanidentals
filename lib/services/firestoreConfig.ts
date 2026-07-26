@@ -23,7 +23,12 @@ export const COLLECTIONS = {
   SUBSCRIPTION_INFO: "subscriptionInfo",
   TEAM_MEMBERS: "teamMembers",
   ROLES: "roles",
-
+  APPOINTMENT_SETTINGS: "appointmentSettings",
+  BILLING_SETTINGS: "billingSettings",
+  LOGIN_HISTORY: "loginHistory",
+  AUDIT_LOGS: "auditLogs",
+  SECURITY_SETTINGS: "securitySettings",
+  SECURITY_SESSIONS: "securitySessions",
 
   // Archived Collections (designed for future expansion)
   ARCHIVED_APPOINTMENTS: "archived_appointments",

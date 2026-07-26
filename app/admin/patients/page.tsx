@@ -21,7 +21,6 @@ import {
   Menu,
   LogOut,
   Loader2,
-  Pill,
   ChevronLeft,
   ChevronRight,
   Eye,
@@ -158,16 +157,6 @@ function PatientActionDropdown({
             >
               <Eye className="w-4 h-4 text-on-surface-variant" />
               View Profile
-            </button>
-            <button
-              onClick={() => {
-                router.push(`/admin/prescriptions/edit?patientId=${patient.id}`);
-                setOpen(false);
-              }}
-              className="w-full text-left px-4 py-2.5 text-xs font-semibold text-on-surface hover:bg-surface-container-low transition-colors flex items-center gap-2 cursor-pointer border-none bg-transparent"
-            >
-              <Pill className="w-4 h-4 text-violet-600" />
-              Prescription
             </button>
             <button
               onClick={() => {
