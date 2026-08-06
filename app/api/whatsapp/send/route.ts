@@ -19,12 +19,15 @@ import {
   createSuccessResponse,
   logServerError,
 } from "../../../../lib/errors/messagingErrors";
+import { generatePrescriptionPdfBuffer } from "../../../../lib/services/pdfServerService";
+import { DocumentStorageService } from "../../../../lib/services/documentStorageService";
 import type {
   WhatsAppMessagePayload,
   Prescription,
   Invoice,
   Appointment,
   ClinicBasicInfo,
+  DocumentMetadataRecord,
 } from "../../../../lib/types";
 
 // In-Memory Request Lock Set (Server-Side Final Authority)
@@ -137,6 +140,35 @@ function isTransientError(error: any): boolean {
   return false;
 }
 
+/**
+ * Server-side helper to ensure a prescription PDF is stored in Firebase Storage and return its download URL.
+ * Leverages DocumentStorageService.getOrEnsurePrescriptionPdf to reuse existing Storage PDFs cleanly.
+ */
+async function getOrGeneratePrescriptionStorageUrl(
+  rxDocId: string,
+  rxData: Prescription,
+  clinicInfo?: ClinicBasicInfo
+): Promise<string | null> {
+  try {
+    const { downloadUrl, reused } = await DocumentStorageService.getOrEnsurePrescriptionPdf(
+      rxDocId,
+      rxData,
+      clinicInfo
+    );
+
+    if (reused) {
+      console.log(`[WhatsApp API] Reused existing stored PDF for WhatsApp delivery (ID: ${rxDocId})`);
+    } else {
+      console.log(`[WhatsApp API] Initialized and uploaded PDF for WhatsApp delivery (ID: ${rxDocId})`);
+    }
+
+    return downloadUrl;
+  } catch (error: any) {
+    logServerError(error, { action: "getOrGeneratePrescriptionStorageUrl", rxDocId });
+    return null;
+  }
+}
+
 export async function POST(req: Request) {
   let lockKey = "";
 
@@ -177,46 +209,229 @@ export async function POST(req: Request) {
     let mediaUrl = payload.mediaUrl;
 
     // ── 2. SERVER-SIDE DATA LOAD FROM FIRESTORE ──
+    let clinicInfo: ClinicBasicInfo | undefined;
     try {
       const clinicSnap = await getDoc(doc(db, COLLECTIONS.CLINIC_SETTINGS, "info"));
       if (clinicSnap.exists()) {
-        const cData = clinicSnap.data() as ClinicBasicInfo;
-        clinicName = clinicName || cData.clinicName;
-        doctorName = doctorName || cData.doctorName;
+        clinicInfo = clinicSnap.data() as ClinicBasicInfo;
+        clinicName = clinicName || clinicInfo.clinicName;
+        doctorName = doctorName || clinicInfo.doctorName;
       }
     } catch (err: any) {
       logServerError(err, { action: "Fetch Clinic Info" });
     }
 
     if (payload.messageType === "prescription") {
-      let rxDocId = payload.encounterId;
+      let rxDocId = payload.prescriptionId || payload.encounterId;
+      let rxData: Prescription | null = null;
 
-      if (payload.encounterId) {
-        const rxQuery = query(
-          collection(db, COLLECTIONS.PRESCRIPTIONS),
-          where("encounterId", "==", payload.encounterId)
-        );
-        const rxSnap = await getDocs(rxQuery);
-        if (!rxSnap.empty) {
-          const rxData = rxSnap.docs[0].data() as Prescription;
-          rxDocId = rxSnap.docs[0].id;
-          patientId = patientId || rxData.patientId;
-          patientName = patientName || rxData.patientName;
-          recipient = recipient || rxData.patientPhone;
-          doctorName = doctorName || rxData.doctorName;
+      // 1. Primary Lookup: Try finding prescription document by prescriptionId
+      if (payload.prescriptionId && !payload.prescriptionId.startsWith("temp")) {
+        try {
+          const rxSnap = await getDoc(doc(db, COLLECTIONS.PRESCRIPTIONS, payload.prescriptionId));
+          if (rxSnap.exists()) {
+            rxData = { prescriptionId: rxSnap.id, ...rxSnap.data() } as Prescription;
+            rxDocId = rxSnap.id;
+          }
+        } catch (err: any) {
+          logServerError(err, { action: "Fetch Prescription by ID", prescriptionId: payload.prescriptionId });
         }
       }
 
-      if (rxDocId && !rxDocId.startsWith("temp")) {
-        mediaUrl = mediaUrl || `${baseUrl}/api/pdf/prescription?id=${rxDocId}`;
+      // 2. Secondary Lookup: Fallback to finding prescription document by encounterId
+      if (!rxData && payload.encounterId) {
+        try {
+          const rxQuery = query(
+            collection(db, COLLECTIONS.PRESCRIPTIONS),
+            where("encounterId", "==", payload.encounterId)
+          );
+          const rxSnap = await getDocs(rxQuery);
+          if (!rxSnap.empty) {
+            const docSnap = rxSnap.docs[0];
+            rxData = { prescriptionId: docSnap.id, ...docSnap.data() } as Prescription;
+            rxDocId = docSnap.id;
+          }
+        } catch (err: any) {
+          logServerError(err, { action: "Fetch Prescription by Encounter", encounterId: payload.encounterId });
+        }
       }
-    } else if (payload.messageType === "invoice" && payload.invoiceId) {
-      const invSnap = await getDoc(doc(db, COLLECTIONS.INVOICES, payload.invoiceId));
-      if (invSnap.exists()) {
-        const invData = invSnap.data() as Invoice;
-        patientId = patientId || invData.patientId || "";
-        patientName = patientName || invData.patientName || "Patient";
-        mediaUrl = mediaUrl || `${baseUrl}/api/pdf/invoice?id=${payload.invoiceId}`;
+
+      if (!rxData || !rxDocId || rxDocId.startsWith("temp")) {
+        console.warn(
+          `[WhatsApp API] Download URL generation failed: Prescription record not found in Firestore (prescriptionId: ${payload.prescriptionId}, encounterId: ${payload.encounterId})`
+        );
+        await logWhatsAppMessage({
+          patientId: patientId || "unknown",
+          encounterId: payload.encounterId,
+          messageType: payload.messageType,
+          recipient: recipient || "unknown",
+          status: "failed",
+          errorMessage: "Prescription record not found in Firestore.",
+        });
+
+        return createErrorResponse(
+          "PRESCRIPTION_NOT_FOUND",
+          "The requested prescription document could not be found in Firestore.",
+          `No matching prescription record for ID '${payload.prescriptionId || payload.encounterId}'.`
+        );
+      }
+
+      patientId = patientId || rxData.patientId;
+      patientName = patientName || rxData.patientName;
+      recipient = recipient || rxData.patientPhone;
+      doctorName = doctorName || rxData.doctorName;
+
+      // 3. Extract storagePath from prescription or central 'documents' collection
+      let storagePath = rxData.storagePath;
+      if (!storagePath) {
+        try {
+          const docMetaSnap = await getDoc(doc(db, COLLECTIONS.DOCUMENTS, rxDocId));
+          if (docMetaSnap.exists()) {
+            const docMeta = docMetaSnap.data() as DocumentMetadataRecord;
+            if (docMeta.storagePath && docMeta.status !== "deleted") {
+              storagePath = docMeta.storagePath;
+            }
+          }
+        } catch (metaErr) {
+          console.warn(`[WhatsApp API] Could not read documents metadata for ${rxDocId}:`, metaErr);
+        }
+      }
+
+      // If storagePath is missing: Abort sending and return structured error
+      if (!storagePath) {
+        console.warn(`[WhatsApp API] Download URL generation failed: storagePath missing for prescription ${rxDocId}`);
+        await logWhatsAppMessage({
+          patientId,
+          encounterId: payload.encounterId,
+          messageType: payload.messageType,
+          recipient: recipient || "unknown",
+          status: "failed",
+          errorMessage: "storagePath is missing in prescription metadata.",
+        });
+
+        return createErrorResponse(
+          "STORAGE_PATH_MISSING",
+          "Prescription PDF storage path reference is missing. Please view or print the prescription first to upload it to Storage.",
+          `No storagePath found for prescription ID '${rxDocId}'.`
+        );
+      }
+
+      // 4. Generate fresh Download URL via DocumentStorageService.getDownloadURL(storagePath)
+      try {
+        console.log(`[WhatsApp API] Storage file located at path for prescription ${rxDocId}`);
+        const downloadUrl = await DocumentStorageService.getDownloadURL(storagePath);
+        mediaUrl = downloadUrl;
+        console.log(`[WhatsApp API] Download URL generated successfully for prescription ${rxDocId}`);
+        console.log(`[WhatsApp API] Twilio mediaUrl prepared successfully for recipient`);
+        console.log(`[WhatsApp API] WhatsApp message delivery initiated for patient ${patientId}`);
+      } catch (storageError: any) {
+        const errMsg = storageError?.message || "";
+        console.error(`[WhatsApp API] Download URL generation failed for path '${storagePath}':`, storageError);
+
+        await logWhatsAppMessage({
+          patientId,
+          encounterId: payload.encounterId,
+          messageType: payload.messageType,
+          recipient: recipient || "unknown",
+          status: "failed",
+          errorMessage: `Download URL generation failed: ${errMsg}`,
+        });
+
+        if (errMsg.includes("STORAGE_FILE_MISSING")) {
+          return createErrorResponse(
+            "STORAGE_FILE_MISSING",
+            "The prescription PDF file is missing from Firebase Storage. Please view or print the prescription to restore it.",
+            `Storage file not found at path '${storagePath}'.`
+          );
+        }
+
+        if (errMsg.includes("CORRUPTED_FILE") || errMsg.includes("INVALID_MIME_TYPE")) {
+          return createErrorResponse(
+            "INVALID_DOCUMENT",
+            "The prescription PDF file in Firebase Storage is corrupted or invalid.",
+            `Invalid file at path '${storagePath}'.`
+          );
+        }
+
+        return createErrorResponse(
+          "DOWNLOAD_URL_FAILED",
+          "Unable to generate secure download URL for prescription PDF delivery.",
+          errMsg
+        );
+      }
+    } else if (payload.messageType === "invoice") {
+      let invDocId = payload.invoiceId;
+      let invData: Invoice | null = null;
+
+      if (invDocId) {
+        try {
+          const invSnap = await getDoc(doc(db, COLLECTIONS.INVOICES, invDocId));
+          if (invSnap.exists()) {
+            invData = { id: invSnap.id, ...invSnap.data() } as Invoice;
+          }
+        } catch (err: any) {
+          logServerError(err, { action: "Fetch Invoice by ID", invoiceId: invDocId });
+        }
+      }
+
+      if (!invData || !invDocId) {
+        console.warn(
+          `[WhatsApp API] Download URL generation failed: Invoice record not found in Firestore (invoiceId: ${payload.invoiceId})`
+        );
+        await logWhatsAppMessage({
+          patientId: patientId || "unknown",
+          invoiceId: payload.invoiceId,
+          messageType: payload.messageType,
+          recipient: recipient || "unknown",
+          status: "failed",
+          errorMessage: "Invoice record not found in Firestore.",
+        });
+
+        return createErrorResponse(
+          "PATIENT_NOT_FOUND",
+          "The requested invoice document could not be found in Firestore.",
+          `No matching invoice record for ID '${payload.invoiceId}'.`
+        );
+      }
+
+      patientId = patientId || invData.patientId || "";
+      patientName = patientName || invData.patientName || "Patient";
+
+      // Retrieve or generate Invoice PDF in Firebase Storage and get server-generated Download URL
+      try {
+        const { downloadUrl, reused } = await DocumentStorageService.getOrEnsureInvoicePdf(
+          invDocId,
+          invData,
+          clinicInfo
+        );
+
+        if (reused) {
+          console.log(`[WhatsApp API] Reused existing stored Invoice PDF for WhatsApp delivery (ID: ${invDocId})`);
+        } else {
+          console.log(`[WhatsApp API] Initialized and uploaded Invoice PDF for WhatsApp delivery (ID: ${invDocId})`);
+        }
+
+        mediaUrl = downloadUrl;
+        console.log(`[WhatsApp API] Download URL generated successfully for invoice ${invDocId}`);
+        console.log(`[WhatsApp API] Twilio mediaUrl prepared successfully for invoice recipient`);
+      } catch (storageError: any) {
+        const errMsg = storageError?.message || "";
+        console.error(`[WhatsApp API] Download URL generation failed for invoice '${invDocId}':`, storageError);
+
+        await logWhatsAppMessage({
+          patientId,
+          invoiceId: invDocId,
+          messageType: payload.messageType,
+          recipient: recipient || "unknown",
+          status: "failed",
+          errorMessage: `Invoice Download URL generation failed: ${errMsg}`,
+        });
+
+        return createErrorResponse(
+          "DOWNLOAD_URL_FAILED",
+          "Unable to generate secure download URL for Invoice PDF delivery.",
+          errMsg
+        );
       }
     } else if (payload.messageType === "appointment_reminder" && payload.appointmentId) {
       const aptSnap = await getDoc(doc(db, COLLECTIONS.APPOINTMENTS, payload.appointmentId));

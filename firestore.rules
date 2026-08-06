@@ -1,41 +1,201 @@
 rules_version = '2';
+
+// =============================================================================
+// DENTAPURE DENTAL CLINIC - FIRESTORE SECURITY RULES
+// Single-Tenant Healthcare Security Model
+// Principles: Authentication Required, Least Privilege, Protected System Logs
+// =============================================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // =========================================================================
+    // CENTRAL SECURITY HELPER FUNCTIONS
+    // =========================================================================
+
+    /** Checks whether the incoming request is from a valid authenticated user. */
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    /** Helper to check if a field is a valid Timestamp. */
+    function isTimestamp(val) {
+      return val is timestamp;
+    }
+
+    // =========================================================================
+    // PATIENT & CLINICAL DATA COLLECTIONS
+    // =========================================================================
+
+    // Patient Directory Records
     match /patients/{patientId} {
-      allow read, write: if request.auth != null;
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() &&
+        (request.resource.data.name is string) &&
+        (request.resource.data.phone is string);
+      allow delete: if isAuthenticated();
     }
+
+    // Comprehensive Patient Medical Histories & Profiles
     match /patientMedicalProfiles/{profileId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAuthenticated();
     }
+
+    // Patient Clinical Encounters & Dental Chartings
     match /patientEncounters/{encounterId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAuthenticated();
     }
-    match /doctors/{doctorId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+
+    // Active Prescriptions
+    match /prescriptions/{prescriptionId} {
+      allow read, write: if isAuthenticated();
     }
-    match /invoices/{invoiceId} {
-      allow read, write: if request.auth != null;
+
+    // Archived Prescriptions
+    match /archived_prescriptions/{prescriptionId} {
+      allow read, write: if isAuthenticated();
     }
-    
-     match /{document=**} {
-      allow read, write: if true;
-    }
+
+    // =========================================================================
+    // APPOINTMENTS, DOCTORS & SERVICES
+    // =========================================================================
+
+    // Active Clinic Appointments
     match /appointments/{appointmentId} {
-      allow create: if true;
-      allow read, update, delete: if request.auth != null;
+      allow read, write: if isAuthenticated();
     }
+
+    // Archived Appointments
+    match /archived_appointments/{appointmentId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // In-App Notifications
     match /notifications/{notificationId} {
-      allow create: if true;
-      allow read, update, delete: if request.auth != null;
+      allow read, write: if isAuthenticated();
     }
+
+    // Archived Notifications
+    match /archived_notifications/{notificationId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Doctors & Clinical Specialists Directory
+    match /doctors/{doctorId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Dental Treatment Catalog & Procedure Services
     match /services/{serviceId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+      allow read, write: if isAuthenticated();
     }
+
+    // =========================================================================
+    // FINANCIAL, BILLING & EXPENSE MANAGEMENT
+    // =========================================================================
+
+    // Treatment Invoices & Payment Tracking
+    match /invoices/{invoiceId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Clinic Operating Expenses
+    match /expenses/{expenseId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Patient & Doctor Referrals Tracking
+    match /clinicReferrals/{referralId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Referral Program Configuration
+    match /clinicReferralConfig/{configId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Clinic Subscription & Tier Metadata
+    match /subscriptionInfo/{subId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // =========================================================================
+    // ADMINISTRATIVE, TEAM & SYSTEM SETTINGS
+    // =========================================================================
+
+    // Basic Clinic Profile & Header Information
     match /clinicSettings/{docId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+      allow read, write: if isAuthenticated();
+    }
+
+    // Calendar & Appointment Slot Configuration
+    match /appointmentSettings/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Invoicing & Tax Settings
+    match /billingSettings/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Security & Inactivity Timeout Configuration
+    match /securitySettings/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Clinic Staff & Team Directory
+    match /teamMembers/{memberId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // RBAC Custom Roles & Permission Definitions
+    match /roles/{roleId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // =========================================================================
+    // SYSTEM LOGS, SESSIONS & MESSAGING (PROTECTED COLLECTIONS)
+    // =========================================================================
+
+    // User Login & Logout History Logs (Deletion Denied)
+    match /loginHistory/{entryId} {
+      allow read, create, update: if isAuthenticated();
+      allow delete: if false;
+    }
+
+    // Immutable Security Audit Logs (Append-Only; Update & Delete Denied)
+    match /auditLogs/{logId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    // Active User Sessions & Activity Monitors
+    match /securitySessions/{sessionId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Monthly WhatsApp Messaging Quotas (Deletion Denied)
+    match /messagingUsage/{quotaId} {
+      allow read, create, update: if isAuthenticated();
+      allow delete: if false;
+    }
+
+    // WhatsApp Message Delivery Logs & Status Callbacks (Deletion Denied)
+    match /messageLogs/{logId} {
+      allow read, create, update: if isAuthenticated();
+      allow delete: if false;
+    }
+
+    // Central Document Storage Metadata Records
+    match /documents/{documentId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // =========================================================================
+    // GLOBAL DEFAULT DENY ALL FALLBACK
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

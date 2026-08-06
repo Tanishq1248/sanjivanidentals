@@ -12,6 +12,11 @@ export type ErrorCategory =
 
 export type MessagingErrorCode =
   | "PATIENT_NOT_FOUND"
+  | "PRESCRIPTION_NOT_FOUND"
+  | "STORAGE_PATH_MISSING"
+  | "STORAGE_FILE_MISSING"
+  | "DOWNLOAD_URL_FAILED"
+  | "INVALID_DOCUMENT"
   | "PHONE_NOT_FOUND"
   | "PHONE_INVALID"
   | "PHONE_FORMAT_INVALID"
@@ -43,6 +48,31 @@ export const ERROR_DEFINITIONS: Record<MessagingErrorCode, ErrorDefinition> = {
     category: "patient",
     defaultMessage: "Patient record could not be found.",
     statusCode: 404,
+  },
+  PRESCRIPTION_NOT_FOUND: {
+    category: "pdf",
+    defaultMessage: "Prescription record could not be found.",
+    statusCode: 404,
+  },
+  STORAGE_PATH_MISSING: {
+    category: "pdf",
+    defaultMessage: "Storage reference path is missing in document metadata.",
+    statusCode: 404,
+  },
+  STORAGE_FILE_MISSING: {
+    category: "pdf",
+    defaultMessage: "The requested document file is missing from Firebase Storage.",
+    statusCode: 404,
+  },
+  DOWNLOAD_URL_FAILED: {
+    category: "pdf",
+    defaultMessage: "Failed to generate secure Firebase Storage download URL.",
+    statusCode: 500,
+  },
+  INVALID_DOCUMENT: {
+    category: "pdf",
+    defaultMessage: "The stored document file is corrupted or invalid.",
+    statusCode: 422,
   },
   PHONE_NOT_FOUND: {
     category: "validation",

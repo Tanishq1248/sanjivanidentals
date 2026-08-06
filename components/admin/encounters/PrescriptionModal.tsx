@@ -41,6 +41,7 @@ import {
   generatePrescriptionNumber,
 } from "../../../lib/services/prescriptionService";
 import { sendWhatsAppMessage } from "../../../lib/services/whatsappService";
+import { sendPrescriptionEmail } from "../../../lib/services/emailService";
 import { queryKeys } from "../../../lib/query/queryKeys";
 
 interface PrescriptionModalProps {
@@ -312,7 +313,6 @@ export function PrescriptionModal({
       }
 
       showToast("Sending WhatsApp message via Twilio...");
-      const publicUrl = `${window.location.origin}/prescriptions/${targetId}`;
 
       const res = await sendWhatsAppMessage({
         messageType: "prescription",
@@ -320,9 +320,9 @@ export function PrescriptionModal({
         patientId: patient.id,
         patientName: patient.name,
         encounterId: encounter.id,
+        prescriptionId: targetId,
         clinicName: clinicInfo?.clinicName || "Sanjivani Dentals",
         doctorName: encounter.doctorName || clinicInfo?.doctorName || "Dr. Julian Moore",
-        mediaUrl: publicUrl,
       });
 
       if (res.success) {
@@ -337,7 +337,7 @@ export function PrescriptionModal({
         const medSummary = validMeds
           .map((m) => `• ${m.medicine} (${m.dosage}) - ${m.frequency} for ${m.duration}`)
           .join("\n");
-        const fallbackMsg = `Hello *${patient.name}*! 👋\nHere is your digital prescription from *${clinicInfo?.clinicName || "Sanjivani Dentals"}*:\n\n*Diagnosis:* ${diagnosis || "Consultation"}\n\n*Medications:*\n${medSummary || "See full document"}\n\n📄 *View/Download Full Prescription:* ${publicUrl}\n\nWish you a speedy recovery! 😊`;
+        const fallbackMsg = `Hello *${patient.name}*! 👋\nHere is your digital prescription from *${clinicInfo?.clinicName || "Sanjivani Dentals"}*:\n\n*Diagnosis:* ${diagnosis || "Consultation"}\n\n*Medications:*\n${medSummary || "See full document"}\n\nWish you a speedy recovery! 😊`;
         window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(fallbackMsg)}`, "_blank");
       }
     } finally {
@@ -346,6 +346,8 @@ export function PrescriptionModal({
   };
 
   // ── Email Handler ──────────────────────────────────────────────────────
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+
   const handleEmail = async () => {
     if (!patient.email) {
       showToast("Patient has no registered email address.");
@@ -359,10 +361,23 @@ export function PrescriptionModal({
       targetId = savedId;
     }
 
-    const subject = `Digital Prescription — ${clinicInfo?.clinicName || "Sanjivani Dentals"}`;
-    const body = `Dear ${patient.name},\n\nPlease find your digital prescription link below:\n${window.location.origin}/prescriptions/${targetId}\n\nPrescription #: ${prescriptionNumber}\nDate: ${encounter.visitDate}\nDoctor: ${encounter.doctorName || "Dr. Julian Moore"}\n\nWarm regards,\n${clinicInfo?.clinicName || "Sanjivani Dentals"}`;
+    setIsSendingEmail(true);
+    showToast("Sending email with prescription PDF...");
 
-    window.open(`mailto:${patient.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, "_blank");
+    try {
+      await sendPrescriptionEmail({
+        prescriptionId: targetId,
+        patientEmail: patient.email,
+        patientName: patient.name,
+        clinicName: clinicInfo?.clinicName || "Sanjivani Dentals",
+      });
+      showToast("Prescription emailed successfully!");
+    } catch (err: any) {
+      console.error("[PrescriptionModal] Email error:", err);
+      showToast(err?.message || "Failed to send prescription email.");
+    } finally {
+      setIsSendingEmail(false);
+    }
   };
 
   return (

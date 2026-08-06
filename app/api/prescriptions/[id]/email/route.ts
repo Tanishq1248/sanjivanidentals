@@ -4,7 +4,7 @@ import { db } from "../../../../../lib/firebase";
 import { COLLECTIONS } from "../../../../../lib/services/firestoreConfig";
 import { DocumentStorageService } from "../../../../../lib/services/documentStorageService";
 import { Resend } from "resend";
-import type { Invoice, ClinicBasicInfo } from "../../../../../lib/types";
+import type { Prescription, ClinicBasicInfo } from "../../../../../lib/types";
 
 type Params = { id: string };
 
@@ -18,19 +18,19 @@ export async function POST(
     let { patientEmail, patientName, clinicName } = body || {};
 
     if (!id) {
-      return NextResponse.json({ error: "Invoice ID parameter is required." }, { status: 400 });
+      return NextResponse.json({ error: "Prescription ID parameter is required." }, { status: 400 });
     }
 
-    // 1. Fetch Invoice from Firestore
-    const invRef = doc(db, COLLECTIONS.INVOICES, id);
-    const invSnap = await getDoc(invRef);
-    if (!invSnap.exists()) {
-      return NextResponse.json({ error: "Invoice record not found." }, { status: 404 });
+    // 1. Fetch Prescription from Firestore
+    const rxRef = doc(db, COLLECTIONS.PRESCRIPTIONS, id);
+    const rxSnap = await getDoc(rxRef);
+    if (!rxSnap.exists()) {
+      return NextResponse.json({ error: "Prescription record not found." }, { status: 404 });
     }
 
-    const invoice = { id: invSnap.id, ...invSnap.data() } as Invoice;
-    patientEmail = patientEmail || (invoice as any).patientEmail;
-    patientName = patientName || invoice.patientName || "Patient";
+    const prescription = { prescriptionId: rxSnap.id, ...rxSnap.data() } as Prescription;
+    patientEmail = patientEmail || (prescription as any).patientEmail;
+    patientName = patientName || prescription.patientName || "Patient";
 
     if (!patientEmail) {
       return NextResponse.json({ error: "Patient email is required." }, { status: 400 });
@@ -52,23 +52,23 @@ export async function POST(
     clinicName = clinicName || clinicInfo?.clinicName || "Sanjivani Dentals";
 
     // 3. Retrieve PDF Buffer from Firebase Storage via DocumentStorageService
-    const pdfBuffer = await DocumentStorageService.getInvoicePdf(id, invoice, clinicInfo);
+    const pdfBuffer = await DocumentStorageService.getPrescriptionPdf(id, prescription, clinicInfo);
 
     console.log(`\n==================================================`);
-    console.log(`[EMAIL SERVICE] Dispatching invoice email via Resend...`);
+    console.log(`[EMAIL SERVICE] Dispatching prescription email via Resend...`);
     console.log(`Recipient:  ${patientEmail}`);
-    console.log(`Attachment: Invoice_${id.slice(0, 8)}.pdf (${pdfBuffer.length} bytes)`);
+    console.log(`Attachment: Prescription_${prescription.prescriptionNumber || id.slice(0, 8)}.pdf (${pdfBuffer.length} bytes)`);
     console.log(`==================================================\n`);
 
     const resend = new Resend(apiKey);
     const emailResponse = await resend.emails.send({
       from: `${clinicName} <onboarding@resend.dev>`,
       to: patientEmail,
-      subject: `Your Invoice from ${clinicName}`,
-      text: `Dear ${patientName},\n\nThank you for visiting ${clinicName}.\n\nPlease find your invoice attached.\n\nWarm regards,\n${clinicName}`,
+      subject: `Digital Prescription — ${clinicName}`,
+      text: `Dear ${patientName},\n\nThank you for visiting ${clinicName}.\n\nPlease find your digital prescription attached.\n\nWarm regards,\n${clinicName}`,
       attachments: [
         {
-          filename: `Invoice_${id.slice(0, 8).toUpperCase()}.pdf`,
+          filename: `Prescription_${prescription.prescriptionNumber || id.slice(0, 8)}.pdf`,
           content: pdfBuffer,
         },
       ],
@@ -82,20 +82,20 @@ export async function POST(
       );
     }
 
-    // Update Firestore invoice document
-    await updateDoc(invRef, {
+    // Update Firestore prescription document
+    await updateDoc(rxRef, {
       emailSent: true,
       emailSentAt: Timestamp.now(),
     });
 
     return NextResponse.json({
       success: true,
-      message: `Invoice successfully emailed to ${patientEmail}`,
+      message: `Prescription successfully emailed to ${patientEmail}`,
       emailSentAt: new Date().toISOString(),
     });
   } catch (error: unknown) {
-    console.error("Error in Resend invoice email API handler:", error);
-    const message = error instanceof Error ? error.message : "Failed to send invoice email";
+    console.error("Error in Resend prescription email API handler:", error);
+    const message = error instanceof Error ? error.message : "Failed to send prescription email";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

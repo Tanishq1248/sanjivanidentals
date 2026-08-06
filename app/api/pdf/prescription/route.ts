@@ -3,6 +3,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../../../lib/firebase";
 import { COLLECTIONS } from "../../../../lib/services/firestoreConfig";
 import { generatePrescriptionPdfBuffer } from "../../../../lib/services/pdfServerService";
+import { DocumentStorageService } from "../../../../lib/services/documentStorageService";
 import { createErrorResponse, logServerError } from "../../../../lib/errors/messagingErrors";
 import type { Prescription, ClinicBasicInfo } from "../../../../lib/types";
 
@@ -30,8 +31,18 @@ export async function GET(req: Request) {
     const clinicSnap = await getDoc(clinicRef);
     const clinicInfo = clinicSnap.exists() ? (clinicSnap.data() as ClinicBasicInfo) : undefined;
 
-    // 3. Generate PDF Buffer on Server
-    const pdfBuffer = generatePrescriptionPdfBuffer(prescription, clinicInfo);
+    // 3. Retrieve existing valid PDF from Storage or generate & upload exactly once
+    const { pdfBuffer, reused } = await DocumentStorageService.getOrEnsurePrescriptionPdf(
+      id,
+      prescription,
+      clinicInfo
+    );
+
+    if (reused) {
+      console.log(`[GET /api/pdf/prescription] Streamed existing stored PDF for ID '${id}' (0 extra Storage uploads).`);
+    } else {
+      console.log(`[GET /api/pdf/prescription] Generated and uploaded initial PDF for ID '${id}'.`);
+    }
 
     // 4. Return binary PDF stream
     return new NextResponse(new Uint8Array(pdfBuffer), {
@@ -51,3 +62,4 @@ export async function GET(req: Request) {
     );
   }
 }
+

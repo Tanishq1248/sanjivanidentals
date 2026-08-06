@@ -713,7 +713,7 @@ export default function PatientProfilePage({ params }: PageProps) {
   };
 
   const handleSendEmail = async () => {
-    if (!inMemoryPdf || !generatedInvoiceId || !patient) {
+    if (!generatedInvoiceId || !patient) {
       showToast("Invoice must be generated before sending.");
       return;
     }
@@ -732,12 +732,10 @@ export default function PatientProfilePage({ params }: PageProps) {
     setIsSendingEmail(true);
 
     try {
-      const pdfBase64 = inMemoryPdf.output("datauristring").split(",")[1];
       await sendInvoiceEmail({
         invoiceId: generatedInvoiceId,
         patientEmail: patient.email,
         patientName: patient.name,
-        pdfBase64,
         clinicName: "Sanjivani Dentals",
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.byPatientId(patient.id) });

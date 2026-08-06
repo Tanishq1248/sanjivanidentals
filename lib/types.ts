@@ -192,6 +192,13 @@ export interface Invoice {
   dueDate?: string;
   paymentHistory?: PaymentHistoryEntry[];
   installmentPlan?: InstallmentPlan | null;
+
+  // Document Storage Metadata
+  storagePath?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+  documentVersion?: number;
   updatedAt?: Timestamp;
 }
 
@@ -327,9 +334,65 @@ export interface Prescription {
   additionalInstructions: string;
   followUpDate?: string;
   followUpReason?: string;
+  // Document Storage Metadata
+  storagePath?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+  documentVersion?: number;
+  status?: string;
+  clinicId?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
+
+/* ─── Document Storage Service Types ─── */
+export type DocumentCategoryType =
+  | "prescriptions"
+  | "invoices"
+  | "medical_reports"
+  | "consent_forms"
+  | "referral_letters"
+  | "laboratory_reports"
+  | string;
+
+export interface UploadDocumentOptions {
+  fileData: Buffer | Uint8Array | Blob | ArrayBuffer;
+  documentId: string; // e.g., prescriptionId
+  patientId: string;
+  encounterId?: string;
+  clinicId?: string;
+  documentType?: DocumentCategoryType;
+  fileName?: string;
+  year?: string | number;
+  month?: string | number;
+  customMetadata?: Record<string, string>;
+}
+
+export interface UploadResult {
+  storagePath: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+}
+
+export interface DocumentMetadataRecord {
+  id?: string;
+  patientId: string;
+  encounterId?: string;
+  clinicId: string;
+  prescriptionId?: string;
+  documentType: DocumentCategoryType;
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  documentVersion: number;
+  status: "active" | "archived" | "deleted" | string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 
 import { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 
@@ -610,6 +673,7 @@ export interface WhatsAppMessagePayload {
   patientId: string;
   patientName: string;
   encounterId?: string;
+  prescriptionId?: string;
   invoiceId?: string;
   appointmentId?: string;
   clinicName?: string;

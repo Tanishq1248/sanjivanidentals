@@ -31,6 +31,7 @@ export const COLLECTIONS = {
   SECURITY_SESSIONS: "securitySessions",
   MESSAGING_USAGE: "messagingUsage",
   MESSAGE_LOGS: "messageLogs",
+  DOCUMENTS: "documents",
 
   // Archived Collections (designed for future expansion)
   ARCHIVED_APPOINTMENTS: "archived_appointments",

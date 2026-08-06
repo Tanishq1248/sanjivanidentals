@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../../../lib/firebase";
 import { COLLECTIONS } from "../../../../lib/services/firestoreConfig";
-import { generateInvoicePdfBuffer } from "../../../../lib/services/pdfServerService";
+import { DocumentStorageService } from "../../../../lib/services/documentStorageService";
 import { createErrorResponse, logServerError } from "../../../../lib/errors/messagingErrors";
 import type { Invoice, ClinicBasicInfo } from "../../../../lib/types";
 
@@ -30,8 +30,12 @@ export async function GET(req: Request) {
     const clinicSnap = await getDoc(clinicRef);
     const clinicInfo = clinicSnap.exists() ? (clinicSnap.data() as ClinicBasicInfo) : undefined;
 
-    // 3. Generate PDF Buffer on Server
-    const pdfBuffer = generateInvoicePdfBuffer(invoice, clinicInfo);
+    // 3. Retrieve or generate PDF in Firebase Storage with 1-time upload & automatic recovery
+    const { pdfBuffer } = await DocumentStorageService.getOrEnsureInvoicePdf(
+      id,
+      invoice,
+      clinicInfo
+    );
 
     // 4. Return binary PDF stream
     return new NextResponse(new Uint8Array(pdfBuffer), {
