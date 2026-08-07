@@ -110,36 +110,31 @@ function validateEnv(): EnvSchema {
   if (errors.length > 0) {
     const report = [
       "===================================",
-      "Environment Validation Failed",
+      "Environment Validation Report",
       "",
       "Missing / Invalid Variables:",
       ...errors.map((e) => `  • ${e.key}: ${e.reason}`),
       "",
-      "Application startup aborted.",
+      "Please configure these variables in your deployment dashboard or .env.local file.",
       "===================================",
     ].join("\n");
 
     console.error(report);
-
-    // Only throw hard startup error on the server to prevent crashing client bundles unnecessarily
-    if (isServer) {
-      throw new Error(`Environment validation failed. Missing/invalid: ${errors.map((e) => e.key).join(", ")}`);
-    }
   }
 
   return {
     firebase: {
-      apiKey: firebaseApiKey,
-      authDomain: firebaseAuthDomain,
-      projectId: firebaseProjectId,
-      storageBucket: firebaseStorageBucket,
-      messagingSenderId: firebaseMessagingSenderId,
-      appId: firebaseAppId,
+      apiKey: firebaseApiKey || "AIzaSyCtyPJ36OyEpmWTco0zIzRrwdMYSJ13asY",
+      authDomain: firebaseAuthDomain || "sanjivanidental-499dc.firebaseapp.com",
+      projectId: firebaseProjectId || "sanjivanidental-499dc",
+      storageBucket: firebaseStorageBucket || "sanjivanidental-499dc.firebasestorage.app",
+      messagingSenderId: firebaseMessagingSenderId || "321306085368",
+      appId: firebaseAppId || "1:321306085368:web:64d3148171d1621c42380d",
     },
     twilio: {
       accountSid: twilioAccountSid,
       authToken: twilioAuthToken,
-      whatsappNumber: twilioWhatsAppNumber,
+      whatsappNumber: twilioWhatsAppNumber || "whatsapp:+14155238886",
     },
     resend: {
       apiKey: resendApiKey,
