@@ -15,6 +15,8 @@ interface PatientData {
   avatarColor?: string;
 }
 
+import type { SurfaceType } from "../../lib/types";
+
 interface DentalChartModalProps {
   patient: PatientData;
   encounters: any[];
@@ -25,6 +27,7 @@ interface DentalChartModalProps {
       status: string;
       fee: number;
       notes?: string;
+      surfaces?: SurfaceType[];
     }
   ) => Promise<void>;
   isSaving: boolean;

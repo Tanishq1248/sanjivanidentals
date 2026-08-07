@@ -216,12 +216,24 @@ export interface StandardErrorResponse {
   timestamp: string;
 }
 
+import { captureSentryException } from "../monitoring/sentry";
+
 /**
  * Centralized Server Error Logger.
- * Logs full technical details, context, stack traces on server without exposing to client.
+ * Logs full technical details, context, stack traces on server without exposing to client,
+ * and automatically captures production exceptions in Sentry with sanitized PII.
  */
 export function logServerError(err: MessagingError | Error | any, context?: any) {
   const timestamp = new Date().toISOString();
+
+  // 1. Report exception to Sentry (sanitizes context and strips PII automatically)
+  try {
+    captureSentryException(err, context);
+  } catch (sentryErr) {
+    console.error("[SENTRY_CAPTURE_FAILED]", sentryErr);
+  }
+
+  // 2. Local console logging
   if (err instanceof MessagingError) {
     console.error(`[MESSAGING_ERROR ${timestamp}] Code: ${err.errorCode} (${err.category}) | UserMsg: "${err.userMessage}" | TechMsg: "${err.technicalMessage || 'None'}"`, {
       context: err.context || context,

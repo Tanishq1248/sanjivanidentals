@@ -76,6 +76,11 @@ export function TreatmentItem({
     );
   };
 
+  const surfaces =
+    "surfaces" in treatment && Array.isArray(treatment.surfaces) && treatment.surfaces.length > 0
+      ? treatment.surfaces
+      : undefined;
+
   return (
     <div className="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/15 space-y-3 font-sans shadow-xs">
       <div className="flex items-center justify-between gap-2 border-b border-outline-variant/10 pb-2.5 flex-wrap">
@@ -116,9 +121,19 @@ export function TreatmentItem({
           <span className="text-on-surface-variant/70 font-semibold block text-[10px] uppercase">
             🦷 Tooth
           </span>
-          <span className="font-bold text-on-surface text-sm">
-            {toothNum ? `Tooth ${toothNum}` : "General"}
-          </span>
+          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+            <span className="font-bold text-on-surface text-sm">
+              {toothNum ? `Tooth ${toothNum}` : "General"}
+            </span>
+            {surfaces && surfaces.length > 0 && (
+              <span
+                className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200 text-[10px] font-mono font-bold"
+                title={`Surfaces: ${surfaces.join(", ")}`}
+              >
+                Surfaces: {surfaces.join(" • ")}
+              </span>
+            )}
+          </div>
         </div>
 
         <div>
@@ -126,7 +141,7 @@ export function TreatmentItem({
             Procedure
           </span>
           <span
-            className="font-bold text-on-surface text-sm truncate block"
+            className="font-bold text-on-surface text-sm truncate block mt-0.5"
             title={treatment.treatmentName}
           >
             {treatment.treatmentName}

@@ -7,6 +7,8 @@ import { TreatmentHistoryTab } from "./TreatmentHistoryTab";
 import { AddTreatmentTab } from "./AddTreatmentTab";
 import { TreatmentPlanTab } from "./TreatmentPlanTab";
 
+import type { SurfaceType } from "../../lib/types";
+
 interface ToothDetailPanelProps {
   onSaveTreatment: (
     toothNumber: number,
@@ -15,6 +17,7 @@ interface ToothDetailPanelProps {
       status: string;
       fee: number;
       notes?: string;
+      surfaces?: SurfaceType[];
     }
   ) => Promise<void>;
   isSaving: boolean;

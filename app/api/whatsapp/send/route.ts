@@ -21,6 +21,7 @@ import {
 } from "../../../../lib/errors/messagingErrors";
 import { generatePrescriptionPdfBuffer } from "../../../../lib/services/pdfServerService";
 import { DocumentStorageService } from "../../../../lib/services/documentStorageService";
+import { env } from "../../../../lib/config/env";
 import type {
   WhatsAppMessagePayload,
   Prescription,
@@ -496,9 +497,9 @@ export async function POST(req: Request) {
     }
 
     // ── 6. TWILIO CREDENTIALS CHECK ──
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const twilioWhatsAppNumber = process.env.TWILIO_WHATSAPP_NUMBER || "whatsapp:+14155238886";
+    const accountSid = env.twilio.accountSid;
+    const authToken = env.twilio.authToken;
+    const twilioWhatsAppNumber = env.twilio.whatsappNumber;
 
     const isPlaceholder =
       !accountSid ||

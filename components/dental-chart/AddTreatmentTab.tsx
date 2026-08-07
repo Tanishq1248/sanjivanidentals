@@ -2,8 +2,10 @@
 
 import React, { useState } from "react";
 import type { ToothNumber } from "./types";
+import type { SurfaceType } from "../../lib/types";
 import { Loader2 } from "lucide-react";
 import { useDentalChartStore } from "../../lib/store/useDentalChartStore";
+import { SurfaceSelector } from "./SurfaceSelector";
 
 interface AddTreatmentTabProps {
   toothNumber: ToothNumber;
@@ -14,6 +16,7 @@ interface AddTreatmentTabProps {
       status: string;
       fee: number;
       notes?: string;
+      surfaces?: SurfaceType[];
     }
   ) => Promise<void>;
   isSaving: boolean;
@@ -50,6 +53,7 @@ const DEFAULT_FEE_MAP: Record<string, number> = {
 
 export function AddTreatmentTab({ toothNumber, onSaveTreatment, isSaving, onSuccess }: AddTreatmentTabProps) {
   const [treatment, setTreatment] = useState("");
+  const [selectedSurfaces, setSelectedSurfaces] = useState<SurfaceType[]>([]);
   const [status, setStatus] = useState("Completed");
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [fee, setFee] = useState("");
@@ -69,6 +73,7 @@ export function AddTreatmentTab({ toothNumber, onSaveTreatment, isSaving, onSucc
 
     const payload = {
       treatmentName: treatment,
+      surfaces: selectedSurfaces.length > 0 ? selectedSurfaces : undefined,
       status,
       fee: parsedFee,
       notes: notes.trim() || undefined,
@@ -79,6 +84,7 @@ export function AddTreatmentTab({ toothNumber, onSaveTreatment, isSaving, onSucc
       
       // Reset form
       setTreatment("");
+      setSelectedSurfaces([]);
       setFee("");
       setNotes("");
 
@@ -121,6 +127,14 @@ export function AddTreatmentTab({ toothNumber, onSaveTreatment, isSaving, onSucc
           ))}
         </select>
       </div>
+
+      {/* Surface Selector */}
+      <SurfaceSelector
+        toothNumber={toothNumber}
+        selectedSurfaces={selectedSurfaces}
+        onChange={setSelectedSurfaces}
+        disabled={isSaving}
+      />
 
       {/* Treatment Status (Clinical) Dropdown */}
       <div>

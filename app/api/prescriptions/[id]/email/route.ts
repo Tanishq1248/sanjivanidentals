@@ -4,6 +4,7 @@ import { db } from "../../../../../lib/firebase";
 import { COLLECTIONS } from "../../../../../lib/services/firestoreConfig";
 import { DocumentStorageService } from "../../../../../lib/services/documentStorageService";
 import { Resend } from "resend";
+import { env } from "../../../../../lib/config/env";
 import type { Prescription, ClinicBasicInfo } from "../../../../../lib/types";
 
 type Params = { id: string };
@@ -15,7 +16,9 @@ export async function POST(
   try {
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
-    let { patientEmail, patientName, clinicName } = body || {};
+    let patientEmail = body?.email;
+    let patientName = body?.patientName;
+    let clinicName = body?.clinicName;
 
     if (!id) {
       return NextResponse.json({ error: "Prescription ID parameter is required." }, { status: 400 });
@@ -25,7 +28,7 @@ export async function POST(
     const rxRef = doc(db, COLLECTIONS.PRESCRIPTIONS, id);
     const rxSnap = await getDoc(rxRef);
     if (!rxSnap.exists()) {
-      return NextResponse.json({ error: "Prescription record not found." }, { status: 404 });
+      return NextResponse.json({ error: "Prescription not found." }, { status: 404 });
     }
 
     const prescription = { prescriptionId: rxSnap.id, ...rxSnap.data() } as Prescription;
@@ -36,7 +39,7 @@ export async function POST(
       return NextResponse.json({ error: "Patient email is required." }, { status: 400 });
     }
 
-    const apiKey = process.env.RESEND_API_KEY;
+    const apiKey = env.resend.apiKey;
     if (!apiKey) {
       console.error("[EMAIL SERVICE] RESEND_API_KEY environment variable is not defined");
       return NextResponse.json(

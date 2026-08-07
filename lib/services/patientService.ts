@@ -18,7 +18,7 @@ import {
   getCountFromServer,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import type { Patient, PatientFormData, PaginatedResult, PatientMedicalProfile, PatientEncounter } from "../types";
+import type { Patient, PatientFormData, PaginatedResult, PatientMedicalProfile, PatientEncounter, SurfaceType, ToothTreatmentEntry } from "../types";
 import { COLLECTIONS } from "./firestoreConfig";
 
 const COLLECTION = COLLECTIONS.PATIENTS;
@@ -262,6 +262,7 @@ export async function logToothTreatment(
     status: string;
     fee: number;
     notes?: string;
+    surfaces?: SurfaceType[];
   },
   doctorId: string,
   doctorName: string
@@ -292,9 +293,10 @@ export async function logToothTreatment(
   const treatmentEntryId = `tt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const nowTimestamp = Timestamp.now();
 
-  const newToothTreatment = {
+  const newToothTreatment: ToothTreatmentEntry = {
     id: treatmentEntryId,
     toothNumber,
+    surfaces: treatmentData.surfaces && treatmentData.surfaces.length > 0 ? treatmentData.surfaces : undefined,
     treatmentName: treatmentData.treatmentName,
     status: treatmentData.status,
     treatmentStatus: (treatmentData.status as any) || "Completed",

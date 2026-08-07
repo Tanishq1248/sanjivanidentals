@@ -46,7 +46,9 @@ import type {
   Appointment,
   AppointmentStatus,
   PatientEncounter,
+  Invoice,
 } from "../../lib/types";
+import { RevenueWidget } from "../../components/admin/dashboard/RevenueWidget";
 import { useSidebarStore } from "../../lib/store/useSidebarStore";
 import { usePatientStore } from "../../lib/store/usePatientStore";
 import { useDashboardStore } from "../../lib/store/useDashboardStore";
@@ -705,6 +707,13 @@ function AdminDashboard() {
     staleTime: 60 * 1000,
   });
 
+  // 4. Invoices (for revenue summary & trend charts)
+  const { data: invoices = [], isLoading: isInvoicesLoading } = useQuery<Invoice[]>({
+    queryKey: queryKeys.invoices.all,
+    queryFn: getInvoices,
+    staleTime: 60 * 1000,
+  });
+
   // ── Memoized Aggregations ──────────────────────────────────────────────────
   const stats = useMemo(() => {
     // 1. Total Patients
@@ -971,11 +980,11 @@ function AdminDashboard() {
             </div>
           ) : (
             <>
-              {/* ── SECTION 1: KPI CARDS ── */}
-              <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] gap-4">
+              {/* ── SECTION 1: KPI CARDS & REVENUE WIDGET ── */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
-                {/* TODAY'S APPOINTMENTS — Hero card, spans 2 rows on the left */}
-                <div className="md:row-span-2 bg-gradient-to-br from-purple-600 to-violet-700 rounded-2xl shadow-lg p-7 flex flex-col justify-between min-h-[180px] transition-transform hover:scale-[1.01] relative overflow-hidden">
+                {/* TODAY'S APPOINTMENTS — Hero card */}
+                <div className="bg-gradient-to-br from-purple-600 to-violet-700 rounded-2xl shadow-lg p-7 flex flex-col justify-between min-h-[180px] transition-transform hover:scale-[1.01] relative overflow-hidden">
                   {/* Decorative ring */}
                   <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/10 pointer-events-none" />
                   <div className="absolute -right-2 bottom-4 w-24 h-24 rounded-full bg-white/5 pointer-events-none" />
@@ -1008,41 +1017,47 @@ function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* 1. Total Patients — secondary card */}
-                <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-5 flex items-center justify-between transition-transform hover:scale-[1.01]">
-                  <div className="space-y-1">
-                    <span className="text-xs text-on-surface-variant font-medium block">Total Patients</span>
-                    <span className="text-2xl md:text-3xl font-bold text-on-surface tracking-tight block">
-                      {stats.totalPatientsCount.toLocaleString()}
-                    </span>
-                    <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-600 uppercase tracking-wider">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                {/* Middle Column: Total Patients & Completed Treatments */}
+                <div className="flex flex-col gap-4">
+                  {/* Total Patients */}
+                  <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-5 flex items-center justify-between transition-transform hover:scale-[1.01] flex-1">
+                    <div className="space-y-1">
+                      <span className="text-xs text-on-surface-variant font-medium block">Total Patients</span>
+                      <span className="text-2xl md:text-3xl font-bold text-on-surface tracking-tight block">
+                        {stats.totalPatientsCount.toLocaleString()}
                       </span>
-                      Live Registry
+                      <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-600 uppercase tracking-wider">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        Live Registry
+                      </div>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-secondary-container flex items-center justify-center shrink-0">
+                      <Users className="w-5 h-5 text-primary" />
                     </div>
                   </div>
-                  <div className="w-10 h-10 rounded-xl bg-secondary-container flex items-center justify-center shrink-0">
-                    <Users className="w-5 h-5 text-primary" />
+
+                  {/* Today's Completed Treatments */}
+                  <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-5 flex items-center justify-between transition-transform hover:scale-[1.01] flex-1">
+                    <div className="space-y-1">
+                      <span className="text-xs text-on-surface-variant font-medium block">Today's Completed Treatments</span>
+                      <span className="text-2xl md:text-3xl font-bold text-on-surface tracking-tight block">
+                        {todayCompletedTreatments.list.length}
+                      </span>
+                      <div className="text-[10px] font-semibold text-primary uppercase">
+                        Procedures logged today
+                      </div>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-secondary-container flex items-center justify-center shrink-0">
+                      <Activity className="w-5 h-5 text-primary" />
+                    </div>
                   </div>
                 </div>
 
-                {/* 3. Today's Treatments — secondary card */}
-                <div className="bg-white rounded-xl border border-outline-variant/10 shadow-sm p-5 flex items-center justify-between transition-transform hover:scale-[1.01]">
-                  <div className="space-y-1">
-                    <span className="text-xs text-on-surface-variant font-medium block">Today's Completed Treatments</span>
-                    <span className="text-2xl md:text-3xl font-bold text-on-surface tracking-tight block">
-                      {todayCompletedTreatments.list.length}
-                    </span>
-                    <div className="text-[10px] font-semibold text-primary uppercase">
-                      Procedures logged today
-                    </div>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-secondary-container flex items-center justify-center shrink-0">
-                    <Activity className="w-5 h-5 text-primary" />
-                  </div>
-                </div>
+                {/* Right Column: Revenue Summary Widget */}
+                <RevenueWidget invoices={invoices} isLoading={isInvoicesLoading} />
 
               </div>
 

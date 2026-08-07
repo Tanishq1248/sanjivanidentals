@@ -130,11 +130,24 @@ export const CONDITION_STYLES: Record<ToothConditionCode, ConditionStyle> = {
   },
 };
 
+import type { SurfaceType } from "../../lib/types";
+export type { SurfaceType };
+
+/**
+ * Check whether a tooth is an Anterior tooth (Incisor or Canine).
+ * FDI numbers ending in 1, 2, 3 (e.g. 11-13, 21-23, 31-33, 41-43, 51-53, 61-63, 71-73, 81-83) are Anterior.
+ */
+export function isAnteriorTooth(toothNumber: number): boolean {
+  const toothDigit = toothNumber % 10;
+  return toothDigit >= 1 && toothDigit <= 3;
+}
+
 // ─── Tooth Treatment and Plan models ──────────────────────────────────────────
 
 export interface ToothTreatment {
   id: string;
   treatment: string;
+  surfaces?: SurfaceType[];
   status: string;
   date: string;
   fee: number;
@@ -144,6 +157,7 @@ export interface ToothTreatment {
 export interface ToothPlan {
   id: string;
   treatment: string;
+  surfaces?: SurfaceType[];
   status: "Planned";
   date: string;
   fee: number;

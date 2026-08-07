@@ -12,7 +12,7 @@ import {
   User,
   Stethoscope,
 } from "lucide-react";
-import type { PatientEncounter, ToothTreatmentEntry } from "../../../../lib/types";
+import type { PatientEncounter, ToothTreatmentEntry, SurfaceType } from "../../../../lib/types";
 import { getTreatmentStatus } from "../../../../lib/types";
 
 interface TreatmentPlanTabProps {
@@ -23,6 +23,7 @@ interface TreatmentPlanTabProps {
 interface ProcessedTreatmentItem {
   id: string;
   toothNumber?: number;
+  surfaces?: SurfaceType[];
   procedure: string;
   assignedDoctor: string;
   estimatedCost: number;
@@ -77,6 +78,7 @@ export const TreatmentPlanTab: React.FC<TreatmentPlanTabProps> = ({
         treatmentItems.push({
           id: tt.id || `${enc.id}-${tt.toothNumber}`,
           toothNumber: tt.toothNumber,
+          surfaces: tt.surfaces,
           procedure: tt.treatmentName,
           assignedDoctor: enc.doctorName || "Dr. Julian Moore",
           estimatedCost: tt.fee || 0,
@@ -252,10 +254,18 @@ export const TreatmentPlanTab: React.FC<TreatmentPlanTabProps> = ({
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredItems.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="p-3.5 text-center">
+                    <td className="p-3.5 text-center whitespace-nowrap">
                       {item.toothNumber ? (
-                        <span className="inline-block px-2.5 py-1 bg-slate-100 text-slate-800 rounded-md font-bold font-mono">
-                          #{item.toothNumber}
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 text-slate-800 rounded-md font-bold font-mono">
+                          <span>#{item.toothNumber}</span>
+                          {item.surfaces && item.surfaces.length > 0 && (
+                            <span
+                              className="text-primary font-bold text-[11px]"
+                              title={`Surfaces: ${item.surfaces.join(", ")}`}
+                            >
+                              ({item.surfaces.join(",")})
+                            </span>
+                          )}
                         </span>
                       ) : (
                         <span className="text-slate-400 font-mono">—</span>

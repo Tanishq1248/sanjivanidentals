@@ -64,9 +64,24 @@ export type EncounterStatus = "Pending" | "In Progress" | "Completed" | "Cancell
 export type ClinicalTreatmentStatus = "Planned" | "In Progress" | "Completed";
 export type BillingStatus = "Unbilled" | "Billed";
 
+/** Individual tooth surface type identifier */
+export type SurfaceType = "M" | "D" | "B" | "L" | "O" | "I" | "Labial";
+
+/** Map of surface type codes to human-readable names */
+export const SURFACE_LABELS: Record<SurfaceType, string> = {
+  M: "Mesial",
+  D: "Distal",
+  B: "Buccal",
+  L: "Lingual",
+  O: "Occlusal",
+  I: "Incisal",
+  Labial: "Labial",
+};
+
 export interface ToothTreatmentEntry {
   id: string;
   toothNumber: number;
+  surfaces?: SurfaceType[];
   treatmentName: string;
   status: string; // Clinical status ("Completed" | "In Progress" | "Planned") for backward compatibility
   treatmentStatus?: ClinicalTreatmentStatus; // Explicit Clinical Status

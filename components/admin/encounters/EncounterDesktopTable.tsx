@@ -176,7 +176,17 @@ export const EncounterDesktopTable = memo(function EncounterDesktopTable({
                           className="grid grid-cols-[60px_1fr_125px_80px_90px_80px] gap-2 px-4 py-2.5 text-xs border-b border-outline-variant/10 last:border-b-0 items-center hover:bg-surface-container-lowest"
                         >
                           <span className="font-bold text-on-surface">Tooth {tt.toothNumber}</span>
-                          <span className="font-semibold text-on-surface">{tt.treatmentName}</span>
+                          <span className="font-semibold text-on-surface flex items-center gap-1.5 flex-wrap">
+                            <span>{tt.treatmentName}</span>
+                            {tt.surfaces && tt.surfaces.length > 0 && (
+                              <span
+                                className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200 text-[10px] font-mono font-bold"
+                                title={`Surfaces: ${tt.surfaces.join(", ")}`}
+                              >
+                                {tt.surfaces.join(" • ")}
+                              </span>
+                            )}
+                          </span>
                           <select
                             value={tStatus}
                             onChange={(ev) => {

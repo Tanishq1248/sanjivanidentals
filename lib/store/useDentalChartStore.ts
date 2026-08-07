@@ -95,6 +95,7 @@ export const useDentalChartStore = create<DentalChartState>((set) => ({
           const uiItem = {
             id: tt.id,
             treatment: tt.treatmentName,
+            surfaces: tt.surfaces,
             status,
             date: tt.date,
             fee: tt.fee,

@@ -41,7 +41,7 @@ import jsPDF from "jspdf";
 import { calculateSubtotal, calculateTax, calculateGrandTotal } from "../../../../lib/services/billingService";
 import { sendInvoiceEmail } from "../../../../lib/services/emailService";
 import { PatientDetailsModalSkeleton } from "../../../../components/ui/Skeletons";
-import { getTreatmentStatus, type PatientMedicalProfile, type PatientEncounter, type EncounterStatus, type Invoice, type Appointment } from "../../../../lib/types";
+import { getTreatmentStatus, type PatientMedicalProfile, type PatientEncounter, type EncounterStatus, type Invoice, type Appointment, type SurfaceType } from "../../../../lib/types";
 import { DentalChartModal } from "../../../../components/dental-chart/DentalChartModal";
 import { PrescriptionModal } from "../../../../components/admin/encounters/PrescriptionModal";
 
@@ -467,6 +467,7 @@ export default function PatientProfilePage({ params }: PageProps) {
         status: string;
         fee: number;
         notes?: string;
+        surfaces?: SurfaceType[];
       };
     }) => {
       const docId = doctorsList[0]?.id || "dr-julian-moore";
