@@ -271,7 +271,7 @@ export function PrescriptionModal({
         queryClient.invalidateQueries({ queryKey: queryKeys.prescriptions.byId(savedId) });
       }
 
-      showToast("Prescription saved successfully!");
+      showToast("Prescription saved! Preparing PDF for delivery...");
       if (onSuccess) onSuccess();
       return savedId;
     } catch (err) {
@@ -305,13 +305,43 @@ export function PrescriptionModal({
     setIsSendingWhatsApp(true);
 
     try {
+      // Step 1: Save prescription (PDF upload happens inside savePrescription)
       let targetId = prescriptionId;
       if (targetId === "temp") {
+        showToast("Saving prescription...");
         const savedId = await handleSave();
-        if (!savedId) return;
+        if (!savedId) {
+          showToast("Please save the prescription first.");
+          return;
+        }
         targetId = savedId;
       }
 
+      // Step 2: Verify storagePath exists before sending
+      // Give PDF upload a moment to complete if it just ran
+      showToast("Verifying prescription PDF...");
+
+      const { getDoc, doc } = await import("firebase/firestore");
+      const { db } = await import("../../../lib/firebase");
+
+      // Wait up to 5 seconds for storagePath to appear
+      let storagePath = null;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const rxSnap = await getDoc(doc(db, "prescriptions", targetId));
+        if (rxSnap.exists() && rxSnap.data()?.storagePath) {
+          storagePath = rxSnap.data()?.storagePath;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+
+      if (!storagePath) {
+        showToast("PDF is still being prepared. Please try WhatsApp in a moment.");
+        setIsSendingWhatsApp(false);
+        return;
+      }
+
+      // Step 3: Send WhatsApp
       showToast("Sending WhatsApp message via Twilio...");
 
       const res = await sendWhatsAppMessage({

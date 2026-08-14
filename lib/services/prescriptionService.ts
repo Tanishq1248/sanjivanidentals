@@ -13,6 +13,7 @@ import { db } from "../firebase";
 import type { Prescription } from "../types";
 
 import { COLLECTIONS, getCollectionRef, DEFAULT_CLINIC_ID } from "./firestoreConfig";
+import { DocumentStorageService } from "./documentStorageService";
 
 const COLLECTION = COLLECTIONS.PRESCRIPTIONS;
 const ARCHIVED_COLLECTION = COLLECTIONS.ARCHIVED_PRESCRIPTIONS;
@@ -143,6 +144,31 @@ export async function savePrescription(
     } catch (err) {
       console.warn("Failed to link prescriptionId to encounter:", err);
     }
+  }
+
+  // After getting savedId — generate and upload PDF to Firebase Storage (non-blocking)
+  try {
+    const { storagePath } = await DocumentStorageService.getOrEnsurePrescriptionPdf(
+      savedId,
+      { ...data, prescriptionId: savedId } as Prescription,
+      undefined // clinicInfo not available here — handled inside service
+    );
+
+    // Update prescription document with storagePath
+    if (storagePath) {
+      await setDoc(
+        doc(db, COLLECTION, savedId),
+        { storagePath },
+        { merge: true }
+      );
+    }
+  } catch (pdfError) {
+    // Non-blocking — prescription is saved even if PDF upload fails
+    // WhatsApp will fail but prescription data is safe
+    console.warn(
+      "[prescriptionService] PDF upload failed after save:",
+      pdfError
+    );
   }
 
   return savedId;
