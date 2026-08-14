@@ -1,12 +1,12 @@
-"use client";
-
 import React, { useState, useEffect } from "react";
-import { X, ShieldCheck, ChevronDown, ChevronUp, CheckSquare, Square, Save, Loader2 } from "lucide-react";
+import { X, ShieldCheck, ChevronDown, ChevronUp, CheckSquare, Square, Save, Loader2, Lock } from "lucide-react";
 import type { RolePermission, PermissionGroupKey } from "../../../../lib/types";
+import { canEditPermissions } from "../../../../lib/services/featureAccessService";
 
 interface PermissionEditorDrawerProps {
   isOpen: boolean;
   role: RolePermission | null; // Null when creating a new role
+  clinicInfo?: any;
   onClose: () => void;
   onSave: (roleData: Omit<RolePermission, "id" | "memberCount" | "permissionCount">, roleId?: string) => Promise<void>;
 }
@@ -23,12 +23,14 @@ const ALL_PERMISSION_GROUPS: Record<PermissionGroupKey, string[]> = {
   Settings: ["View Settings", "Manage Clinic Info", "Manage Team", "Manage Roles & Permissions"],
 };
 
-export function PermissionEditorDrawer({ isOpen, role, onClose, onSave }: PermissionEditorDrawerProps) {
+export function PermissionEditorDrawer({ isOpen, role, clinicInfo, onClose, onSave }: PermissionEditorDrawerProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [permissions, setPermissions] = useState<Record<string, string[]>>({});
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
+
+  const isEditable = canEditPermissions(clinicInfo);
 
   useEffect(() => {
     if (role) {
@@ -50,6 +52,7 @@ export function PermissionEditorDrawer({ isOpen, role, onClose, onSave }: Permis
   if (!isOpen) return null;
 
   const togglePermission = (group: string, perm: string) => {
+    if (!isEditable) return;
     setPermissions((prev) => {
       const current = prev[group] || [];
       const updated = current.includes(perm) ? current.filter((p) => p !== perm) : [...current, perm];
@@ -62,6 +65,7 @@ export function PermissionEditorDrawer({ isOpen, role, onClose, onSave }: Permis
   };
 
   const handleSelectAll = () => {
+    if (!isEditable) return;
     const full: Record<string, string[]> = {};
     Object.entries(ALL_PERMISSION_GROUPS).forEach(([group, items]) => {
       full[group] = [...items];
@@ -70,12 +74,13 @@ export function PermissionEditorDrawer({ isOpen, role, onClose, onSave }: Permis
   };
 
   const handleClearAll = () => {
+    if (!isEditable) return;
     setPermissions({});
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || !isEditable) return;
 
     setLoading(true);
     try {
@@ -126,6 +131,16 @@ export function PermissionEditorDrawer({ isOpen, role, onClose, onSave }: Permis
 
           {/* Drawer Content Body */}
           <form id="role-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+            {!isEditable && (
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2.5">
+                <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block">🔒 Professional Plan Feature</span>
+                  <span>Permission editing and role customization are locked under the Basic Plan.</span>
+                </div>
+              </div>
+            )}
+
             {/* Basic Info */}
             <div className="space-y-4">
               <div>
@@ -133,10 +148,11 @@ export function PermissionEditorDrawer({ isOpen, role, onClose, onSave }: Permis
                 <input
                   type="text"
                   required
+                  disabled={!isEditable}
                   placeholder="e.g. Senior Endodontist"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-medium text-on-surface focus:outline-none focus:border-primary transition-all"
+                  className="w-full px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-medium text-on-surface focus:outline-none focus:border-primary transition-all disabled:bg-slate-100 disabled:text-slate-500"
                 />
               </div>
 
@@ -255,11 +271,11 @@ export function PermissionEditorDrawer({ isOpen, role, onClose, onSave }: Permis
             <button
               type="submit"
               form="role-form"
-              disabled={loading}
-              className="px-5 py-2.5 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-dark transition-all cursor-pointer flex items-center gap-2 shadow-sm disabled:opacity-50"
+              disabled={loading || !isEditable}
+              className="px-5 py-2.5 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-dark transition-all cursor-pointer flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Save Changes
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (!isEditable ? <Lock className="w-4 h-4" /> : <Save className="w-4 h-4" />)}
+              <span>{isEditable ? "Save Changes" : "Locked (Basic Plan)"}</span>
             </button>
           </div>
         </div>

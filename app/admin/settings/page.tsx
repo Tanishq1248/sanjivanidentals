@@ -23,6 +23,11 @@ const TeamManagementSection = dynamic(
   { loading: () => <SettingsSkeleton /> }
 );
 
+const ClinicResourcesSection = dynamic(
+  () => import("../../../components/admin/settings/sections/ClinicResourcesSection"),
+  { loading: () => <SettingsSkeleton /> }
+);
+
 const AppointmentSettingsSection = dynamic(
   () => import("../../../components/admin/settings/sections/AppointmentSettingsSection"),
   { loading: () => <SettingsSkeleton /> }
@@ -62,6 +67,7 @@ const MessageTemplatesSection = dynamic(
 const SECTION_COMPONENTS: Record<string, React.ComponentType> = {
   "clinic-info": ClinicInfoSection,
   team: TeamManagementSection,
+  "clinic-resources": ClinicResourcesSection,
   appointments: AppointmentSettingsSection,
   "message-templates": MessageTemplatesSection,
   billing: BillingSettingsSection,

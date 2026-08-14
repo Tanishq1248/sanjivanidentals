@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { X, Search, Phone, Loader2, CalendarDays, Clock, Armchair } from "lucide-react";
+import { X, Search, Phone, Loader2, CalendarDays, Clock, Armchair, AlertCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createAppointmentByAdmin } from "../../lib/services/appointmentService";
 import { getPatients } from "../../lib/services/patientService";
-import { CHAIR_OPTIONS, DURATION_OPTIONS } from "../../lib/types";
+import { getClinicResources } from "../../lib/services/settingsService";
+import { DURATION_OPTIONS } from "../../lib/types";
 import type { Patient, AppointmentStatus } from "../../lib/types";
 import { queryKeys } from "../../lib/query/queryKeys";
 
@@ -49,6 +50,22 @@ export function NewAppointmentModal({
     staleTime: 2 * 60_000,
   });
 
+  /* ── Clinic Resources (Chairs) ── */
+  const {
+    data: clinicResources,
+    isLoading: isLoadingChairs,
+    isError: isChairsError,
+    refetch: refetchChairs,
+  } = useQuery({
+    queryKey: queryKeys.settings.clinicResources,
+    queryFn: getClinicResources,
+    staleTime: 5 * 60_000,
+  });
+
+  const activeChairs = useMemo(() => {
+    return (clinicResources?.chairs || []).filter((c) => c.active);
+  }, [clinicResources]);
+
   const suggestions = useMemo(() => {
     const q = patientSearch.trim().toLowerCase();
     if (q.length < 2 || selectedPatient) return [];
@@ -67,7 +84,7 @@ export function NewAppointmentModal({
     time: defaultTime,
     service: "",
     customService: "",
-    chair: "",
+    chairId: "",
     duration: 30,
     status: "Confirmed" as AppointmentStatus,
     patientName: "",
@@ -78,7 +95,7 @@ export function NewAppointmentModal({
   /* Sync defaults when modal opens */
   useEffect(() => {
     if (isOpen) {
-      setForm((f) => ({ ...f, date: defaultDate, time: defaultTime }));
+      setForm((f) => ({ ...f, date: defaultDate, time: defaultTime, chairId: "" }));
       setSelectedPatient(null);
       setPatientSearch("");
     }
@@ -86,8 +103,9 @@ export function NewAppointmentModal({
 
   /* ── Mutation ── */
   const mutation = useMutation({
-    mutationFn: () =>
-      createAppointmentByAdmin({
+    mutationFn: () => {
+      const selectedChairObj = activeChairs.find((c) => c.id === form.chairId);
+      return createAppointmentByAdmin({
         patientName:  selectedPatient?.name  ?? form.patientName,
         patientPhone: selectedPatient?.phone ?? form.patientPhone,
         patientEmail: selectedPatient?.email ?? form.patientEmail,
@@ -95,10 +113,13 @@ export function NewAppointmentModal({
         service:      form.service === "__custom__" ? form.customService : form.service,
         date:         form.date,
         time:         form.time,
-        chair:        form.chair || undefined,
+        chairId:      form.chairId || undefined,
+        chair:        selectedChairObj?.name || undefined,
         duration:     form.duration,
         status:       form.status,
-      }),
+        clinicId:     "clinic-1",
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calendar"] });
       queryClient.invalidateQueries({ queryKey: queryKeys.appointments.all });
@@ -334,16 +355,43 @@ export function NewAppointmentModal({
                 <Armchair className="w-3 h-3 inline mr-1 text-primary" />
                 Chair
               </label>
-              <select
-                value={form.chair}
-                onChange={(e) => setForm((f) => ({ ...f, chair: e.target.value }))}
-                className="w-full px-3 py-2.5 text-sm rounded-xl border border-outline-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-white"
-              >
-                <option value="">No Chair</option>
-                {CHAIR_OPTIONS.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+              {isChairsError ? (
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold text-rose-600 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    Unable to load clinic chairs.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => refetchChairs()}
+                    className="text-[10px] font-bold text-primary hover:underline cursor-pointer"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : isLoadingChairs ? (
+                <div className="flex items-center gap-2 py-2 text-xs text-on-surface-variant">
+                  <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                  <span>Loading chairs…</span>
+                </div>
+              ) : activeChairs.length === 0 ? (
+                <p className="text-[11px] font-bold text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                  No active chairs configured.
+                </p>
+              ) : (
+                <select
+                  value={form.chairId}
+                  onChange={(e) => setForm((f) => ({ ...f, chairId: e.target.value }))}
+                  className="w-full px-3 py-2.5 text-sm rounded-xl border border-outline-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-white"
+                >
+                  <option value="">No Chair</option>
+                  {activeChairs.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
@@ -389,8 +437,8 @@ export function NewAppointmentModal({
           </div>
 
           {mutation.isError && (
-            <p className="text-xs text-red-600 text-center font-medium">
-              Failed to create appointment. Please try again.
+            <p className="text-xs text-rose-600 text-center font-bold bg-rose-50 p-2.5 rounded-xl border border-rose-200">
+              {mutation.error instanceof Error ? mutation.error.message : "Failed to create appointment. Please try again."}
             </p>
           )}
         </div>

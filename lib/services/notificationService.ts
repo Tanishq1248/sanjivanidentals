@@ -13,7 +13,7 @@ import {
 import { db } from "../firebase";
 import type { Notification, NotificationType } from "../types";
 
-import { COLLECTIONS } from "./firestoreConfig";
+import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
 
 const COLLECTION = COLLECTIONS.NOTIFICATIONS;
 const notificationsRef = collection(db, COLLECTION);
@@ -47,12 +47,16 @@ export async function createNotification(data: {
   message: string;
   appointmentId?: string;
   patientId?: string;
+  clinicId?: string;
 }): Promise<string> {
+  const clinicId = data.clinicId;
+
   const docRef = await addDoc(notificationsRef, {
     ...data,
     appointmentId: data.appointmentId || "",
     patientId: data.patientId || "",
     read: false,
+    clinicId: clinicId || "",
     createdAt: Timestamp.now(),
   });
   return docRef.id;

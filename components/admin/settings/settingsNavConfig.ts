@@ -2,6 +2,7 @@ import React from "react";
 import {
   Building2,
   Users,
+  Armchair,
   Calendar,
   CreditCard,
   FileText,
@@ -41,6 +42,14 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     description: "Manage clinic staff, doctors, roles, and access control permissions.",
     icon: Users,
     componentPath: "./sections/TeamManagementSection",
+  },
+  {
+    id: "clinic-resources",
+    label: "Clinic Resources",
+    category: "General",
+    description: "Configure treatment chairs, chair names, and active availability.",
+    icon: Armchair,
+    componentPath: "./sections/ClinicResourcesSection",
   },
   {
     id: "appointments",

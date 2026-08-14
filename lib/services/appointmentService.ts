@@ -24,12 +24,101 @@ import type {
   AppointmentFilter,
   PaginatedResult,
 } from "../types";
-import { COLLECTIONS, getCollectionRef } from "./firestoreConfig";
-import { getAppointmentSettings } from "./settingsService";
+import { COLLECTIONS, getCollectionRef, DEFAULT_CLINIC_ID } from "./firestoreConfig";
+import { getAppointmentSettings, getClinicResources } from "./settingsService";
 
 /** Extended creation payload including calendar-specific fields. */
 export type AppointmentAdminPayload = AppointmentFormData &
-  Partial<Pick<Appointment, "status" | "chair" | "duration" | "patientId" | "doctorId" | "doctorName">>;
+  Partial<Pick<Appointment, "status" | "chair" | "chairId" | "duration" | "patientId" | "doctorId" | "doctorName">>;
+
+/** Helper: Parse time string (e.g. "09:30 AM") into minutes from midnight */
+export function parseTimeToMinutes(t: string): number {
+  if (!t) return 0;
+  const clean = t.trim().toUpperCase();
+  const match = clean.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
+  if (!match) return 0;
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const period = match[3];
+  if (period === "PM" && h !== 12) h += 12;
+  if (period === "AM" && h === 12) h = 0;
+  return h * 60 + m;
+}
+
+/** Helper: Check if two appointment time slots overlap */
+export function doAppointmentsOverlap(
+  apt1: { time: string; duration?: number },
+  apt2: { time: string; duration?: number }
+): boolean {
+  const start1 = parseTimeToMinutes(apt1.time);
+  const end1 = start1 + (apt1.duration || 30);
+  const start2 = parseTimeToMinutes(apt2.time);
+  const end2 = start2 + (apt2.duration || 30);
+  return start1 < end2 && start2 < end1;
+}
+
+/**
+ * Validate chair eligibility and check for scheduling conflicts on the same chair.
+ * Throws Error with user-friendly message if validation fails.
+ */
+export async function validateAndCheckChairConflict(
+  date: string,
+  time: string,
+  duration: number,
+  chairId?: string,
+  chairName?: string,
+  excludeAppointmentId?: string
+): Promise<{ resolvedChairId?: string; resolvedChairName?: string }> {
+  if (!chairId && !chairName) {
+    return {};
+  }
+
+  const resources = await getClinicResources();
+  const allChairs = resources.chairs || [];
+
+  // Find chair in configured chairs
+  let matchedChair = allChairs.find((c) => c.id === chairId);
+  if (!matchedChair && chairName) {
+    matchedChair = allChairs.find((c) => c.name.toLowerCase() === chairName.trim().toLowerCase());
+  }
+
+  // 1. Check chair exists in clinic
+  if (!matchedChair && chairId) {
+    throw new Error("Selected chair is no longer available.");
+  }
+
+  // 2. Check chair is active for new booking
+  if (matchedChair && !matchedChair.active) {
+    throw new Error("Selected chair is inactive for new appointments.");
+  }
+
+  const effectiveChairId = matchedChair?.id || chairId;
+  const effectiveChairName = matchedChair?.name || chairName;
+
+  // 3. Check conflict rules
+  const apptSettings = await getAppointmentSettings();
+  if (!apptSettings.allowChairOverbooking && effectiveChairId) {
+    // Fetch all non-cancelled appointments for this date
+    const dayAppointments = await getAppointmentsByDate(date);
+    const conflict = dayAppointments.find((apt) => {
+      if (apt.id === excludeAppointmentId) return false;
+      if (apt.status === "Cancelled") return false;
+
+      const sameChair =
+        apt.chairId === effectiveChairId ||
+        (apt.chair && matchedChair && apt.chair.toLowerCase() === matchedChair.name.toLowerCase());
+      if (!sameChair) return false;
+
+      return doAppointmentsOverlap({ time, duration }, { time: apt.time, duration: apt.duration });
+    });
+
+    if (conflict) {
+      throw new Error(`Selected chair (${effectiveChairName}) is already booked for this time slot.`);
+    }
+  }
+
+  return { resolvedChairId: effectiveChairId, resolvedChairName: effectiveChairName };
+}
 
 const COLLECTION = COLLECTIONS.APPOINTMENTS;
 const ARCHIVED_COLLECTION = COLLECTIONS.ARCHIVED_APPOINTMENTS;
@@ -199,18 +288,32 @@ export async function getAppointmentsByPhone(
  * Respects autoConfirmWebBookings and defaultSlotDurationMinutes settings.
  */
 export async function createAppointment(
-  data: AppointmentFormData
+  data: AppointmentFormData & { chairId?: string; chair?: string }
 ): Promise<string> {
   const settings = await getAppointmentSettings();
   const initialStatus = settings.autoConfirmWebBookings ? "Confirmed" : "Pending";
   const slotDuration = settings.defaultSlotDurationMinutes || 30;
   const now = Timestamp.now();
+
+  const { resolvedChairId, resolvedChairName } = await validateAndCheckChairConflict(
+    data.date,
+    data.time,
+    slotDuration,
+    data.chairId,
+    data.chair
+  );
+
+  const clinicId = (data as any).clinicId;
+
   const docRef = await addDoc(appointmentsRef, {
     ...data,
     patientId: "",
     status: initialStatus as AppointmentStatus,
     duration: slotDuration,
     source: "online_booking",
+    clinicId: clinicId || "",
+    ...(resolvedChairId ? { chairId: resolvedChairId } : {}),
+    ...(resolvedChairName ? { chair: resolvedChairName } : {}),
     createdAt: now,
     updatedAt: now,
   });
@@ -226,8 +329,18 @@ export async function createAppointmentByAdmin(
 ): Promise<string> {
   const settings = await getAppointmentSettings();
   const now = Timestamp.now();
-  const { status, chair, duration, patientId, doctorId, doctorName, ...rest } = data;
+  const { status, chair, chairId, duration, patientId, doctorId, doctorName, ...rest } = data;
   const effectiveDuration = duration || settings.defaultSlotDurationMinutes || 30;
+
+  const { resolvedChairId, resolvedChairName } = await validateAndCheckChairConflict(
+    rest.date,
+    rest.time,
+    effectiveDuration,
+    chairId,
+    chair
+  );
+
+  const adminClinicId = (data as any).clinicId;
 
   const docRef = await addDoc(appointmentsRef, {
     ...rest,
@@ -235,7 +348,9 @@ export async function createAppointmentByAdmin(
     status: status || ("Confirmed" as AppointmentStatus),
     source: "admin_created",
     duration: effectiveDuration,
-    ...(chair ? { chair } : {}),
+    clinicId: adminClinicId || "",
+    ...(resolvedChairId ? { chairId: resolvedChairId } : {}),
+    ...(resolvedChairName ? { chair: resolvedChairName } : {}),
     ...(doctorId ? { doctorId } : {}),
     ...(doctorName ? { doctorName } : {}),
     createdAt: now,
@@ -261,6 +376,30 @@ export async function updateAppointment(
   const ref = doc(db, COLLECTION, id);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { id: _id, ...rest } = data;
+
+  if (rest.date || rest.time || rest.chairId || rest.chair) {
+    const existing = await getAppointmentById(id);
+    if (existing) {
+      const targetDate = rest.date || existing.date;
+      const targetTime = rest.time || existing.time;
+      const targetDuration = rest.duration || existing.duration || 30;
+      const targetChairId = rest.chairId !== undefined ? rest.chairId : existing.chairId;
+      const targetChair = rest.chair !== undefined ? rest.chair : existing.chair;
+
+      const { resolvedChairId, resolvedChairName } = await validateAndCheckChairConflict(
+        targetDate,
+        targetTime,
+        targetDuration,
+        targetChairId,
+        targetChair,
+        id
+      );
+
+      if (resolvedChairId !== undefined) rest.chairId = resolvedChairId;
+      if (resolvedChairName !== undefined) rest.chair = resolvedChairName;
+    }
+  }
+
   await updateDoc(ref, { ...rest, updatedAt: Timestamp.now() });
 }
 

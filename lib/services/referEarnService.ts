@@ -12,7 +12,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { COLLECTIONS } from "./firestoreConfig";
+import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
 import type {
   ClinicReferral,
   ClinicReferralConfig,
@@ -46,7 +46,7 @@ function generateReferralCode(): string {
 const CONFIG_DOC_ID = "default";
 
 /** Fetch or create the clinic's referral config (generates code on first call). */
-export async function getOrCreateReferralConfig(): Promise<ClinicReferralConfig> {
+export async function getOrCreateReferralConfig(clinicId?: string): Promise<ClinicReferralConfig> {
   const docRef = doc(db, COLLECTIONS.CLINIC_REFERRAL_CONFIG, CONFIG_DOC_ID);
   const snap = await getDoc(docRef);
 
@@ -54,10 +54,13 @@ export async function getOrCreateReferralConfig(): Promise<ClinicReferralConfig>
     return snap.data() as ClinicReferralConfig;
   }
 
+  const targetClinicId = clinicId || (typeof window !== "undefined" ? localStorage.getItem("clinicId") || undefined : undefined);
+
   // First time — generate a new code
   const config: ClinicReferralConfig = {
     referralCode: generateReferralCode(),
     clinicName: "My Clinic", // Will be updated by the user
+    clinicId: targetClinicId || "",
     createdAt: Timestamp.now(),
   };
 
@@ -78,7 +81,7 @@ export async function updateReferralConfigClinicName(clinicName: string): Promis
 const SUB_DOC_ID = "default";
 
 /** Fetch or create the subscription info singleton. */
-export async function getSubscriptionInfo(): Promise<SubscriptionInfo> {
+export async function getSubscriptionInfo(clinicId?: string): Promise<SubscriptionInfo> {
   const docRef = doc(db, COLLECTIONS.SUBSCRIPTION_INFO, SUB_DOC_ID);
   const snap = await getDoc(docRef);
 
@@ -86,12 +89,15 @@ export async function getSubscriptionInfo(): Promise<SubscriptionInfo> {
     return snap.data() as SubscriptionInfo;
   }
 
+  const targetClinicId = clinicId || (typeof window !== "undefined" ? localStorage.getItem("clinicId") || undefined : undefined);
+
   // Default stub — no active subscription
   const info: SubscriptionInfo = {
     planName: "Free",
     expiryDate: "",
     freeMonthsEarned: 0,
     totalSuccessfulReferrals: 0,
+    clinicId: targetClinicId || "",
     updatedAt: Timestamp.now(),
   };
 
@@ -158,8 +164,11 @@ export async function isDuplicateReferral(email: string): Promise<boolean> {
 export async function addReferral(data: {
   referredClinicName: string;
   referredClinicEmail: string;
+  clinicId?: string;
 }): Promise<string> {
-  const config = await getOrCreateReferralConfig();
+  const targetClinicId = data.clinicId || (typeof window !== "undefined" ? localStorage.getItem("clinicId") || undefined : undefined);
+
+  const config = await getOrCreateReferralConfig(targetClinicId);
   const now = Timestamp.now();
   const today = new Date().toISOString().split("T")[0];
 
@@ -174,6 +183,7 @@ export async function addReferral(data: {
     rewardType: "free_months",
     rewardMonths: 1,
     rewardApplied: false,
+    clinicId: targetClinicId || "",
     createdAt: now,
     updatedAt: now,
   };

@@ -1,30 +1,43 @@
-"use client";
-
 import React, { useState } from "react";
-import { X, UserPlus, Mail, Phone, User, Shield, Loader2 } from "lucide-react";
-import type { RolePermission, TeamMemberFormData } from "../../../../lib/types";
+import { X, UserPlus, Mail, Phone, User, Shield, Loader2, AlertCircle } from "lucide-react";
+import type { RolePermission, TeamMemberFormData, TeamMember } from "../../../../lib/types";
+import { canAddDoctor, getMaximumDoctors } from "../../../../lib/services/featureAccessService";
 
 interface InviteMemberModalProps {
   isOpen: boolean;
   onClose: () => void;
   onInvite: (formData: TeamMemberFormData) => Promise<void>;
   roles: RolePermission[];
+  clinicInfo?: any;
+  members?: TeamMember[];
 }
 
-export function InviteMemberModal({ isOpen, onClose, onInvite, roles }: InviteMemberModalProps) {
+export function InviteMemberModal({ isOpen, onClose, onInvite, roles, clinicInfo, members = [] }: InviteMemberModalProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState(roles[0]?.name || "Doctor");
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const doctorCount = members.filter((m) => m.role?.toLowerCase() === "doctor" || m.roleId === "role-doctor").length;
+  const isDoctorRole = role.toLowerCase() === "doctor";
+  const maxDoctors = getMaximumDoctors(clinicInfo);
+  const isDoctorLimitReached = isDoctorRole && !canAddDoctor(doctorCount, clinicInfo);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) return;
 
+    if (isDoctorLimitReached) {
+      setErrorMessage(`You have reached the maximum number of doctors allowed in the Basic Plan (${maxDoctors} Doctors). Upgrade to Professional for up to 4 doctors.`);
+      return;
+    }
+
     setLoading(true);
+    setErrorMessage(null);
     try {
       const selectedRoleObj = roles.find((r) => r.name === role);
       await onInvite({
@@ -40,8 +53,9 @@ export function InviteMemberModal({ isOpen, onClose, onInvite, roles }: InviteMe
       setName("");
       setEmail("");
       setPhone("");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Invite error:", err);
+      setErrorMessage(err?.message || "Failed to send invitation");
     } finally {
       setLoading(false);
     }
@@ -125,7 +139,10 @@ export function InviteMemberModal({ isOpen, onClose, onInvite, roles }: InviteMe
               <Shield className="w-4 h-4 text-on-surface-variant/60 absolute left-3 top-1/2 -translate-y-1/2" />
               <select
                 value={role}
-                onChange={(e) => setRole(e.target.value)}
+                onChange={(e) => {
+                  setRole(e.target.value);
+                  setErrorMessage(null);
+                }}
                 className="w-full pl-9 pr-3 py-2 bg-white border border-outline-variant/30 rounded-xl text-xs font-medium text-on-surface focus:outline-none focus:border-primary transition-all appearance-none cursor-pointer"
               >
                 {roles.map((r) => (
@@ -136,6 +153,16 @@ export function InviteMemberModal({ isOpen, onClose, onInvite, roles }: InviteMe
               </select>
             </div>
           </div>
+
+          {/* Limit Warning / Error Alert */}
+          {(isDoctorLimitReached || errorMessage) && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span>
+                {errorMessage || `You have reached the maximum number of doctors allowed in the Basic Plan (${maxDoctors} Doctors). Upgrade to Professional for up to 4 doctors.`}
+              </span>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="pt-4 border-t border-outline-variant/15 flex items-center justify-end gap-2.5">
@@ -148,8 +175,8 @@ export function InviteMemberModal({ isOpen, onClose, onInvite, roles }: InviteMe
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-dark transition-all cursor-pointer flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              disabled={loading || isDoctorLimitReached}
+              className="px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-dark transition-all cursor-pointer flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Send Invite

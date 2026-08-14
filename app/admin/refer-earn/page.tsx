@@ -135,7 +135,7 @@ function ReferEarnPage() {
   // ── Queries ──
   const { data: config } = useQuery({
     queryKey: queryKeys.clinicReferrals.config,
-    queryFn: getOrCreateReferralConfig,
+    queryFn: () => getOrCreateReferralConfig("clinic-1"),
     staleTime: 5 * 60_000,
   });
 
@@ -147,7 +147,7 @@ function ReferEarnPage() {
 
   const { data: subInfo } = useQuery({
     queryKey: queryKeys.clinicReferrals.subscription,
-    queryFn: getSubscriptionInfo,
+    queryFn: () => getSubscriptionInfo("clinic-1"),
     staleTime: 60_000,
   });
 

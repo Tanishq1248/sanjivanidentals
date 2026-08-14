@@ -164,6 +164,7 @@ export const queryKeys = {
     roles: ["settings", "roles"] as const,
     clinicInfo: ["settings", "clinicInfo"] as const,
     appointmentSettings: ["settings", "appointmentSettings"] as const,
+    clinicResources: ["clinicSettings", "resources"] as const,
     billingSettings: ["settings", "billingSettings"] as const,
     securitySettings: ["settings", "securitySettings"] as const,
   },

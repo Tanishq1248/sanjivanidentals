@@ -1,12 +1,12 @@
-"use client";
-
 import React, { useState } from "react";
-import { ShieldCheck, Plus, Pencil, Trash2, Users, ArrowLeft, Shield } from "lucide-react";
+import { ShieldCheck, Plus, Pencil, Trash2, Users, ArrowLeft, Shield, Lock } from "lucide-react";
 import type { RolePermission } from "../../../../lib/types";
 import { ActionConfirmModal } from "./ActionConfirmModal";
+import { canManageRoles, canEditPermissions } from "../../../../lib/services/featureAccessService";
 
 interface RolesPermissionsGridProps {
   roles: RolePermission[];
+  clinicInfo?: any;
   onCreateRoleClick: () => void;
   onEditRoleClick: (role: RolePermission) => void;
   onDeleteRoleClick: (roleId: string) => Promise<void>;
@@ -15,6 +15,7 @@ interface RolesPermissionsGridProps {
 
 export function RolesPermissionsGrid({
   roles,
+  clinicInfo,
   onCreateRoleClick,
   onEditRoleClick,
   onDeleteRoleClick,
@@ -22,8 +23,33 @@ export function RolesPermissionsGrid({
 }: RolesPermissionsGridProps) {
   const [roleToDelete, setRoleToDelete] = useState<RolePermission | null>(null);
 
+  const isRolesManageable = canManageRoles(clinicInfo);
+  const isPermissionsEditable = canEditPermissions(clinicInfo);
+
   return (
     <div className="space-y-6 font-sans">
+      {/* Locked Banner for Basic Plan */}
+      {!isRolesManageable && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/80 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-900">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 shrink-0">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-xs uppercase tracking-wider px-2 py-0.5 rounded bg-amber-200 text-amber-950">
+                  🔒 Professional Feature
+                </span>
+                <span className="text-xs font-bold text-amber-800">Role & Permissions Locked</span>
+              </div>
+              <p className="text-xs text-amber-800/90 mt-0.5">
+                Role permission editing and custom role creation are available in the <strong>Professional Plan</strong>.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Action Header */}
       <div className="bg-white rounded-2xl p-5 border border-outline-variant/20 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -45,10 +71,16 @@ export function RolesPermissionsGrid({
         </div>
         <button
           onClick={onCreateRoleClick}
-          className="px-4 py-2.5 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-dark transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm shrink-0"
+          disabled={!isPermissionsEditable}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm shrink-0 ${
+            isPermissionsEditable
+              ? "bg-primary text-white hover:bg-primary-dark cursor-pointer"
+              : "bg-slate-200 text-slate-500 cursor-not-allowed border border-slate-300"
+          }`}
+          title={!isPermissionsEditable ? "Upgrade to Professional Plan to create custom roles" : undefined}
         >
-          <Plus className="w-4 h-4" />
-          + Create Role
+          {!isPermissionsEditable ? <Lock className="w-3.5 h-3.5" /> : <Plus className="w-4 h-4" />}
+          <span>+ Create Role</span>
         </button>
       </div>
 

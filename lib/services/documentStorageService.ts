@@ -122,7 +122,7 @@ export class DocumentStorageService {
       documentId,
       patientId,
       encounterId,
-      clinicId = DEFAULT_CLINIC_ID,
+      clinicId,
       documentType = "prescriptions",
       fileName: customFileName,
       year,
@@ -171,7 +171,7 @@ export class DocumentStorageService {
         customMetadata: {
           patientId,
           encounterId: encounterId || "",
-          clinicId,
+          clinicId: clinicId || "",
           documentId,
           documentType,
           ...customMetadata,

@@ -38,10 +38,7 @@ export interface Patient {
   // ── Referral Tracking (added for referral module) ──
   referralSource?: string;          // one of REFERRAL_SOURCES
   referredByPatientId?: string;     // Firestore ID of the referring patient
-  // ── Future-ready fields (not yet active) ──
-  // referralCampaignId?: string;   // for campaign tracking
-  // referralRewardStatus?: "pending" | "claimed" | "expired";
-  // referralNotes?: string;
+  clinicId?: string;
 }
 
 export type PatientFormData = Omit<Patient, "id" | "avatarColor" | "createdAt" | "updatedAt">;
@@ -55,6 +52,7 @@ export interface PatientMedicalProfile {
   medicalConditions: string;
   clinicalNotes: string;
   emergencyContact?: string;
+  clinicId?: string;
   updatedAt: Timestamp;
 }
 
@@ -130,6 +128,7 @@ export interface PatientEncounter {
   followUpDate?: string; // YYYY-MM-DD
   status: EncounterStatus;
   notes: string;
+  clinicId?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -143,6 +142,7 @@ export interface Doctor {
   email: string;
   availability: string[];
   status: "Active" | "Inactive";
+  clinicId?: string;
   createdAt: Timestamp;
 }
 
@@ -181,6 +181,7 @@ export interface Invoice {
   paymentStatus: InvoiceStatus | string;
   paymentMethod: PaymentMethod;
   invoiceDate: string; // YYYY-MM-DD
+  clinicId?: string;
   createdAt: Timestamp;
 
   // New fields for billing review and details
@@ -248,7 +249,9 @@ export interface Appointment {
   source: "online_booking" | "admin_created";
   doctorId?: string;
   doctorName?: string;
-  /** Dental chair assigned to this appointment (e.g. "Chair 1"). */
+  /** Dental chair ID assigned to this appointment (e.g. "chair-1"). */
+  chairId?: string;
+  /** Dental chair name assigned to this appointment (e.g. "Chair 1"). */
   chair?: string;
   /** Appointment duration in minutes. Defaults to 30 if not set. */
   duration?: number;
@@ -256,13 +259,14 @@ export interface Appointment {
   checkInTime?: Timestamp;
   /** Timestamp when the appointment was completed. */
   completedTime?: Timestamp;
+  clinicId?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
 export type AppointmentFormData = Pick<
   Appointment,
-  "patientName" | "patientPhone" | "patientEmail" | "service" | "date" | "time"
+  "patientName" | "patientPhone" | "patientEmail" | "service" | "date" | "time" | "clinicId"
 >;
 
 /* ─── Notification ─── */
@@ -279,6 +283,7 @@ export interface Notification {
   appointmentId: string;
   patientId: string;
   read: boolean;
+  clinicId?: string;
   createdAt: Timestamp;
 }
 
@@ -294,6 +299,7 @@ export interface DentalService {
   name: string;
   category: ServiceCategory;
   isActive: boolean;
+  clinicId?: string;
 }
 
 /* ─── Clinic Settings ─── */
@@ -308,6 +314,7 @@ export interface ClinicSettings {
     days: string;
   };
   timeSlots: string[];
+  clinicId?: string;
 }
 
 /* ─── Appointment Filter ─── */
@@ -481,6 +488,7 @@ export interface Expense {
   paymentMethod: string;
   vendor?: string;
   notes?: string;
+  clinicId?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
   createdBy: string; // User email who recorded it
@@ -507,6 +515,7 @@ export interface ClinicReferral {
   rewardType: RewardType;
   rewardMonths: number;             // Default: 1
   rewardApplied: boolean;
+  clinicId?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -515,7 +524,28 @@ export interface ClinicReferral {
 export interface ClinicReferralConfig {
   referralCode: string;             // e.g., "DP-8XK29A"
   clinicName: string;
+  clinicId?: string;
   createdAt: Timestamp;
+}
+
+export type SubscriptionPlanType = "basic" | "professional" | "enterprise";
+
+export interface SubscriptionFeatures {
+  rolePermissions: boolean;
+  maxDoctors: number;
+  maxReceptionists: number;
+  customRoles: boolean;
+  permissionEditing: boolean;
+  chairManagement: boolean;
+  advancedAnalytics: boolean;
+  whatsappAutomation: boolean;
+  auditLogs: boolean;
+}
+
+export interface ClinicSubscriptionData {
+  plan: SubscriptionPlanType;
+  status: "active" | "trial" | "expired" | "cancelled";
+  features: SubscriptionFeatures;
 }
 
 /** Lightweight subscription stub — ready for future billing integration. */
@@ -524,6 +554,7 @@ export interface SubscriptionInfo {
   expiryDate: string;               // YYYY-MM-DD
   freeMonthsEarned: number;
   totalSuccessfulReferrals: number;
+  clinicId?: string;
   updatedAt: Timestamp;
 }
 
@@ -540,6 +571,7 @@ export interface TeamMember {
   status: MemberStatus;
   avatarColor: string;
   lastLogin: string;     // e.g. "Today, 02:15 PM" or "Yesterday"
+  clinicId?: string;
   createdAt?: Timestamp | string;
   updatedAt?: Timestamp | string;
 }
@@ -567,6 +599,7 @@ export interface RolePermission {
   permissionCount: number;
   isSystem?: boolean;    // System roles like "Admin" cannot be deleted
   permissions: Record<string, string[]>; // e.g. { Patients: ["View", "Add", "Edit"], Billing: ["View", "Create"] }
+  clinicId?: string;
   createdAt?: Timestamp | string;
   updatedAt?: Timestamp | string;
 }
@@ -576,6 +609,7 @@ export interface AppointmentSettingsData {
   bufferTimeMinutes: number;          // 0, 5, 10, 15
   autoConfirmWebBookings: boolean;    // true / false
   allowChairOverbooking: boolean;     // true / false
+  clinicId?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -589,6 +623,21 @@ export interface BillingSettingsData {
   taxIncludedMode?: boolean;        // whether prices include tax
   invoiceFooterText?: string;       // footer note
   paymentInstructions?: string;     // bank transfer / UPI payment instructions
+  clinicId?: string;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+export interface ChairItem {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
+export interface ClinicResourcesData {
+  chairCount: number;
+  chairs: ChairItem[];
+  clinicId?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -608,6 +657,7 @@ export interface LoginHistoryEntry {
   loginTime: Timestamp;
   logoutTime?: Timestamp;
   ipAddress?: string;       // approximate, optional
+  clinicId?: string;
   createdAt: Timestamp;
 }
 
@@ -624,11 +674,13 @@ export interface AuditLogEntry {
   timestamp: Timestamp;
   metadata?: Record<string, unknown>;
   success: boolean;
+  clinicId?: string;
 }
 
 export interface SecuritySettingsData {
   sessionTimeoutMinutes: number;   // 15, 30, 60, 120
   auditLoggingEnabled: boolean;
+  clinicId?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -654,6 +706,7 @@ export interface SecuritySession {
   isRevoked: boolean;
   revokedAt?: Timestamp;
   revokeReason?: string;
+  clinicId?: string;
 }
 
 export interface ClinicBasicInfo {
@@ -675,6 +728,8 @@ export interface ClinicBasicInfo {
   prescriptionFooterText?: string;
   currencySymbol?: string;
   gstNumber?: string;
+  subscription?: ClinicSubscriptionData;
+  clinicId?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -732,6 +787,7 @@ export interface MessageLogEntry {
   twilioMessageSid?: string;
   status: WhatsAppDeliveryStatus;
   sentAt?: Timestamp;
+  clinicId?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
   deliveredAt?: Timestamp;
@@ -755,6 +811,7 @@ export interface MessageTemplate {
   signature?: string; // Email only
   footer?: string; // Email only
   status: "active" | "inactive";
+  clinicId?: string;
   updatedAt?: Timestamp;
   updatedBy?: string;
 }

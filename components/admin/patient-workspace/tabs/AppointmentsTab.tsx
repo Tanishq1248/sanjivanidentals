@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   Calendar,
@@ -18,6 +19,8 @@ import {
 } from "lucide-react";
 import type { Appointment } from "../../../../lib/types";
 import { sendWhatsAppMessage } from "../../../../lib/services/whatsappService";
+import { getClinicResources } from "../../../../lib/services/settingsService";
+import { queryKeys } from "../../../../lib/query/queryKeys";
 
 interface AppointmentsTabProps {
   appointments: Appointment[];
@@ -49,6 +52,20 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
   const [filterGroup, setFilterGroup] = useState<"all" | "upcoming" | "completed" | "cancelled">("all");
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const { data: clinicResources } = useQuery({
+    queryKey: queryKeys.settings.clinicResources,
+    queryFn: getClinicResources,
+    staleTime: 5 * 60_000,
+  });
+
+  const getChairName = (apt: Appointment) => {
+    if (apt.chairId && clinicResources?.chairs) {
+      const found = clinicResources.chairs.find((c) => c.id === apt.chairId);
+      if (found) return found.name;
+    }
+    return apt.chair || "Chair not assigned";
+  };
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -221,7 +238,7 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
 
                 <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                   <div className="text-slate-500">
-                    Chair: <span className="font-semibold text-slate-700">{apt.chair || "Main Chair"}</span>
+                    Chair: <span className="font-semibold text-slate-700">{getChairName(apt)}</span>
                   </div>
 
                   <div className="flex items-center gap-2">

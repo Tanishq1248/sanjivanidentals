@@ -12,7 +12,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { COLLECTIONS } from "./firestoreConfig";
+import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
 import { getSecuritySettings } from "./securityService";
 import type { SecuritySession, SessionStatus } from "../types";
 
@@ -161,8 +161,11 @@ export function clearLocalSessionState(): void {
 export async function createSession(
   userId: string,
   userName: string,
-  role: string
+  role: string,
+  clinicId?: string
 ): Promise<string> {
+  const targetClinicId = clinicId || (typeof window !== "undefined" ? localStorage.getItem("clinicId") || undefined : undefined);
+
   const deviceId = getDeviceId();
   const { browserName, platform, deviceName } = getSessionDeviceInfo();
   const timeoutMinutes = await getTimeoutMinutes();
@@ -195,6 +198,7 @@ export async function createSession(
     status: "active",
     isCurrent: true,
     isRevoked: false,
+    clinicId: targetClinicId || "",
   };
 
   await setDoc(newDocRef, sessionData);

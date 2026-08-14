@@ -12,7 +12,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import type { Expense, ExpenseFormData, Invoice } from "../types";
-import { COLLECTIONS } from "./firestoreConfig";
+import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
 import { getInvoices } from "./invoiceService";
 
 const COLLECTION = COLLECTIONS.EXPENSES;
@@ -37,10 +37,13 @@ export async function addExpense(
   data: ExpenseFormData,
   createdByEmail: string
 ): Promise<string> {
+  const clinicId = (data as any).clinicId;
+
   const now = Timestamp.now();
   const docRef = await addDoc(expensesRef, {
     ...data,
     createdBy: createdByEmail || "Admin",
+    clinicId: clinicId || "",
     createdAt: now,
     updatedAt: now,
   });

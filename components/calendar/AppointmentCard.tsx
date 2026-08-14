@@ -1,7 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { Appointment, AppointmentStatus } from "../../lib/types";
+import { getClinicResources } from "../../lib/services/settingsService";
+import { queryKeys } from "../../lib/query/queryKeys";
 import {
   CheckCircle2,
   UserCircle,
@@ -56,6 +59,21 @@ export function AppointmentCard({
 }: AppointmentCardProps) {
   const cfg = STATUS_CONFIG[appointment.status] ?? STATUS_CONFIG.Pending;
 
+  const { data: clinicResources } = useQuery({
+    queryKey: queryKeys.settings.clinicResources,
+    queryFn: getClinicResources,
+    staleTime: 5 * 60_000,
+  });
+
+  const displayChairLabel = useMemo(() => {
+    if (appointment.chairId && clinicResources?.chairs) {
+      const found = clinicResources.chairs.find((c) => c.id === appointment.chairId);
+      if (found) return found.name;
+    }
+    if (appointment.chair) return appointment.chair;
+    return null;
+  }, [appointment.chairId, appointment.chair, clinicResources]);
+
   if (compact) {
     // Compact variant for Week/Month views
     return (
@@ -70,8 +88,8 @@ export function AppointmentCard({
         <div className="pl-3 pr-2 py-1.5 bg-white border border-outline-variant/15 rounded-lg ml-0">
           <p className="text-[11px] font-bold text-on-surface truncate leading-tight">{appointment.patientName}</p>
           <p className="text-[10px] text-on-surface-variant truncate">{appointment.time} · {appointment.service}</p>
-          {appointment.chair && (
-            <p className="text-[9px] font-semibold text-on-surface-variant/60 mt-0.5">{appointment.chair}</p>
+          {displayChairLabel && (
+            <p className="text-[9px] font-semibold text-on-surface-variant/60 mt-0.5">{displayChairLabel}</p>
           )}
           <span className={`inline-flex items-center mt-1 gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${cfg.badge}`}>
             <span className={`w-1 h-1 rounded-full ${cfg.dot} shrink-0`} />
@@ -124,10 +142,10 @@ export function AppointmentCard({
             {/* Meta row: phone · chair · duration */}
             <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-1">
               <span className="text-[11px] text-on-surface-variant/60 font-mono">{appointment.patientPhone}</span>
-              {appointment.chair && (
+              {displayChairLabel && (
                 <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-on-surface-variant/70">
                   <Armchair className="w-3 h-3" />
-                  {appointment.chair}
+                  {displayChairLabel}
                 </span>
               )}
               {appointment.duration && (

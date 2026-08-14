@@ -7,7 +7,7 @@ import {
   formatE164,
   validateWhatsAppPhone,
   generateWhatsAppMessageBody,
-  checkQuotaStatus,
+  getMonthlyMessagingQuota,
   incrementQuotaCounter,
   createInitialWhatsAppLog,
   updateWhatsAppLog,
@@ -197,8 +197,14 @@ export async function POST(req: Request) {
     }, 20000);
 
     // Determine request origin for absolute PDF URLs
-    const origin = req.headers.get("origin") || req.headers.get("host") || "http://localhost:3000";
-    const baseUrl = origin.startsWith("http") ? origin : `https://${origin}`;
+    const baseUrl =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (() => {
+        const host = req.headers.get("x-forwarded-host") ||
+          req.headers.get("host") || "localhost:3000";
+        const proto = req.headers.get("x-forwarded-proto") || "https";
+        return `${proto}://${host}`;
+      })();
 
     let recipient = payload.recipient;
     let patientId = payload.patientId;
@@ -476,7 +482,8 @@ export async function POST(req: Request) {
     }
 
     // ── 5. MONTHLY QUOTA CHECK ──
-    const quota = await checkQuotaStatus();
+    const clinicId = (payload as any).clinicId || clinicInfo?.clinicId || "default";
+    const quota = await getMonthlyMessagingQuota(clinicId);
     if (!quota.allowed) {
       await logWhatsAppMessage({
         patientId,
@@ -573,7 +580,11 @@ export async function POST(req: Request) {
       statusCallback: statusCallbackUrl,
     };
 
-    if (mediaUrl && isValidPublicMediaUrl(mediaUrl)) {
+    if (
+      mediaUrl &&
+      isValidPublicMediaUrl(mediaUrl) &&
+      payload.messageType !== "appointment_reminder"
+    ) {
       messageParams.mediaUrl = [mediaUrl];
     } else if (mediaUrl) {
       console.warn(

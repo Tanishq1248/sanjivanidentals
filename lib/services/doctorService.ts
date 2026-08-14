@@ -13,7 +13,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import type { Doctor } from "../types";
-import { COLLECTIONS } from "./firestoreConfig";
+import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
 
 const COLLECTION = COLLECTIONS.DOCTORS;
 const doctorsRef = collection(db, COLLECTION);
@@ -36,9 +36,12 @@ export async function getDoctorById(id: string): Promise<Doctor | null> {
 export async function addDoctor(
   data: Omit<Doctor, "id" | "createdAt">
 ): Promise<string> {
+  const clinicId = data.clinicId;
+
   const now = Timestamp.now();
   const docRef = await addDoc(doctorsRef, {
     ...data,
+    clinicId: clinicId || "",
     createdAt: now,
   });
   return docRef.id;

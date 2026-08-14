@@ -1,6 +1,6 @@
 import { doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
 import { db } from "../firebase";
-import { COLLECTIONS } from "./firestoreConfig";
+import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
 import type {
   MessageTemplate,
   MessageTemplatesDocument,
@@ -129,14 +129,18 @@ export async function saveMessageTemplates(
   templates: MessageTemplatesDocument,
   updatedBy?: string
 ): Promise<boolean> {
+  const sampleTemplate = Object.values(templates)[0];
+  const clinicId = sampleTemplate?.clinicId;
+
   try {
     const docRef = doc(db, COLLECTIONS.CLINIC_SETTINGS, "templates");
     const now = Timestamp.now();
 
-    const preparedData: MessageTemplatesDocument = {};
+    const preparedData: Record<string, any> = { clinicId: clinicId || "" };
     Object.entries(templates).forEach(([id, t]) => {
       preparedData[id] = {
         ...t,
+        clinicId: clinicId || "",
         updatedAt: now,
         updatedBy: updatedBy || t.updatedBy || "Admin",
       };

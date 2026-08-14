@@ -71,6 +71,7 @@ export default function BookingPage() {
         date: form.date,
         time: form.time,
         service: form.reason,
+        clinicId: "clinic-1",
       });
 
       // Create notification for admin
@@ -79,6 +80,7 @@ export default function BookingPage() {
         title: "New Appointment Request",
         message: `${form.name} requested an appointment on ${form.date} at ${form.time} for ${form.reason}.`,
         appointmentId,
+        clinicId: "clinic-1",
       });
 
       setSubmitted(true);

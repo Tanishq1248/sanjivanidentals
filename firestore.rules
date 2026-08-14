@@ -2,8 +2,8 @@ rules_version = '2';
 
 // =============================================================================
 // DENTAPURE DENTAL CLINIC - FIRESTORE SECURITY RULES
-// Single-Tenant Healthcare Security Model
-// Principles: Authentication Required, Least Privilege, Protected System Logs
+// Multi-Tenant Healthcare Security Model & Data Isolation Rules
+// Principles: Tenant Isolation, Least Privilege, Protected System Logs
 // =============================================================================
 
 service cloud.firestore {
@@ -23,37 +23,56 @@ service cloud.firestore {
       return val is timestamp;
     }
 
+    /**
+     * Resolves the user's assigned clinic ID from their auth token custom claims.
+     * Defaults to "default" if unassigned or in single-tenant setup.
+     */
+    function getUserClinicId() {
+      return request.auth.token.clinicId != null ? request.auth.token.clinicId : "default";
+    }
+
+    /**
+     * Enforces tenant isolation.
+     * Validates that the requested/written document clinicId matches the authenticated user's clinicId.
+     */
+    function isSameTenant() {
+      return isAuthenticated() && (
+        (resource == null && (request.resource.data.clinicId == getUserClinicId() || request.resource.data.clinicId == null)) ||
+        (resource != null && (resource.data.clinicId == getUserClinicId() || resource.data.clinicId == null))
+      );
+    }
+
     // =========================================================================
-    // PATIENT & CLINICAL DATA COLLECTIONS
+    // PATIENT & CLINICAL DATA COLLECTIONS (TENANT ISOLATED)
     // =========================================================================
 
     // Patient Directory Records
     match /patients/{patientId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() &&
+      allow read: if isSameTenant();
+      allow create, update: if isSameTenant() &&
         (request.resource.data.name is string) &&
         (request.resource.data.phone is string);
-      allow delete: if isAuthenticated();
+      allow delete: if isSameTenant();
     }
 
     // Comprehensive Patient Medical Histories & Profiles
     match /patientMedicalProfiles/{profileId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Patient Clinical Encounters & Dental Chartings
     match /patientEncounters/{encounterId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Active Prescriptions
     match /prescriptions/{prescriptionId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Archived Prescriptions
     match /archived_prescriptions/{prescriptionId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // =========================================================================
@@ -62,133 +81,133 @@ service cloud.firestore {
 
     // Active Clinic Appointments
     match /appointments/{appointmentId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Archived Appointments
     match /archived_appointments/{appointmentId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // In-App Notifications
     match /notifications/{notificationId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Archived Notifications
     match /archived_notifications/{notificationId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Doctors & Clinical Specialists Directory
     match /doctors/{doctorId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
-    // Dental Treatment Catalog & Procedure Services
+    // Dental Treatment Catalog & Procedure Services (GLOBAL — shared across clinics)
     match /services/{serviceId} {
       allow read, write: if isAuthenticated();
     }
 
     // =========================================================================
-    // FINANCIAL, BILLING & EXPENSE MANAGEMENT
+    // FINANCIAL, BILLING & EXPENSE MANAGEMENT (TENANT ISOLATED)
     // =========================================================================
 
     // Treatment Invoices & Payment Tracking
     match /invoices/{invoiceId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Clinic Operating Expenses
     match /expenses/{expenseId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Patient & Doctor Referrals Tracking
     match /clinicReferrals/{referralId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Referral Program Configuration
     match /clinicReferralConfig/{configId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Clinic Subscription & Tier Metadata
     match /subscriptionInfo/{subId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // =========================================================================
-    // ADMINISTRATIVE, TEAM & SYSTEM SETTINGS
+    // ADMINISTRATIVE, TEAM & SYSTEM SETTINGS (TENANT ISOLATED)
     // =========================================================================
 
     // Basic Clinic Profile & Header Information
     match /clinicSettings/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Calendar & Appointment Slot Configuration
     match /appointmentSettings/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Invoicing & Tax Settings
     match /billingSettings/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Security & Inactivity Timeout Configuration
     match /securitySettings/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Clinic Staff & Team Directory
     match /teamMembers/{memberId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // RBAC Custom Roles & Permission Definitions
     match /roles/{roleId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // =========================================================================
-    // SYSTEM LOGS, SESSIONS & MESSAGING (PROTECTED COLLECTIONS)
+    // SYSTEM LOGS, SESSIONS & MESSAGING (PROTECTED & ISOLATED)
     // =========================================================================
 
     // User Login & Logout History Logs (Deletion Denied)
     match /loginHistory/{entryId} {
-      allow read, create, update: if isAuthenticated();
+      allow read, create, update: if isSameTenant();
       allow delete: if false;
     }
 
     // Immutable Security Audit Logs (Append-Only; Update & Delete Denied)
     match /auditLogs/{logId} {
-      allow read, create: if isAuthenticated();
+      allow read, create: if isSameTenant();
       allow update, delete: if false;
     }
 
     // Active User Sessions & Activity Monitors
     match /securitySessions/{sessionId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // Monthly WhatsApp Messaging Quotas (Deletion Denied)
     match /messagingUsage/{quotaId} {
-      allow read, create, update: if isAuthenticated();
+      allow read, create, update: if isSameTenant();
       allow delete: if false;
     }
 
     // WhatsApp Message Delivery Logs & Status Callbacks (Deletion Denied)
     match /messageLogs/{logId} {
-      allow read, create, update: if isAuthenticated();
+      allow read, create, update: if isSameTenant();
       allow delete: if false;
     }
 
     // Central Document Storage Metadata Records
     match /documents/{documentId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSameTenant();
     }
 
     // =========================================================================

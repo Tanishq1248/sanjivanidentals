@@ -1,6 +1,8 @@
 import { collection, collectionGroup, writeBatch, query, where, getDocs, doc, deleteDoc, setDoc, Timestamp, Firestore } from "firebase/firestore";
 import { db } from "../firebase";
 
+export const DEFAULT_CLINIC_ID = "default";
+
 /**
  * Centralized Firestore Collection Names
  * Helps support archived collections in the future without modifying every query in the codebase.

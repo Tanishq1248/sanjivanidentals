@@ -17,10 +17,12 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import type { TeamMember, RolePermission, MemberStatus } from "../../../../lib/types";
+import { getSubscription, getMaximumDoctors } from "../../../../lib/services/featureAccessService";
 
 interface TeamMembersTableProps {
   members: TeamMember[];
   roles: RolePermission[];
+  clinicInfo?: any;
   onInviteClick: () => void;
   onEditClick: (member: TeamMember) => void;
   onActionClick: (type: "reset-password" | "deactivate" | "activate" | "delete", member: TeamMember) => void;
@@ -32,6 +34,7 @@ const PAGE_SIZE = 5;
 export function TeamMembersTable({
   members,
   roles,
+  clinicInfo,
   onInviteClick,
   onEditClick,
   onActionClick,
@@ -43,6 +46,10 @@ export function TeamMembersTable({
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [viewingMember, setViewingMember] = useState<TeamMember | null>(null);
+
+  const subscription = getSubscription(clinicInfo);
+  const maxDoctors = getMaximumDoctors(clinicInfo);
+  const doctorCount = members.filter((m) => m.role?.toLowerCase() === "doctor" || m.roleId === "role-doctor").length;
 
   // Filtered members list
   const filteredMembers = useMemo(() => {

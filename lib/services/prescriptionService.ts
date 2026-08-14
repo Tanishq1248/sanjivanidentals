@@ -12,7 +12,7 @@ import {
 import { db } from "../firebase";
 import type { Prescription } from "../types";
 
-import { COLLECTIONS, getCollectionRef } from "./firestoreConfig";
+import { COLLECTIONS, getCollectionRef, DEFAULT_CLINIC_ID } from "./firestoreConfig";
 
 const COLLECTION = COLLECTIONS.PRESCRIPTIONS;
 const ARCHIVED_COLLECTION = COLLECTIONS.ARCHIVED_PRESCRIPTIONS;
@@ -103,6 +103,8 @@ export async function savePrescription(
     }
   }
 
+  const clinicId = data.clinicId;
+
   let docRef;
 
   if (targetDocId) {
@@ -113,6 +115,7 @@ export async function savePrescription(
     await setDoc(docRef, {
       ...data,
       prescriptionId: targetDocId,
+      clinicId: clinicId || "",
       createdAt,
       updatedAt: now,
     });
@@ -121,6 +124,7 @@ export async function savePrescription(
     await setDoc(docRef, {
       ...data,
       prescriptionId: docRef.id,
+      clinicId: clinicId || "",
       createdAt: now,
       updatedAt: now,
     });

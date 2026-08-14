@@ -14,14 +14,17 @@ import {
   addRole,
   updateRole,
   deleteRole,
+  getClinicInfo,
 } from "../../../../lib/services/settingsService";
 import type { TeamMember, RolePermission, TeamMemberFormData } from "../../../../lib/types";
+import { getSubscription, canManageRoles, getMaximumDoctors } from "../../../../lib/services/featureAccessService";
 import { TeamMembersTable } from "../team/TeamMembersTable";
 import { RolesPermissionsGrid } from "../team/RolesPermissionsGrid";
 import { InviteMemberModal } from "../team/InviteMemberModal";
 import { EditMemberModal } from "../team/EditMemberModal";
 import { PermissionEditorDrawer } from "../team/PermissionEditorDrawer";
 import { ActionConfirmModal, type ConfirmActionType } from "../team/ActionConfirmModal";
+import { Lock } from "lucide-react";
 
 
 type TeamSubView = "overview" | "members" | "roles";
@@ -42,6 +45,12 @@ export default function TeamManagementSection() {
   const [editingRole, setEditingRole] = useState<RolePermission | null>(null);
 
   // Queries using TanStack Query
+  const { data: clinicInfo } = useQuery({
+    queryKey: queryKeys.settings.clinicInfo,
+    queryFn: getClinicInfo,
+    staleTime: 5 * 60_000,
+  });
+
   const { data: members = [] } = useQuery({
     queryKey: queryKeys.settings.teamMembers,
     queryFn: () => getTeamMembers(),
@@ -53,6 +62,11 @@ export default function TeamManagementSection() {
     queryFn: getRoles,
     staleTime: 5 * 60_000,
   });
+
+  const subscription = getSubscription(clinicInfo);
+  const isBasicPlan = subscription.plan === "basic";
+  const maxDoctors = getMaximumDoctors(clinicInfo);
+  const doctorCount = members.filter((m) => m.role?.toLowerCase() === "doctor" || m.roleId === "role-doctor").length;
 
   // Mutations
   const inviteMutation = useMutation({
@@ -126,12 +140,14 @@ export default function TeamManagementSection() {
         <div className="space-y-6">
           <div className="bg-white rounded-2xl p-6 border border-outline-variant/20 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-primary/10 text-primary">
                   Administration
                 </span>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-100 text-emerald-800">
-                  Active
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                  isBasicPlan ? "bg-amber-100 text-amber-900 border border-amber-300" : "bg-purple-100 text-purple-900 border border-purple-300"
+                }`}>
+                  {isBasicPlan ? "Basic Plan (2 Doctors Max)" : "Professional Plan (4 Doctors Max)"}
                 </span>
               </div>
               <h2 className="text-xl font-bold text-on-surface">Team & Access Management</h2>
@@ -151,8 +167,11 @@ export default function TeamManagementSection() {
                 <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary mb-4 group-hover:scale-105 transition-transform">
                   <Users className="w-6 h-6" />
                 </div>
-                <h3 className="text-lg font-bold text-on-surface mb-1.5 group-hover:text-primary transition-colors">
-                  👥 Team Members
+                <h3 className="text-lg font-bold text-on-surface mb-1.5 group-hover:text-primary transition-colors flex items-center justify-between">
+                  <span>👥 Team Members</span>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-mono">
+                    {doctorCount}/{maxDoctors} Doctors
+                  </span>
                 </h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed mb-6">
                   Manage doctors, assistants, receptionists, and clinic staff accounts.
@@ -171,25 +190,42 @@ export default function TeamManagementSection() {
             {/* Card 2: Roles & Permissions */}
             <div
               onClick={() => setSubView("roles")}
-              className="bg-white rounded-2xl p-6 border border-outline-variant/20 shadow-sm hover:shadow-md hover:border-primary/40 transition-all cursor-pointer flex flex-col justify-between group"
+              className={`rounded-2xl p-6 border shadow-sm transition-all cursor-pointer flex flex-col justify-between group relative overflow-hidden ${
+                isBasicPlan
+                  ? "bg-slate-50/80 border-amber-200/80 hover:border-amber-400"
+                  : "bg-white border-outline-variant/20 hover:shadow-md hover:border-primary/40"
+              }`}
             >
               <div>
-                <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-600 mb-4 group-hover:scale-105 transition-transform">
-                  <ShieldCheck className="w-6 h-6" />
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-600 group-hover:scale-105 transition-transform">
+                    <ShieldCheck className="w-6 h-6" />
+                  </div>
+                  {isBasicPlan && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
+                      <Lock className="w-3 h-3 text-amber-700" />
+                      <span>🔒 Professional Feature</span>
+                    </span>
+                  )}
                 </div>
                 <h3 className="text-lg font-bold text-on-surface mb-1.5 group-hover:text-primary transition-colors">
                   🛡 Roles & Permissions
                 </h3>
-                <p className="text-xs text-on-surface-variant leading-relaxed mb-6">
+                <p className="text-xs text-on-surface-variant leading-relaxed mb-4">
                   Control access to every module of the software with custom role permissions.
                 </p>
+                {isBasicPlan && (
+                  <p className="text-[11px] font-bold text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200/60 mb-2">
+                    Upgrade to Professional to manage custom roles and permissions.
+                  </p>
+                )}
               </div>
               <div className="pt-4 border-t border-outline-variant/15 flex items-center justify-between">
                 <span className="text-xs font-bold text-on-surface">
                   Roles : <span className="text-indigo-600">{roles.length}</span>
                 </span>
                 <span className="text-xs font-bold text-primary flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                  → Open
+                  {isBasicPlan ? "🔒 View Locked" : "→ Open"}
                 </span>
               </div>
             </div>
@@ -202,6 +238,7 @@ export default function TeamManagementSection() {
         <TeamMembersTable
           members={members}
           roles={roles}
+          clinicInfo={clinicInfo}
           onInviteClick={() => setIsInviteOpen(true)}
           onEditClick={(member) => setEditingMember(member)}
           onActionClick={(type, member) => setActionConfirm({ type, member })}
@@ -213,6 +250,7 @@ export default function TeamManagementSection() {
       {subView === "roles" && (
         <RolesPermissionsGrid
           roles={roles}
+          clinicInfo={clinicInfo}
           onCreateRoleClick={() => {
             setEditingRole(null);
             setIsDrawerOpen(true);
@@ -234,6 +272,8 @@ export default function TeamManagementSection() {
           await inviteMutation.mutateAsync(formData);
         }}
         roles={roles}
+        clinicInfo={clinicInfo}
+        members={members}
       />
 
 

@@ -1,17 +1,30 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // ─── Clinic Documents Storage Rules ───
-    match /clinics/{clinicId}/{allPaths=**} {
-      allow read: if true; // Allow read for document retrieval
-      allow write: if request.auth != null; // Authenticated clinic staff only
+
+    // Clinic invoice PDFs — authenticated read/write
+    match /clinics/{clinicId}/invoices/{allPaths=**} {
+      allow read, write: if request.auth != null;
     }
 
-    // ─── Prescriptions: Public read, Admin upload (Legacy backward compatibility) ───
-    match /prescriptions/{fileName} {
-      allow read: if true;
-      allow write: if request.auth != null;
+    // Clinic prescription PDFs — authenticated read/write
+    match /clinics/{clinicId}/prescriptions/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Clinic documents — authenticated read/write
+    match /clinics/{clinicId}/documents/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Clinic logos and assets — authenticated read/write
+    match /clinics/{clinicId}/assets/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Block everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }
-

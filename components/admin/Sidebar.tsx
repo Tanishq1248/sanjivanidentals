@@ -69,7 +69,7 @@ export function Sidebar({ currentPage, onClose }: SidebarProps) {
   const clinicalItems = [
     { href: "/admin/calendar", label: "Calendar", icon: <CalendarDays className="w-4 h-4 shrink-0" />, key: "calendar" },
     { href: "/admin/patients", label: "Patients", icon: <Users className="w-4 h-4 shrink-0" />, key: "patients" },
-    { href: "/admin/finance/analytics", label: "Revenue Analytics", icon: <TrendingUp className="w-4 h-4 shrink-0" />, key: "analytics" },
+    { href: "/admin/finance/analytics", label: "Clinical Analytics", icon: <TrendingUp className="w-4 h-4 shrink-0" />, key: "analytics" },
     { href: "/admin/analytics/messaging", label: "Messaging Analytics", icon: <MessageSquare className="w-4 h-4 shrink-0" />, key: "messaging-analytics" },
   ];
 

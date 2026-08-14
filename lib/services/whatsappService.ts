@@ -11,7 +11,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { COLLECTIONS } from "./firestoreConfig";
+import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
 import type {
   WhatsAppMessagePayload,
   WhatsAppMessageType,
@@ -91,12 +91,7 @@ export function generateWhatsAppMessageBody(
 /**
  * Check monthly messaging quota in Firestore (messagingUsage collection).
  */
-export async function checkQuotaStatus(): Promise<{
-  allowed: boolean;
-  messagesSent: number;
-  monthlyLimit: number;
-  monthKey: string;
-}> {
+export async function getMonthlyMessagingQuota(clinicId?: string): Promise<{ allowed: boolean; messagesSent: number; monthlyLimit: number; monthKey: string }> {
   const now = new Date();
   const year = now.getFullYear();
   const monthStr = String(now.getMonth() + 1).padStart(2, "0");
@@ -106,9 +101,11 @@ export async function checkQuotaStatus(): Promise<{
   const snap = await getDoc(quotaRef);
 
   if (!snap.exists()) {
+    const targetClinicId = clinicId || (typeof window !== "undefined" ? localStorage.getItem("clinicId") || undefined : undefined);
+
     // Initialize quota document for current month
     const initialQuota: MessagingQuotaInfo = {
-      clinicId: "default",
+      clinicId: targetClinicId || "",
       month: `${year}-${monthStr}`,
       monthlyLimit: DEFAULT_MONTHLY_QUOTA,
       messagesSent: 0,
@@ -164,6 +161,8 @@ function sanitizeFirestoreData<T extends Record<string, any>>(data: T): Partial<
 export async function createInitialWhatsAppLog(
   payload: WhatsAppMessagePayload
 ): Promise<string> {
+  const clinicId = (payload as any).clinicId || (typeof window !== "undefined" ? localStorage.getItem("clinicId") || undefined : undefined);
+
   try {
     const logsRef = collection(db, COLLECTIONS.MESSAGE_LOGS);
     const newDocRef = doc(logsRef);
@@ -179,6 +178,7 @@ export async function createInitialWhatsAppLog(
       messageType: payload.messageType,
       recipient: payload.recipient,
       status: "queued",
+      clinicId: clinicId || "",
       createdAt: now,
       updatedAt: now,
     });
@@ -250,6 +250,8 @@ export async function updateWhatsAppLogBySid(
 export async function logWhatsAppMessage(
   log: Omit<MessageLogEntry, "createdAt" | "updatedAt">
 ): Promise<string> {
+  const clinicId = log.clinicId || (typeof window !== "undefined" ? localStorage.getItem("clinicId") || undefined : undefined);
+
   try {
     const logsRef = collection(db, COLLECTIONS.MESSAGE_LOGS);
     const newDocRef = doc(logsRef);
@@ -258,6 +260,7 @@ export async function logWhatsAppMessage(
       ...log,
       id: newDocRef.id,
       messageId: newDocRef.id,
+      clinicId: clinicId || "",
       createdAt: now,
       updatedAt: now,
     });

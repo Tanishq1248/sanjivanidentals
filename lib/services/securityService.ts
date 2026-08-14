@@ -22,7 +22,7 @@ import {
   type User,
 } from "firebase/auth";
 import { db, auth } from "../firebase";
-import { COLLECTIONS } from "./firestoreConfig";
+import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
 import type {
   LoginHistoryEntry,
   AuditLogEntry,
@@ -142,8 +142,11 @@ export async function recordLoginEvent(
   userId: string,
   userName: string,
   userRole: string,
-  status: LoginStatus = "success"
+  status: LoginStatus = "success",
+  clinicId?: string
 ): Promise<string> {
+  const targetClinicId = clinicId || (typeof window !== "undefined" ? localStorage.getItem("clinicId") || undefined : undefined);
+
   const { deviceInfo, browserName } = getDeviceInfo();
   const now = Timestamp.now();
 
@@ -155,6 +158,7 @@ export async function recordLoginEvent(
     browserName,
     status,
     loginTime: now,
+    clinicId: targetClinicId || "",
     createdAt: now,
   };
 
@@ -279,6 +283,8 @@ export async function recordAuditEvent(params: {
   metadata?: Record<string, unknown>;
   success?: boolean;
 }): Promise<string> {
+  const clinicId = (params as any).clinicId || (typeof window !== "undefined" ? localStorage.getItem("clinicId") || undefined : undefined);
+
   const entry: Omit<AuditLogEntry, "id"> = {
     actorUserId: params.actorUserId,
     actorName: params.actorName,
@@ -291,6 +297,7 @@ export async function recordAuditEvent(params: {
     timestamp: Timestamp.now(),
     metadata: params.metadata,
     success: params.success ?? true,
+    clinicId: clinicId || "",
   };
 
   const docRef = await addDoc(auditLogsRef, entry);
@@ -374,9 +381,12 @@ export async function createOrUpdateSecuritySettings(
   data: Partial<SecuritySettingsData>
 ): Promise<SecuritySettingsData> {
   const current = await getSecuritySettings();
+  const clinicId = data.clinicId || current.clinicId || (typeof window !== "undefined" ? localStorage.getItem("clinicId") || undefined : undefined);
+
   const updated: SecuritySettingsData = {
     ...current,
     ...data,
+    clinicId: clinicId || "",
     updatedAt: Timestamp.now(),
   };
 

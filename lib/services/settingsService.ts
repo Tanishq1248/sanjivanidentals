@@ -12,8 +12,9 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import type { TeamMember, RolePermission, ClinicSettingsData, ClinicBasicInfo, AppointmentSettingsData, BillingSettingsData, TeamMemberFormData, MemberStatus } from "../types";
-import { COLLECTIONS } from "./firestoreConfig";
+import type { TeamMember, RolePermission, ClinicSettingsData, ClinicBasicInfo, AppointmentSettingsData, BillingSettingsData, TeamMemberFormData, MemberStatus, ChairItem, ClinicResourcesData, SubscriptionPlanType } from "../types";
+import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
+import { canAddDoctor, getMaximumDoctors, canEditPermissions, PLAN_PRESETS, DEFAULT_SUBSCRIPTION } from "./featureAccessService";
 
 const MEMBERS_COLLECTION = COLLECTIONS.TEAM_MEMBERS;
 const ROLES_COLLECTION = COLLECTIONS.ROLES;
@@ -128,6 +129,7 @@ const INITIAL_MEMBERS: TeamMember[] = [
     status: "Active",
     avatarColor: "bg-teal-500",
     lastLogin: "Today, 10:45 AM",
+    clinicId: "clinic-1",
   },
   {
     id: "tm-2",
@@ -139,6 +141,7 @@ const INITIAL_MEMBERS: TeamMember[] = [
     status: "Active",
     avatarColor: "bg-indigo-500",
     lastLogin: "Today, 09:15 AM",
+    clinicId: "clinic-1",
   },
   {
     id: "tm-3",
@@ -150,6 +153,7 @@ const INITIAL_MEMBERS: TeamMember[] = [
     status: "Active",
     avatarColor: "bg-emerald-500",
     lastLogin: "Yesterday, 06:30 PM",
+    clinicId: "clinic-1",
   },
   {
     id: "tm-4",
@@ -161,6 +165,7 @@ const INITIAL_MEMBERS: TeamMember[] = [
     status: "Active",
     avatarColor: "bg-purple-500",
     lastLogin: "Today, 11:20 AM",
+    clinicId: "clinic-1",
   },
   {
     id: "tm-5",
@@ -171,7 +176,8 @@ const INITIAL_MEMBERS: TeamMember[] = [
     roleId: "role-receptionist",
     status: "Active",
     avatarColor: "bg-amber-500",
-    lastLogin: "Today, 08:00 AM",
+    lastLogin: "Today, 08:30 AM",
+    clinicId: "clinic-1",
   },
 ];
 
@@ -194,6 +200,7 @@ export const DEFAULT_CLINIC_BASIC_INFO: ClinicBasicInfo = {
   prescriptionFooterText: "Take medicines strictly as prescribed. For emergency assistance call clinic helpline.",
   currencySymbol: "₹",
   gstNumber: "27AAAAA0000A1Z5",
+  subscription: DEFAULT_SUBSCRIPTION,
 };
 
 const DEFAULT_CLINIC_SETTINGS: ClinicSettingsData = {
@@ -301,9 +308,12 @@ export async function getClinicInfo(): Promise<ClinicBasicInfo> {
  */
 export async function createOrUpdateClinicInfo(data: Partial<ClinicBasicInfo>): Promise<ClinicBasicInfo> {
   const current = await getClinicInfo();
+  const clinicId = data.clinicId || current.clinicId;
+
   const updated: ClinicBasicInfo = {
     ...current,
     ...data,
+    clinicId: clinicId || "",
     updatedAt: Timestamp.now(),
   };
 
@@ -378,8 +388,9 @@ export async function getTeamMembers(roleFilter?: string, statusFilter?: string)
       // Auto-seed working team setup (4 Doctors + 1 Receptionist) into Firestore
       const seeded: TeamMember[] = [];
       for (const member of INITIAL_MEMBERS) {
+        const memberClinicId = member.clinicId;
         const docRef = doc(db, MEMBERS_COLLECTION, member.id);
-        await setDoc(docRef, { ...member, createdAt: Timestamp.now() }, { merge: true });
+        await setDoc(docRef, { ...member, clinicId: memberClinicId || "", createdAt: Timestamp.now() }, { merge: true });
         seeded.push(member);
       }
       memoryMembersCache = seeded;
@@ -403,6 +414,21 @@ export async function getTeamMembers(roleFilter?: string, statusFilter?: string)
 }
 
 export async function addTeamMember(formData: TeamMemberFormData): Promise<TeamMember> {
+  const clinicId = (formData as any).clinicId;
+
+  // Backend validation: Check Doctor quota for current subscription plan
+  const isDoctorRole = formData.role?.toLowerCase() === "doctor" || formData.roleId === "role-doctor";
+  if (isDoctorRole) {
+    const members = await getTeamMembers();
+    const doctorCount = members.filter((m) => m.role.toLowerCase() === "doctor" || m.roleId === "role-doctor").length;
+    const clinicInfo = await getClinicInfo();
+
+    if (!canAddDoctor(doctorCount, clinicInfo)) {
+      const maxDocs = getMaximumDoctors(clinicInfo);
+      throw new Error(`You have reached the maximum number of doctors allowed in the Basic Plan (${maxDocs} Doctors). Upgrade to Professional for up to 4 doctors.`);
+    }
+  }
+
   const avatarColors = ["bg-teal-500", "bg-indigo-500", "bg-emerald-500", "bg-amber-500", "bg-purple-500", "bg-rose-500"];
   const randomColor = avatarColors[Math.floor(Math.random() * avatarColors.length)];
 
@@ -418,6 +444,7 @@ export async function addTeamMember(formData: TeamMemberFormData): Promise<TeamM
       ...formData,
       avatarColor: randomColor,
       lastLogin: newMember.lastLogin,
+      clinicId: clinicId || "",
       createdAt: Timestamp.now(),
     });
     newMember.id = docRef.id;
@@ -478,6 +505,12 @@ export async function getRoles(): Promise<RolePermission[]> {
 }
 
 export async function addRole(roleData: Omit<RolePermission, "id" | "memberCount" | "permissionCount">): Promise<RolePermission> {
+  // Backend validation: Check Role & Permission editing feature flag
+  const clinicInfo = await getClinicInfo();
+  if (!canEditPermissions(clinicInfo)) {
+    throw new Error("Role & Permission management is available only in the Professional Plan.");
+  }
+
   let count = 0;
   Object.values(roleData.permissions).forEach((perms) => {
     count += perms.length;
@@ -491,12 +524,15 @@ export async function addRole(roleData: Omit<RolePermission, "id" | "memberCount
     isSystem: false,
   };
 
+  const clinicId = (roleData as any).clinicId;
+
   try {
     const docRef = await addDoc(collection(db, ROLES_COLLECTION), {
       ...roleData,
       memberCount: 0,
       permissionCount: count,
       isSystem: false,
+      clinicId: clinicId || "",
       createdAt: Timestamp.now(),
     });
     newRole.id = docRef.id;
@@ -509,6 +545,12 @@ export async function addRole(roleData: Omit<RolePermission, "id" | "memberCount
 }
 
 export async function updateRole(id: string, updates: Partial<RolePermission>): Promise<void> {
+  // Backend validation: Check Role & Permission editing feature flag
+  const clinicInfo = await getClinicInfo();
+  if (!canEditPermissions(clinicInfo)) {
+    throw new Error("Role & Permission management is available only in the Professional Plan.");
+  }
+
   if (updates.permissions) {
     let count = 0;
     Object.values(updates.permissions).forEach((perms) => {
@@ -530,6 +572,12 @@ export async function updateRole(id: string, updates: Partial<RolePermission>): 
 }
 
 export async function deleteRole(id: string): Promise<void> {
+  // Backend validation: Check Role & Permission editing feature flag
+  const clinicInfo = await getClinicInfo();
+  if (!canEditPermissions(clinicInfo)) {
+    throw new Error("Role & Permission management is available only in the Professional Plan.");
+  }
+
   try {
     await deleteDoc(doc(db, ROLES_COLLECTION, id));
   } catch (error) {
@@ -537,6 +585,19 @@ export async function deleteRole(id: string): Promise<void> {
   }
 
   memoryRolesCache = memoryRolesCache.filter((r) => r.id !== id);
+}
+
+/**
+ * Update clinic subscription plan (e.g. "basic" or "professional").
+ */
+export async function updateSubscriptionPlan(plan: SubscriptionPlanType): Promise<ClinicBasicInfo> {
+  const currentInfo = await getClinicInfo();
+  const newSub = {
+    plan,
+    status: "active" as const,
+    features: PLAN_PRESETS[plan],
+  };
+  return createOrUpdateClinicInfo({ subscription: newSub });
 }
 
 /* ─── Clinic Settings Services (Backward Compatibility Wrappers) ─── */
@@ -627,9 +688,12 @@ export async function createOrUpdateAppointmentSettings(
   data: Partial<AppointmentSettingsData>
 ): Promise<AppointmentSettingsData> {
   const current = await getAppointmentSettings();
+  const clinicId = data.clinicId || current.clinicId;
+
   const updated: AppointmentSettingsData = {
     ...current,
     ...data,
+    clinicId: clinicId || "",
     updatedAt: Timestamp.now(),
   };
 
@@ -727,9 +791,12 @@ export async function createOrUpdateBillingSettings(
   data: Partial<BillingSettingsData>
 ): Promise<BillingSettingsData> {
   const current = await getBillingSettings();
+  const clinicId = data.clinicId || current.clinicId;
+
   const updated: BillingSettingsData = {
     ...current,
     ...data,
+    clinicId: clinicId || "",
     updatedAt: Timestamp.now(),
   };
 
@@ -767,4 +834,138 @@ export async function incrementInvoiceNumber(): Promise<number> {
   const nextNum = (settings.nextInvoiceNumber || 1000) + 1;
   await createOrUpdateBillingSettings({ nextInvoiceNumber: nextNum });
   return nextNum;
+}
+
+/* ─── Clinic Resources (Chair Management) Services ─── */
+
+export const DEFAULT_CLINIC_RESOURCES: ClinicResourcesData = {
+  chairCount: 1,
+  chairs: [
+    { id: "chair-1", name: "Chair 1", active: true },
+  ],
+};
+
+let memoryClinicResourcesCache: ClinicResourcesData = { ...DEFAULT_CLINIC_RESOURCES };
+
+/**
+ * Validate clinic resources (chairs) payload.
+ * Rules:
+ * - Chair count must be between 1 and 4.
+ * - Chair names cannot be empty.
+ * - Chair names must be unique (case-insensitive, trimmed).
+ */
+export function validateClinicResources(data: Partial<ClinicResourcesData>): { isValid: boolean; errors: Record<string, string> } {
+  const errors: Record<string, string> = {};
+
+  if (data.chairCount !== undefined) {
+    if (typeof data.chairCount !== "number" || isNaN(data.chairCount) || data.chairCount < 1 || data.chairCount > 4) {
+      errors.chairCount = "Number of chairs must be between 1 and 4";
+    }
+  }
+
+  if (data.chairs && Array.isArray(data.chairs)) {
+    const seenNames = new Set<string>();
+
+    data.chairs.forEach((c, idx) => {
+      const trimmedName = (c.name || "").trim();
+      if (!trimmedName) {
+        errors[`chair_${idx}`] = `Chair ${idx + 1} name cannot be empty`;
+      } else {
+        const lower = trimmedName.toLowerCase();
+        if (seenNames.has(lower)) {
+          errors[`chair_${idx}`] = `Chair name "${trimmedName}" must be unique`;
+        } else {
+          seenNames.add(lower);
+        }
+      }
+    });
+  }
+
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors,
+  };
+}
+
+/**
+ * Fetch clinic resources document (clinicSettings/resources).
+ * Initializes with 1 Active Chair if not found.
+ */
+export async function getClinicResources(): Promise<ClinicResourcesData> {
+  try {
+    const docRef = doc(db, CLINIC_SETTINGS_COLLECTION, "resources");
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const raw = snap.data();
+      const resData = (raw.clinicResources || raw) as ClinicResourcesData;
+      const count = Math.min(4, Math.max(1, resData.chairCount || 1));
+      let chairs = Array.isArray(resData.chairs) ? resData.chairs.slice(0, count) : [];
+
+      // Ensure chairs array matches chairCount
+      while (chairs.length < count) {
+        const idx = chairs.length + 1;
+        chairs.push({ id: `chair-${idx}`, name: `Chair ${idx}`, active: true });
+      }
+
+      const merged: ClinicResourcesData = {
+        chairCount: count,
+        chairs,
+        createdAt: raw.createdAt || resData.createdAt,
+        updatedAt: raw.updatedAt || resData.updatedAt,
+      };
+      memoryClinicResourcesCache = merged;
+      return merged;
+    }
+  } catch (error) {
+    console.warn("Firestore fetch error for clinic resources, using cache fallback:", error);
+  }
+
+  return memoryClinicResourcesCache;
+}
+
+/**
+ * Save or update clinic resources document (clinicSettings/resources).
+ */
+export async function saveClinicResources(data: ClinicResourcesData): Promise<ClinicResourcesData> {
+  const current = await getClinicResources();
+  const clinicId = data.clinicId || current.clinicId;
+
+  const count = Math.min(4, Math.max(1, data.chairCount || 1));
+  const sanitizedChairs = (data.chairs || []).slice(0, count).map((c, i) => ({
+    id: c.id || `chair-${i + 1}`,
+    name: (c.name || "").trim() || `Chair ${i + 1}`,
+    active: typeof c.active === "boolean" ? c.active : true,
+  }));
+
+  const updated: ClinicResourcesData = {
+    chairCount: count,
+    chairs: sanitizedChairs,
+    clinicId: clinicId || "",
+    updatedAt: Timestamp.now(),
+  };
+
+  if (current.createdAt) {
+    updated.createdAt = current.createdAt;
+  } else {
+    updated.createdAt = Timestamp.now();
+  }
+
+  memoryClinicResourcesCache = updated;
+
+  try {
+    const docRef = doc(db, CLINIC_SETTINGS_COLLECTION, "resources");
+    await setDoc(docRef, { clinicResources: updated, ...updated }, { merge: true });
+  } catch (error) {
+    console.warn("Firestore setDoc error for clinic resources:", error);
+  }
+
+  return updated;
+}
+
+/**
+ * Helper to fetch only active chairs configured in Clinic Resources.
+ */
+export async function getActiveChairs(): Promise<ChairItem[]> {
+  const resources = await getClinicResources();
+  return (resources.chairs || []).filter((c) => c.active);
 }

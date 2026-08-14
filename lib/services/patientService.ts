@@ -19,7 +19,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import type { Patient, PatientFormData, PaginatedResult, PatientMedicalProfile, PatientEncounter, SurfaceType, ToothTreatmentEntry } from "../types";
-import { COLLECTIONS } from "./firestoreConfig";
+import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
 
 const COLLECTION = COLLECTIONS.PATIENTS;
 const patientsRef = collection(db, COLLECTION);
@@ -101,9 +101,12 @@ export async function getPatientByPhone(phone: string): Promise<Patient | null> 
 
 /** Create a new patient. Returns the generated document ID. */
 export async function addPatient(data: PatientFormData): Promise<string> {
+  const clinicId = (data as any).clinicId;
+
   const now = Timestamp.now();
   const docRef = await addDoc(patientsRef, {
     ...data,
+    clinicId: clinicId || "",
     avatarColor: randomAvatarColor(),
     createdAt: now,
     updatedAt: now,
@@ -147,6 +150,8 @@ export async function savePatientMedicalProfile(
   patientId: string,
   profileData: Partial<PatientMedicalProfile>
 ): Promise<void> {
+  const clinicId = profileData.clinicId;
+
   const docRef = doc(db, COLLECTIONS.PATIENT_MEDICAL_PROFILES, patientId);
   const now = Timestamp.now();
   await setDoc(
@@ -154,6 +159,7 @@ export async function savePatientMedicalProfile(
     {
       ...profileData,
       patientId,
+      clinicId: clinicId || "",
       updatedAt: now,
     },
     { merge: true }
@@ -186,10 +192,13 @@ export async function getPatientEncounters(patientId: string): Promise<PatientEn
 export async function addPatientEncounter(
   encounter: Omit<PatientEncounter, "id" | "createdAt" | "updatedAt">
 ): Promise<string> {
+  const clinicId = (encounter as any).clinicId;
+
   const encountersRef = collection(db, COLLECTIONS.PATIENT_ENCOUNTERS);
   const now = Timestamp.now();
   const docRef = await addDoc(encountersRef, {
     ...encounter,
+    clinicId: clinicId || "",
     createdAt: now,
     updatedAt: now,
   });
@@ -337,6 +346,8 @@ export async function logToothTreatment(
     // Encounter does not exist -> create it
     console.log(`[logToothTreatment] Today's encounter not found. Creating a new encounter doc.`);
     
+    const clinicId = (treatmentData as any).clinicId;
+
     const newEncounter = {
       patientId,
       doctorId,
@@ -350,6 +361,7 @@ export async function logToothTreatment(
       followUpDate: "",
       status: treatmentData.status === "Planned" ? "Pending" : "Completed",
       notes: "Logged via Dental Chart",
+      clinicId: clinicId || "",
       createdAt: nowTimestamp,
       updatedAt: nowTimestamp,
     };
