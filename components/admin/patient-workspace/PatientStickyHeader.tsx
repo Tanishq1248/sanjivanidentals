@@ -3,26 +3,26 @@
 import React from "react";
 import Link from "next/link";
 import {
-  User,
   Phone,
   Calendar,
   IndianRupee,
-  Stethoscope,
   Plus,
   Activity,
   Edit2,
   CheckCircle2,
-  MapPin,
   Clock,
-  Sparkles,
+  User,
+  AlertTriangle,
+  ChevronRight,
 } from "lucide-react";
-import type { Patient, PatientMedicalProfile, PatientEncounter, Invoice } from "../../../lib/types";
+import type { Patient, PatientMedicalProfile, PatientEncounter, Invoice, Appointment } from "../../../lib/types";
 
 interface PatientStickyHeaderProps {
   patient: Patient;
   medicalProfile?: PatientMedicalProfile | null;
   encounters: PatientEncounter[];
   invoices: Invoice[];
+  appointments?: Appointment[];
   referrer?: Patient | null;
   referredPatients?: Patient[];
   onOpenEditProfile: () => void;
@@ -55,11 +55,26 @@ function formatINR(amount: number): string {
   });
 }
 
+function formatDate(dateStr?: string | null): string {
+  if (!dateStr) return "—";
+  try {
+    const d = new Date(dateStr + (dateStr.includes("T") ? "" : "T00:00:00"));
+    return d.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
 export const PatientStickyHeader: React.FC<PatientStickyHeaderProps> = ({
   patient,
   medicalProfile,
   encounters,
   invoices,
+  appointments = [],
   referrer,
   referredPatients = [],
   onOpenEditProfile,
@@ -95,164 +110,175 @@ export const PatientStickyHeader: React.FC<PatientStickyHeaderProps> = ({
   }, 0);
   const outstandingBalance = Math.max(0, totalBilled - totalPaid);
 
-  // Primary dentist logic
-  const primaryDentist =
-    encounters.length > 0 && encounters[0]?.doctorName
-      ? encounters[0].doctorName
-      : "Dr. Julian Moore";
+  // Last visit calculation
+  const sortedEncounters = [...encounters].sort((a, b) => (b.visitDate || "").localeCompare(a.visitDate || ""));
+  const lastVisitDate = sortedEncounters.length > 0 ? sortedEncounters[0].visitDate : null;
+  const primaryDoctor = sortedEncounters.length > 0 && sortedEncounters[0].doctorName ? sortedEncounters[0].doctorName : null;
+
+  // Next upcoming appointment
+  const todayStr = new Date().toISOString().split("T")[0];
+  const upcomingAppointments = appointments
+    .filter((a) => a.date >= todayStr && a.status !== "Cancelled")
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const nextAppointment = upcomingAppointments.length > 0 ? upcomingAppointments[0] : null;
 
   return (
-    <div className="bg-white border border-outline-variant/15 rounded-2xl shadow-sm overflow-hidden mb-6">
-      {/* Top Banner & Main Patient Summary */}
-      <div className="p-5 lg:p-6 space-y-4">
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-5">
-          {/* Avatar + Main Information */}
-          <div className="flex items-start sm:items-center gap-4">
+    <div className="bg-white border border-outline-variant/15 rounded-2xl shadow-xs overflow-hidden mb-5">
+      {/* Main Clinical Case Sheet Header Banner */}
+      <div className="p-4 sm:p-5 lg:p-6 space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          
+          {/* Patient Identity & Primary Demographics */}
+          <div className="flex items-start sm:items-center gap-3.5">
             <div
-              className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl ${
+              className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl ${
                 patient.avatarColor || "bg-primary"
-              } flex items-center justify-center text-white font-bold text-xl sm:text-2xl shadow-md shrink-0 border-2 border-white`}
+              } flex items-center justify-center text-white font-black text-lg sm:text-xl shadow-xs shrink-0 border border-white/20`}
             >
               {initials}
             </div>
 
             <div className="space-y-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-bold text-on-surface leading-tight tracking-tight">
+                <h1 className="text-lg sm:text-xl font-bold text-on-surface leading-tight tracking-tight">
                   {patient.name}
                 </h1>
-                <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2.5 py-0.5 rounded-full text-xs font-semibold">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  Verified Patient
+                <span className="text-xs font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
+                  #{patient.id.slice(0, 8).toUpperCase()}
+                </span>
+                <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[11px] font-semibold">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  Active
                 </span>
                 {medicalProfile?.allergies && (
-                  <span className="bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded-full text-[11px] font-bold">
-                    ⚠️ Allergy Alert
+                  <span className="bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded-full text-[11px] font-bold flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3 text-red-600" />
+                    Allergy Alert
                   </span>
                 )}
               </div>
 
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-on-surface-variant font-medium">
+                <span className="text-on-surface font-semibold">
+                  {patient.age ? `${patient.age} Yrs` : "Age —"} • {patient.gender || "Gender —"}
+                </span>
+                <span>•</span>
                 <span className="flex items-center gap-1">
-                  <Phone className="w-3.5 h-3.5 text-primary" /> {patient.phone}
+                  <Phone className="w-3.5 h-3.5 text-primary" />
+                  <a href={`tel:${patient.phone}`} className="hover:underline font-semibold text-on-surface">
+                    {patient.phone}
+                  </a>
                 </span>
                 {patient.email && (
-                  <span className="hidden sm:inline">
-                    • {patient.email}
-                  </span>
-                )}
-                {patient.address && (
-                  <span className="hidden md:inline-flex items-center gap-1 text-on-surface-variant/80">
-                    • <MapPin className="w-3 h-3" /> {patient.address}
-                  </span>
+                  <>
+                    <span className="hidden sm:inline">•</span>
+                    <span className="hidden sm:inline text-on-surface-variant">
+                      {patient.email}
+                    </span>
+                  </>
                 )}
                 {referrer && (
-                  <span>
-                    • Referred By:{" "}
-                    <Link
-                      href={`/admin/patients/${referrer.id}`}
-                      className="text-primary font-bold hover:underline"
-                    >
-                      {referrer.name}
-                    </Link>
-                  </span>
+                  <>
+                    <span className="hidden md:inline">•</span>
+                    <span className="hidden md:inline">
+                      Ref by:{" "}
+                      <Link href={`/admin/patients/${referrer.id}`} className="text-primary font-bold hover:underline">
+                        {referrer.name}
+                      </Link>
+                    </span>
+                  </>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Quick Header Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0 pt-2 xl:pt-0">
+          {/* Quick Action Toolbar */}
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0 pt-1 lg:pt-0">
             <button
               onClick={onOpenEditProfile}
-              className="flex items-center gap-1.5 px-3.5 py-2 border border-outline-variant/40 hover:border-primary text-on-surface hover:text-primary hover:bg-primary/5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer shadow-2xs"
+              className="flex items-center gap-1.5 px-3 py-2 border border-outline-variant/40 hover:border-primary text-on-surface hover:text-primary hover:bg-primary/5 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-2xs"
             >
-              <Edit2 className="w-4 h-4 text-primary" /> Edit Patient
+              <Edit2 className="w-3.5 h-3.5 text-primary" />
+              <span>Edit Patient</span>
             </button>
+
             <a
               href={whatsappUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-[#dcfce7] hover:bg-green-200 text-green-900 rounded-xl text-xs sm:text-sm font-semibold transition-colors border border-green-300/80 shadow-2xs"
+              className="flex items-center gap-1.5 px-3 py-2 bg-[#dcfce7] hover:bg-green-200 text-green-900 rounded-xl text-xs font-semibold transition-colors border border-green-300/80 shadow-2xs"
             >
-              <WhatsAppIcon className="w-4 h-4 text-green-700" /> WhatsApp
+              <WhatsAppIcon className="w-3.5 h-3.5 text-green-700" />
+              <span>WhatsApp</span>
             </a>
+
             <button
               onClick={onOpenAddEncounter}
-              className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/95 text-white rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-98 cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-primary hover:bg-primary/95 text-white rounded-xl text-xs font-semibold transition-all shadow-xs active:scale-98 cursor-pointer"
             >
-              <Plus className="w-4 h-4" /> Log Encounter
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ New Case Paper</span>
             </button>
+
             <button
               onClick={onOpenDentalChart}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-98 cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-all shadow-xs active:scale-98 cursor-pointer"
             >
-              <Activity className="w-4 h-4" /> Add Treatment
+              <Activity className="w-3.5 h-3.5" />
+              <span>Add Treatment</span>
             </button>
           </div>
         </div>
 
-        {/* Compact Summary Metrics Bar */}
-        <div className="pt-4 border-t border-outline-variant/10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="bg-slate-50/80 p-2.5 sm:p-3 rounded-xl border border-outline-variant/10">
+        {/* Clinical Snapshot Context Strip */}
+        <div className="pt-3 border-t border-outline-variant/10 grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+          {/* Last Visit */}
+          <div className="bg-slate-50/90 p-2.5 rounded-xl border border-outline-variant/10">
             <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-0.5">
-              Age / Gender
+              Last Case Paper
             </span>
-            <span className="font-bold text-on-surface text-xs sm:text-sm">
-              {patient.age ? `${patient.age} Yrs` : "—"} / {patient.gender || "—"}
+            <span className="font-bold text-on-surface text-xs flex items-center gap-1 truncate" title={lastVisitDate ? `${formatDate(lastVisitDate)} ${primaryDoctor ? `(${primaryDoctor})` : ''}` : "No prior visits"}>
+              <Calendar className="w-3.5 h-3.5 text-primary shrink-0" />
+              <span>{lastVisitDate ? formatDate(lastVisitDate) : "None recorded"}</span>
             </span>
           </div>
 
-          <div className="bg-slate-50/80 p-2.5 sm:p-3 rounded-xl border border-outline-variant/10">
+          {/* Next Appointment */}
+          <div className="bg-slate-50/90 p-2.5 rounded-xl border border-outline-variant/10">
             <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-0.5">
-              Blood Group
+              Next Appointment
             </span>
-            <span className="font-bold text-red-600 text-xs sm:text-sm">
-              {medicalProfile?.bloodGroup || patient.bloodType || "Not Specified"}
+            <span className="font-bold text-slate-800 text-xs flex items-center gap-1 truncate" title={nextAppointment ? `${formatDate(nextAppointment.date)} at ${nextAppointment.time}` : "No upcoming appointment"}>
+              <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span>{nextAppointment ? `${formatDate(nextAppointment.date)} · ${nextAppointment.time}` : "Not Scheduled"}</span>
             </span>
           </div>
 
-          <div className="bg-slate-50/80 p-2.5 sm:p-3 rounded-xl border border-outline-variant/10">
+          {/* Total Case Papers & Chart Status */}
+          <div className="bg-slate-50/90 p-2.5 rounded-xl border border-outline-variant/10">
             <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-0.5">
-              Total Visits
+              Case Papers
             </span>
-            <span className="font-bold text-primary text-xs sm:text-sm flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5" />
-              {encounters.length} Visit{encounters.length !== 1 ? "s" : ""}
+            <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
+              <User className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              <span>{encounters.length} Case Paper{encounters.length !== 1 ? "s" : ""}</span>
             </span>
           </div>
 
-          <div className="bg-slate-50/80 p-2.5 sm:p-3 rounded-xl border border-outline-variant/10">
-            <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-0.5">
-              Primary Dentist
-            </span>
-            <span className="font-semibold text-on-surface text-xs sm:text-sm truncate block" title={primaryDentist}>
-              {primaryDentist}
-            </span>
-          </div>
-
-          <div className="bg-slate-50/80 p-2.5 sm:p-3 rounded-xl border border-outline-variant/10">
-            <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-0.5">
-              Emergency Phone
-            </span>
-            <span className="font-semibold text-on-surface text-xs sm:text-sm truncate block" title={medicalProfile?.emergencyContact || "—"}>
-              {medicalProfile?.emergencyContact || "—"}
-            </span>
-          </div>
-
+          {/* Outstanding Financial Balance */}
           <div
-            className={`p-2.5 sm:p-3 rounded-xl border ${
+            className={`p-2.5 rounded-xl border ${
               outstandingBalance > 0
-                ? "bg-red-50/50 border-red-200/80"
-                : "bg-emerald-50/50 border-emerald-200/80"
+                ? "bg-amber-50/70 border-amber-200"
+                : "bg-emerald-50/70 border-emerald-200"
             }`}
           >
             <span className="text-[10px] font-bold uppercase tracking-wider block mb-0.5 text-on-surface-variant">
-              Outstanding Balance
+              Outstanding Dues
             </span>
             <span
-              className={`font-black text-xs sm:text-sm font-mono flex items-center ${
-                outstandingBalance > 0 ? "text-red-700" : "text-emerald-700"
+              className={`font-black text-xs font-mono flex items-center ${
+                outstandingBalance > 0 ? "text-amber-800" : "text-emerald-800"
               }`}
             >
               ₹{formatINR(outstandingBalance)}

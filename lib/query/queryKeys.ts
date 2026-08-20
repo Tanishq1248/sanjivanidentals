@@ -36,6 +36,9 @@ export const queryKeys = {
 
     /** Patient encounters timeline. */
     encounters: (patientId: string) => ["patients", patientId, "encounters"] as const,
+
+    /** Single encounter by ID. */
+    encounterById: (encounterId: string) => ["encounters", encounterId] as const,
   },
 
   // ── Appointments ──────────────────────────────────────────────────────────

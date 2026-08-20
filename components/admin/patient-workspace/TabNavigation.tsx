@@ -2,19 +2,23 @@
 
 import React from "react";
 import {
-  LayoutDashboard,
-  Calendar,
-  Activity,
-  FileSpreadsheet,
   Stethoscope,
-  ShieldAlert,
+  User,
   IndianRupee,
-  FileText,
+  FileImage,
   FolderArchive,
-  FileCheck,
+  AlertTriangle,
 } from "lucide-react";
 
-export type TabKey =
+export type PrimaryTabKey =
+  | "case-paper"
+  | "patient-info"
+  | "billing"
+  | "xray"
+  | "documents";
+
+// Legacy aliases for backward compatibility
+export type LegacyTabKey =
   | "overview"
   | "appointments"
   | "encounters"
@@ -23,114 +27,127 @@ export type TabKey =
   | "medical-history"
   | "invoices"
   | "notes"
-  | "records"
-  | "documents";
+  | "records";
+
+export type TabKey = PrimaryTabKey | LegacyTabKey;
 
 export interface TabOption {
-  key: TabKey;
+  key: PrimaryTabKey;
   label: string;
   icon: React.ElementType;
   badge?: number | string;
   badgeColor?: string;
+  description?: string;
 }
 
 interface TabNavigationProps {
   activeTab: TabKey;
-  onTabChange: (key: TabKey) => void;
+  onTabChange: (key: PrimaryTabKey) => void;
   encountersCount?: number;
-  appointmentsCount?: number;
   invoicesCount?: number;
+  unpaidInvoicesCount?: number;
   hasMedicalAlert?: boolean;
+  documentsCount?: number;
+  xraysCount?: number;
+}
+
+/** Helper to normalize any legacy tab key to the corresponding primary tab key */
+export function normalizeTabKey(key: TabKey): PrimaryTabKey {
+  switch (key) {
+    case "overview":
+    case "encounters":
+    case "treatment-plan":
+    case "dental-chart":
+    case "notes":
+    case "appointments":
+      return "case-paper";
+    case "medical-history":
+      return "patient-info";
+    case "invoices":
+      return "billing";
+    case "records":
+      return "xray";
+    case "documents":
+      return "documents";
+    default:
+      return key as PrimaryTabKey;
+  }
 }
 
 export const TabNavigation: React.FC<TabNavigationProps> = ({
   activeTab,
   onTabChange,
   encountersCount = 0,
-  appointmentsCount = 0,
   invoicesCount = 0,
+  unpaidInvoicesCount = 0,
   hasMedicalAlert = false,
+  documentsCount = 0,
+  xraysCount = 0,
 }) => {
+  const currentPrimaryTab = normalizeTabKey(activeTab);
+
   const tabs: TabOption[] = [
     {
-      key: "overview",
-      label: "Overview",
-      icon: LayoutDashboard,
-    },
-    {
-      key: "appointments",
-      label: "Appointments",
-      icon: Calendar,
-      badge: appointmentsCount > 0 ? appointmentsCount : undefined,
-    },
-    {
-      key: "encounters",
-      label: "Encounters",
-      icon: Activity,
-      badge: encountersCount > 0 ? encountersCount : undefined,
-    },
-    {
-      key: "treatment-plan",
-      label: "Treatment Plan",
-      icon: FileSpreadsheet,
-    },
-    {
-      key: "dental-chart",
-      label: "Dental Chart",
+      key: "case-paper",
+      label: "Case Paper",
       icon: Stethoscope,
+      badge: encountersCount > 0 ? encountersCount : undefined,
+      description: "Clinical timeline, dental chart, treatments & notes",
     },
     {
-      key: "medical-history",
-      label: "Medical History",
-      icon: ShieldAlert,
-      badge: hasMedicalAlert ? "!" : undefined,
-      badgeColor: "bg-red-500 text-white font-bold",
+      key: "patient-info",
+      label: "Patient Info",
+      icon: User,
+      badge: hasMedicalAlert ? "Alert" : undefined,
+      badgeColor: "bg-red-500 text-white font-bold animate-pulse",
+      description: "Demographics, medical history & emergency contact",
     },
     {
-      key: "invoices",
-      label: "Invoices & Payments",
+      key: "billing",
+      label: "Billing",
       icon: IndianRupee,
-      badge: invoicesCount > 0 ? invoicesCount : undefined,
+      badge: unpaidInvoicesCount > 0 ? `${unpaidInvoicesCount} Due` : invoicesCount > 0 ? invoicesCount : undefined,
+      badgeColor: unpaidInvoicesCount > 0 ? "bg-amber-500 text-white font-bold" : undefined,
+      description: "Invoices, payment logs & outstanding dues",
     },
     {
-      key: "notes",
-      label: "Notes",
-      icon: FileText,
-    },
-    {
-      key: "records",
-      label: "Records",
-      icon: FolderArchive,
+      key: "xray",
+      label: "X-Ray",
+      icon: FileImage,
+      badge: xraysCount > 0 ? xraysCount : undefined,
+      description: "Diagnostic scans, bitewings & IOPA images",
     },
     {
       key: "documents",
       label: "Documents",
-      icon: FileCheck,
+      icon: FolderArchive,
+      badge: documentsCount > 0 ? documentsCount : undefined,
+      description: "Prescriptions, reports, receipts & consent forms",
     },
   ];
 
   return (
     <div className="bg-white border-b border-outline-variant/15 sticky top-[72px] z-10 shadow-xs">
       <div className="overflow-x-auto no-scrollbar scroll-smooth">
-        <div className="flex min-w-max px-4 sm:px-6 gap-1 sm:gap-2 border-b border-slate-100">
+        <div className="flex min-w-max px-4 sm:px-6 gap-2 border-b border-slate-100">
           {tabs.map((tab) => {
             const Icon = tab.icon;
-            const isActive = activeTab === tab.key;
+            const isActive = currentPrimaryTab === tab.key;
 
             return (
               <button
                 key={tab.key}
                 id={`tab-${tab.key}`}
                 onClick={() => onTabChange(tab.key)}
-                className={`relative py-3.5 px-3.5 sm:px-4 text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 border-b-2 cursor-pointer outline-none whitespace-nowrap select-none ${
+                className={`relative py-3.5 px-4 sm:px-5 text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 border-b-2 cursor-pointer outline-none whitespace-nowrap select-none ${
                   isActive
-                    ? "border-primary text-primary font-bold bg-primary/5 rounded-t-xl"
+                    ? "border-primary text-primary font-bold bg-primary/5 rounded-t-xl shadow-2xs"
                     : "border-transparent text-on-surface-variant hover:text-on-surface hover:bg-slate-50 rounded-t-xl"
                 }`}
               >
                 <Icon
                   className={`w-4 h-4 transition-colors ${
-                    isActive ? "text-primary" : "text-on-surface-variant/70"
+                    isActive ? "text-primary stroke-[2.5]" : "text-on-surface-variant/70"
                   }`}
                 />
                 <span>{tab.label}</span>

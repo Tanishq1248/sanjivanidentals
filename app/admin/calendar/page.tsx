@@ -182,9 +182,9 @@ function CalendarPage() {
   return (
     <div className="min-h-screen flex bg-[#f2f5f8] font-sans">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-[200px] shrink-0 border-r border-outline-variant/20 sticky top-0 h-screen shadow-sm flex-col">
+      <div className="hidden md:flex shrink-0 sticky top-0 h-screen shadow-2xs z-30">
         <Sidebar currentPage="calendar" />
-      </aside>
+      </div>
 
       {/* Mobile Sidebar Drawer */}
       <div

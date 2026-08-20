@@ -126,7 +126,7 @@ export default function MessagingAnalyticsPage() {
     <AdminAuthGuard>
       <div className="flex h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
         {/* Desktop Sidebar */}
-        <div className="hidden md:block w-64 shrink-0 h-full border-r border-slate-200 bg-white">
+        <div className="hidden md:flex shrink-0 h-full sticky top-0 shadow-2xs z-30">
           <Sidebar currentPage="messaging-analytics" />
         </div>
 

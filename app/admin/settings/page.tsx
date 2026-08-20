@@ -116,9 +116,9 @@ function SettingsModuleContent() {
       )}
 
       {/* Desktop Main Sidebar */}
-      <aside className="hidden md:flex w-[200px] shrink-0 border-r border-outline-variant/20 sticky top-0 h-screen shadow-sm flex-col">
+      <div className="hidden md:flex shrink-0 sticky top-0 h-screen shadow-2xs z-30">
         <Sidebar currentPage="settings" />
-      </aside>
+      </div>
 
       {/* Mobile Main Sidebar Drawer */}
       <div

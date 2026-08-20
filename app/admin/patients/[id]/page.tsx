@@ -20,7 +20,12 @@ import {
 import { AdminAuthGuard } from "../../../../components/auth/AdminAuthGuard";
 import { useAuth } from "../../../../lib/context/AuthContext";
 import { PatientStickyHeader } from "../../../../components/admin/patient-workspace/PatientStickyHeader";
-import { TabNavigation, type TabKey } from "../../../../components/admin/patient-workspace/TabNavigation";
+import {
+  TabNavigation,
+  normalizeTabKey,
+  type TabKey,
+  type PrimaryTabKey,
+} from "../../../../components/admin/patient-workspace/TabNavigation";
 
 import {
   getPatientById,
@@ -44,6 +49,10 @@ import { PatientDetailsModalSkeleton } from "../../../../components/ui/Skeletons
 import { getTreatmentStatus, type PatientMedicalProfile, type PatientEncounter, type EncounterStatus, type Invoice, type Appointment, type SurfaceType } from "../../../../lib/types";
 import { DentalChartModal } from "../../../../components/dental-chart/DentalChartModal";
 import { PrescriptionModal } from "../../../../components/admin/encounters/PrescriptionModal";
+import {
+  CreateCasePaperModal,
+  type CreateCasePaperFormData,
+} from "../../../../components/admin/patient-workspace/modals/CreateCasePaperModal";
 
 /* ─── Loading Skeleton for Dynamic Tab Loading ─── */
 function TabLoadingSkeleton() {
@@ -60,49 +69,24 @@ function TabLoadingSkeleton() {
   );
 }
 
-/* ─── Dynamic Tab Imports for Lazy Loading & Performance ─── */
-const OverviewTab = dynamic(
-  () => import("../../../../components/admin/patient-workspace/tabs/OverviewTab").then((m) => m.OverviewTab),
+/* ─── Dynamic Tab Imports for 5 Primary Clinical Workspaces ─── */
+const CasePaperTab = dynamic(
+  () => import("../../../../components/admin/patient-workspace/tabs/CasePaperTab").then((m) => m.CasePaperTab),
   { loading: () => <TabLoadingSkeleton />, ssr: false }
 );
 
-const AppointmentsTab = dynamic(
-  () => import("../../../../components/admin/patient-workspace/tabs/AppointmentsTab").then((m) => m.AppointmentsTab),
+const PatientInfoTab = dynamic(
+  () => import("../../../../components/admin/patient-workspace/tabs/PatientInfoTab").then((m) => m.PatientInfoTab),
   { loading: () => <TabLoadingSkeleton />, ssr: false }
 );
 
-const EncountersTab = dynamic(
-  () => import("../../../../components/admin/patient-workspace/tabs/EncountersTab").then((m) => m.EncountersTab),
-  { loading: () => <TabLoadingSkeleton />, ssr: false }
-);
-
-const TreatmentPlanTab = dynamic(
-  () => import("../../../../components/admin/patient-workspace/tabs/TreatmentPlanTab").then((m) => m.TreatmentPlanTab),
-  { loading: () => <TabLoadingSkeleton />, ssr: false }
-);
-
-const DentalChartTab = dynamic(
-  () => import("../../../../components/admin/patient-workspace/tabs/DentalChartTab").then((m) => m.DentalChartTab),
-  { loading: () => <TabLoadingSkeleton />, ssr: false }
-);
-
-const MedicalHistoryTab = dynamic(
-  () => import("../../../../components/admin/patient-workspace/tabs/MedicalHistoryTab").then((m) => m.MedicalHistoryTab),
-  { loading: () => <TabLoadingSkeleton />, ssr: false }
-);
-
-const InvoicesPaymentsTab = dynamic(
+const BillingTab = dynamic(
   () => import("../../../../components/admin/patient-workspace/tabs/InvoicesPaymentsTab").then((m) => m.InvoicesPaymentsTab),
   { loading: () => <TabLoadingSkeleton />, ssr: false }
 );
 
-const NotesTab = dynamic(
-  () => import("../../../../components/admin/patient-workspace/tabs/NotesTab").then((m) => m.NotesTab),
-  { loading: () => <TabLoadingSkeleton />, ssr: false }
-);
-
-const RecordsTab = dynamic(
-  () => import("../../../../components/admin/patient-workspace/tabs/RecordsTab").then((m) => m.RecordsTab),
+const XRayTab = dynamic(
+  () => import("../../../../components/admin/patient-workspace/tabs/XRayTab").then((m) => m.XRayTab),
   { loading: () => <TabLoadingSkeleton />, ssr: false }
 );
 
@@ -155,15 +139,16 @@ export default function PatientProfilePage({ params }: PageProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  // Tab State & Caching State
-  const [activeTab, setActiveTab] = useState<TabKey>("overview");
-  const [visitedTabs, setVisitedTabs] = useState<Set<TabKey>>(new Set<TabKey>(["overview"]));
+  // Tab State & Caching State (5 Primary Clinical Workspaces)
+  const [activeTab, setActiveTab] = useState<PrimaryTabKey>("case-paper");
+  const [visitedTabs, setVisitedTabs] = useState<Set<PrimaryTabKey>>(new Set<PrimaryTabKey>(["case-paper"]));
 
   const handleTabChange = (key: TabKey) => {
-    setActiveTab(key);
+    const normalized = normalizeTabKey(key);
+    setActiveTab(normalized);
     setVisitedTabs((prev) => {
       const next = new Set(prev);
-      next.add(key);
+      next.add(normalized);
       return next;
     });
   };
@@ -202,17 +187,7 @@ export default function PatientProfilePage({ params }: PageProps) {
     emergencyContact: "",
   });
 
-  const [selectedEncounterId, setSelectedEncounterId] = useState<string | null>(null);
-  const [encounterForm, setEncounterForm] = useState({
-    chiefComplaint: "",
-    diagnosis: "",
-    treatments: "",
-    status: "Completed" as EncounterStatus,
-    visitDate: new Date().toISOString().split("T")[0],
-    followUpDate: "",
-    notes: "",
-    doctorName: "Dr. Julian Moore",
-  });
+  const [editingEncounter, setEditingEncounter] = useState<PatientEncounter | null>(null);
 
   // ── Billing Review Workflow Helpers ──
   const handleToggleBillingItem = (itemId: string) => {
@@ -768,66 +743,83 @@ export default function PatientProfilePage({ params }: PageProps) {
   };
 
   const openAddEncounter = () => {
-    setSelectedEncounterId(null);
-    setEncounterForm({
-      chiefComplaint: "",
-      diagnosis: "",
-      treatments: "",
-      status: "Completed",
-      visitDate: new Date().toISOString().split("T")[0],
-      followUpDate: "",
-      notes: "",
-      doctorName: doctorsList[0]?.fullName || "Dr. Julian Moore",
-    });
+    setEditingEncounter(null);
     setIsEncounterModalOpen(true);
   };
 
   const openEditEncounter = (enc: PatientEncounter) => {
-    setSelectedEncounterId(enc.id);
-    setEncounterForm({
-      chiefComplaint: enc.chiefComplaint || "",
-      diagnosis: enc.diagnosis || "",
-      treatments: (enc.treatments || []).join(", "),
-      status: enc.status,
-      visitDate: enc.visitDate,
-      followUpDate: enc.followUpDate || "",
-      notes: enc.notes || "",
-      doctorName: enc.doctorName || "Dr. Julian Moore",
-    });
+    setEditingEncounter(enc);
     setIsEncounterModalOpen(true);
   };
 
-  const handleEncounterSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!encounterForm.chiefComplaint || !encounterForm.visitDate) return;
+  const handleCasePaperSubmit = async (
+    formData: CreateCasePaperFormData,
+    shouldOpenSession: boolean
+  ) => {
+    const treatmentsArray = formData.treatments
+      ? formData.treatments
+          .split(",")
+          .map((t) => t.trim())
+          .filter((t) => t.length > 0)
+      : editingEncounter
+      ? editingEncounter.treatments || []
+      : [];
 
-    const treatmentsArray = encounterForm.treatments
-      .split(",")
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0);
+    if (editingEncounter) {
+      const payload: Partial<PatientEncounter> = {
+        doctorId: formData.doctorId,
+        doctorName: formData.doctorName,
+        visitDate: formData.visitDate,
+        visitTime: formData.visitTime,
+        chiefComplaint: formData.chiefComplaint,
+        chiefComplaints: formData.chiefComplaints,
+        diagnosis: formData.diagnosis,
+        treatments: treatmentsArray,
+        followUpDate: formData.followUpDate || "",
+        status: formData.status,
+        notes: formData.notes,
+        casePaperNumber: formData.casePaperNumber || editingEncounter.casePaperNumber,
+      };
 
-    const selectedDoc = doctorsList.find((d) => d.fullName === encounterForm.doctorName) || doctorsList[0];
-    const payload = {
-      patientId,
-      doctorId: selectedDoc?.id || "dr-julian-moore",
-      doctorName: selectedDoc?.fullName || encounterForm.doctorName || "Dr. Julian Moore",
-      visitDate: encounterForm.visitDate,
-      chiefComplaint: encounterForm.chiefComplaint,
-      diagnosis: encounterForm.diagnosis,
-      treatments: treatmentsArray,
-      prescriptionId: "",
-      followUpDate: encounterForm.followUpDate || "",
-      status: encounterForm.status,
-      notes: encounterForm.notes,
-    };
-
-    if (selectedEncounterId) {
-      updateEncounterMutation.mutate({
-        id: selectedEncounterId,
+      await updateEncounterMutation.mutateAsync({
+        id: editingEncounter.id,
         data: payload,
       });
+
+      setIsEncounterModalOpen(false);
+      setEditingEncounter(null);
+
+      if (shouldOpenSession) {
+        router.push(`/admin/patients/${patientId}/case-paper/${editingEncounter.id}`);
+      }
     } else {
-      addEncounterMutation.mutate(payload);
+      const payload = {
+        patientId,
+        doctorId: formData.doctorId,
+        doctorName: formData.doctorName,
+        visitDate: formData.visitDate,
+        visitTime: formData.visitTime,
+        chiefComplaint: formData.chiefComplaint,
+        chiefComplaints: formData.chiefComplaints,
+        diagnosis: formData.diagnosis,
+        treatments: treatmentsArray,
+        toothTreatments: [],
+        prescriptionId: "",
+        followUpDate: formData.followUpDate || "",
+        status: formData.status,
+        notes: formData.notes,
+        casePaperNumber: formData.casePaperNumber || (encounters.length + 1),
+      };
+
+      const newId = await addPatientEncounter(payload);
+      queryClient.invalidateQueries({ queryKey: queryKeys.patients.encounters(patientId) });
+      showToast("Case paper created successfully!");
+      setIsEncounterModalOpen(false);
+      setEditingEncounter(null);
+
+      if (shouldOpenSession && newId) {
+        router.push(`/admin/patients/${patientId}/case-paper/${newId}`);
+      }
     }
   };
 
@@ -975,6 +967,7 @@ export default function PatientProfilePage({ params }: PageProps) {
               medicalProfile={medicalProfile}
               encounters={encounters}
               invoices={patientInvoices}
+              appointments={patientAppointments}
               referrer={referrer}
               referredPatients={referredPatients}
               onOpenEditProfile={openEditProfile}
@@ -983,54 +976,36 @@ export default function PatientProfilePage({ params }: PageProps) {
               whatsappUrl={whatsappUrl}
             />
 
-            {/* 2. HORIZONTAL TAB NAVIGATION */}
+            {/* 2. HORIZONTAL TAB NAVIGATION (5 Primary Clinical Workspaces) */}
             <TabNavigation
               activeTab={activeTab}
               onTabChange={handleTabChange}
               encountersCount={encounters.length}
-              appointmentsCount={patientAppointments.length}
               invoicesCount={patientInvoices.length}
+              unpaidInvoicesCount={
+                patientInvoices.filter(
+                  (i) => i.paymentStatus !== "Paid" && i.paymentStatus !== "PAID"
+                ).length
+              }
               hasMedicalAlert={!!medicalProfile?.allergies}
             />
 
             {/* 3. TAB CONTENT CONTAINER (CACHED DOM CONTAINERS FOR PERFORMANCE) */}
             <div className="pt-2">
               
-              {/* Overview Tab */}
-              {visitedTabs.has("overview") && (
-                <div className={activeTab === "overview" ? "block" : "hidden"}>
-                  <OverviewTab
+              {/* 1. Case Paper Tab (Primary Clinical Workspace) */}
+              {visitedTabs.has("case-paper") && (
+                <div className={activeTab === "case-paper" ? "block" : "hidden"}>
+                  <CasePaperTab
                     patient={patient}
                     medicalProfile={medicalProfile}
                     encounters={encounters}
-                    invoices={patientInvoices}
-                    appointments={patientAppointments}
-                    onSwitchTab={handleTabChange}
-                    onOpenEditProfile={openEditProfile}
-                    onOpenAddEncounter={openAddEncounter}
-                    onOpenDentalChart={() => setIsDentalChartOpen(true)}
-                  />
-                </div>
-              )}
-
-              {/* Appointments Tab */}
-              {visitedTabs.has("appointments") && (
-                <div className={activeTab === "appointments" ? "block" : "hidden"}>
-                  <AppointmentsTab
-                    appointments={patientAppointments}
-                    patientId={patientId}
-                    patientPhone={patient.phone}
-                  />
-                </div>
-              )}
-
-              {/* Encounters Tab */}
-              {visitedTabs.has("encounters") && (
-                <div className={activeTab === "encounters" ? "block" : "hidden"}>
-                  <EncountersTab
-                    encounters={encounters}
                     isLoading={isEncountersLoading}
-                    onLogFirstVisit={openAddEncounter}
+                    appointments={patientAppointments}
+                    onOpenAddEncounter={openAddEncounter}
+                    onOpenCasePaperSession={(encounterId) =>
+                      router.push(`/admin/patients/${patientId}/case-paper/${encounterId}`)
+                    }
                     selectedBillingItems={selectedBillingItems}
                     onToggleBillingItem={handleToggleBillingItem}
                     isEncounterAllBillingSelected={isEncounterAllBillingSelected}
@@ -1046,50 +1021,35 @@ export default function PatientProfilePage({ params }: PageProps) {
                     onPrint={() => window.print()}
                     formatVisitDate={formatVisitDate}
                     formatINR={formatINR}
-                  />
-                </div>
-              )}
-
-              {/* Treatment Plan Tab */}
-              {visitedTabs.has("treatment-plan") && (
-                <div className={activeTab === "treatment-plan" ? "block" : "hidden"}>
-                  <TreatmentPlanTab
-                    encounters={encounters}
-                    onOpenDentalChart={() => setIsDentalChartOpen(true)}
-                  />
-                </div>
-              )}
-
-              {/* Dental Chart Tab */}
-              {visitedTabs.has("dental-chart") && (
-                <div className={activeTab === "dental-chart" ? "block" : "hidden"}>
-                  <DentalChartTab
-                    patientId={patientId}
-                    patientName={patient.name}
-                    encounters={encounters}
-                    onSaveTreatment={async (toothNumber, data) => {
-                      await logToothTreatmentMutation.mutateAsync({ toothNumber, treatmentData: data });
+                    onSaveToothTreatment={async (toothNumber, data) => {
+                      await logToothTreatmentMutation.mutateAsync({
+                        toothNumber,
+                        treatmentData: data,
+                      });
                     }}
-                    isSaving={logToothTreatmentMutation.isPending}
-                  />
-                </div>
-              )}
-
-              {/* Medical History Tab */}
-              {visitedTabs.has("medical-history") && (
-                <div className={activeTab === "medical-history" ? "block" : "hidden"}>
-                  <MedicalHistoryTab
-                    patient={patient}
-                    medicalProfile={medicalProfile}
+                    isSavingToothTreatment={logToothTreatmentMutation.isPending}
                     onOpenEditProfile={openEditProfile}
                   />
                 </div>
               )}
 
-              {/* Invoices & Payments Tab */}
-              {visitedTabs.has("invoices") && (
-                <div className={activeTab === "invoices" ? "block" : "hidden"}>
-                  <InvoicesPaymentsTab
+              {/* 2. Patient Info Tab */}
+              {visitedTabs.has("patient-info") && (
+                <div className={activeTab === "patient-info" ? "block" : "hidden"}>
+                  <PatientInfoTab
+                    patient={patient}
+                    medicalProfile={medicalProfile}
+                    referrer={referrer}
+                    referredPatients={referredPatients}
+                    onOpenEditProfile={openEditProfile}
+                  />
+                </div>
+              )}
+
+              {/* 3. Billing Tab */}
+              {visitedTabs.has("billing") && (
+                <div className={activeTab === "billing" ? "block" : "hidden"}>
+                  <BillingTab
                     invoices={patientInvoices}
                     encounters={encounters}
                     patient={patient}
@@ -1098,28 +1058,22 @@ export default function PatientProfilePage({ params }: PageProps) {
                 </div>
               )}
 
-              {/* Notes Tab */}
-              {visitedTabs.has("notes") && (
-                <div className={activeTab === "notes" ? "block" : "hidden"}>
-                  <NotesTab
-                    medicalProfile={medicalProfile}
-                    encounters={encounters}
-                    onOpenEditProfile={openEditProfile}
-                  />
+              {/* 4. X-Ray Tab */}
+              {visitedTabs.has("xray") && (
+                <div className={activeTab === "xray" ? "block" : "hidden"}>
+                  <XRayTab patient={patient} />
                 </div>
               )}
 
-              {/* Records Tab */}
-              {visitedTabs.has("records") && (
-                <div className={activeTab === "records" ? "block" : "hidden"}>
-                  <RecordsTab />
-                </div>
-              )}
-
-              {/* Documents Tab */}
+              {/* 5. Documents Tab */}
               {visitedTabs.has("documents") && (
                 <div className={activeTab === "documents" ? "block" : "hidden"}>
-                  <DocumentsTab />
+                  <DocumentsTab
+                    patient={patient}
+                    encounters={encounters}
+                    invoices={patientInvoices}
+                    onOpenPrescriptionModal={(e) => setPrescriptionEncounter(e)}
+                  />
                 </div>
               )}
 
@@ -1258,167 +1212,19 @@ export default function PatientProfilePage({ params }: PageProps) {
         </div>
       )}
 
-      {/* ── ADD/EDIT CLINICAL ENCOUNTER MODAL ── */}
-      {isEncounterModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/55 backdrop-blur-xs" onClick={() => setIsEncounterModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-xl rounded-2xl shadow-xl border border-outline-variant/10 overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-5 py-4 border-b border-outline-variant/10 bg-surface-container-lowest flex items-center justify-between">
-              <h3 className="text-base font-bold text-on-surface flex items-center gap-2 font-sans">
-                <Activity className="w-5 h-5 text-primary" />
-                {selectedEncounterId ? "Edit Visit Encounter Record" : "Log Patient Visit Encounter"}
-              </h3>
-              <button onClick={() => setIsEncounterModalOpen(false)} className="p-1 rounded-lg hover:bg-surface-container text-on-surface-variant">
-                <XCircle className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <form onSubmit={handleEncounterSubmit} className="p-5 overflow-y-auto space-y-4 flex-1">
-              <div>
-                <label htmlFor="enc-complaint" className="block text-xs font-semibold text-on-surface-variant mb-1.5">
-                  Chief Complaint *
-                </label>
-                <input
-                  id="enc-complaint"
-                  type="text"
-                  required
-                  value={encounterForm.chiefComplaint}
-                  onChange={(e) => setEncounterForm({ ...encounterForm, chiefComplaint: e.target.value })}
-                  placeholder="e.g. Sharp pain in lower right molar"
-                  className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="enc-diagnosis" className="block text-xs font-semibold text-on-surface-variant mb-1.5">
-                  Diagnosis
-                </label>
-                <input
-                  id="enc-diagnosis"
-                  type="text"
-                  value={encounterForm.diagnosis}
-                  onChange={(e) => setEncounterForm({ ...encounterForm, diagnosis: e.target.value })}
-                  placeholder="e.g. Deep dental caries with pulp exposure"
-                  className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="enc-treatments" className="block text-xs font-semibold text-on-surface-variant mb-1.5">
-                  Treatments Performed (comma-separated list)
-                </label>
-                <input
-                  id="enc-treatments"
-                  type="text"
-                  value={encounterForm.treatments}
-                  onChange={(e) => setEncounterForm({ ...encounterForm, treatments: e.target.value })}
-                  placeholder="e.g. Molar root canal, temporary filling, scaling"
-                  className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="enc-status" className="block text-xs font-semibold text-on-surface-variant mb-1.5">
-                    Visit Status
-                  </label>
-                  <select
-                    id="enc-status"
-                    value={encounterForm.status}
-                    onChange={(e) => setEncounterForm({ ...encounterForm, status: e.target.value as EncounterStatus })}
-                    className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface"
-                  >
-                    <option value="Completed">Completed</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Pending">Pending</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="enc-doctor" className="block text-xs font-semibold text-on-surface-variant mb-1.5">
-                    Assigned Doctor
-                  </label>
-                  <select
-                    id="enc-doctor"
-                    value={encounterForm.doctorName}
-                    onChange={(e) => setEncounterForm({ ...encounterForm, doctorName: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface"
-                  >
-                    {doctorsList.map((d) => (
-                      <option key={d.id} value={d.fullName}>
-                        {d.fullName} ({d.specialization})
-                      </option>
-                    ))}
-                    {doctorsList.length === 0 && (
-                      <option value="Dr. Julian Moore">Dr. Julian Moore (General Dentistry)</option>
-                    )}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="enc-date" className="block text-xs font-semibold text-on-surface-variant mb-1.5">
-                    Visit Date *
-                  </label>
-                  <input
-                    id="enc-date"
-                    type="date"
-                    required
-                    value={encounterForm.visitDate}
-                    onChange={(e) => setEncounterForm({ ...encounterForm, visitDate: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="enc-followup" className="block text-xs font-semibold text-on-surface-variant mb-1.5">
-                    Follow-up Date (Optional)
-                  </label>
-                  <input
-                    id="enc-followup"
-                    type="date"
-                    value={encounterForm.followUpDate}
-                    onChange={(e) => setEncounterForm({ ...encounterForm, followUpDate: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="enc-notes" className="block text-xs font-semibold text-on-surface-variant mb-1.5">
-                  Clinical Visit Notes
-                </label>
-                <textarea
-                  id="enc-notes"
-                  value={encounterForm.notes}
-                  onChange={(e) => setEncounterForm({ ...encounterForm, notes: e.target.value })}
-                  placeholder="Enter detailed clinical logs or prognosis details..."
-                  rows={3}
-                  className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface resize-none"
-                />
-              </div>
-
-              <div className="flex gap-2.5 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsEncounterModalOpen(false)}
-                  className="flex-1 border border-outline-variant/40 text-on-surface font-semibold py-2 rounded-lg text-sm hover:bg-surface-container"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addEncounterMutation.isPending || updateEncounterMutation.isPending}
-                  className="flex-1 bg-primary text-white font-semibold py-2 rounded-lg text-sm hover:bg-primary/90 flex items-center justify-center gap-1 cursor-pointer"
-                >
-                  {(addEncounterMutation.isPending || updateEncounterMutation.isPending) && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Save Encounter
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* ── CREATE / EDIT CASE PAPER MODAL ── */}
+      <CreateCasePaperModal
+        isOpen={isEncounterModalOpen}
+        onClose={() => {
+          setIsEncounterModalOpen(false);
+          setEditingEncounter(null);
+        }}
+        onSubmit={handleCasePaperSubmit}
+        isSubmitting={addEncounterMutation.isPending || updateEncounterMutation.isPending}
+        doctors={doctorsList}
+        nextCasePaperNumber={encounters.length + 1}
+        initialData={editingEncounter}
+      />
 
       {/* ── DENTAL CHART MODAL ── */}
       {isDentalChartOpen && (

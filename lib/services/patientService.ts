@@ -188,6 +188,14 @@ export async function getPatientEncounters(patientId: string): Promise<PatientEn
   return data;
 }
 
+/** Fetch a single patient encounter by document ID. */
+export async function getPatientEncounterById(encounterId: string): Promise<PatientEncounter | null> {
+  const docRef = doc(db, COLLECTIONS.PATIENT_ENCOUNTERS, encounterId);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() } as PatientEncounter;
+}
+
 /** Add a new patient encounter document. */
 export async function addPatientEncounter(
   encounter: Omit<PatientEncounter, "id" | "createdAt" | "updatedAt">
@@ -262,7 +270,7 @@ export async function getFollowUpsDueThisWeek(): Promise<PatientEncounter[]> {
 }
 
 
-/** Logs a tooth-specific treatment by checking for today's encounter, creating or updating it automatically. */
+/** Logs a tooth-specific treatment by checking for a target encounter or today's encounter, creating or updating it automatically. */
 export async function logToothTreatment(
   patientId: string,
   toothNumber: number,
@@ -274,7 +282,8 @@ export async function logToothTreatment(
     surfaces?: SurfaceType[];
   },
   doctorId: string,
-  doctorName: string
+  doctorName: string,
+  targetEncounterId?: string
 ): Promise<string> {
   const encountersRef = collection(db, COLLECTIONS.PATIENT_ENCOUNTERS);
   
@@ -288,17 +297,8 @@ export async function logToothTreatment(
   // 2. Format display date (DD/MM/YYYY)
   const displayDateStr = `${day}/${month}/${year}`;
 
-  console.log(`[logToothTreatment] Starting log process for patient: ${patientId}, tooth: ${toothNumber}, treatment: ${treatmentData.treatmentName}, date: ${todayStr}`);
+  console.log(`[logToothTreatment] Starting log process for patient: ${patientId}, tooth: ${toothNumber}, treatment: ${treatmentData.treatmentName}, encounterId: ${targetEncounterId || 'auto'}`);
 
-  // 3. Query for today's encounter
-  const q = query(
-    encountersRef,
-    where("patientId", "==", patientId),
-    where("visitDate", "==", todayStr),
-    limit(1)
-  );
-  
-  const querySnapshot = await getDocs(q);
   const treatmentEntryId = `tt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const nowTimestamp = Timestamp.now();
 
@@ -316,6 +316,42 @@ export async function logToothTreatment(
     date: displayDateStr,
     timestamp: now.toISOString(),
   };
+
+  // If a specific target encounter ID was provided, update that document directly
+  if (targetEncounterId) {
+    const targetDocRef = doc(db, COLLECTIONS.PATIENT_ENCOUNTERS, targetEncounterId);
+    const snap = await getDoc(targetDocRef);
+    if (snap.exists()) {
+      const encounterData = snap.data();
+      const existingToothTreatments = encounterData.toothTreatments || [];
+      const updatedToothTreatments = [...existingToothTreatments, newToothTreatment];
+
+      const existingTreatments = encounterData.treatments || [];
+      const updatedTreatments = existingTreatments.includes(treatmentData.treatmentName)
+        ? existingTreatments
+        : [...existingTreatments, treatmentData.treatmentName];
+
+      await updateDoc(targetDocRef, {
+        toothTreatments: updatedToothTreatments,
+        treatments: updatedTreatments,
+        updatedAt: nowTimestamp,
+        status: treatmentData.status === "Planned" ? encounterData.status : "Completed",
+      });
+
+      console.log(`[logToothTreatment] Successfully appended tooth treatment to target encounter ${targetEncounterId}`);
+      return targetEncounterId;
+    }
+  }
+
+  // 3. Query for today's encounter if no target encounter was specified
+  const q = query(
+    encountersRef,
+    where("patientId", "==", patientId),
+    where("visitDate", "==", todayStr),
+    limit(1)
+  );
+  
+  const querySnapshot = await getDocs(q);
 
   if (!querySnapshot.empty) {
     // Encounter exists -> update it

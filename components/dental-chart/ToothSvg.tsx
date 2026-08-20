@@ -1,354 +1,601 @@
 import React from "react";
 import type { ToothConditionCode } from "./types";
+import type { SurfaceType } from "../../lib/types";
 
 interface ToothSvgProps {
   type: "incisor" | "canine" | "premolar" | "molar" | "wisdom";
   orientation: "upper" | "lower";
   condition: ToothConditionCode;
   isSelected: boolean;
+  surfaces?: SurfaceType[];
+  toothNumber?: number;
   className?: string;
 }
 
-export function ToothSvg({ type, orientation, condition, isSelected, className = "" }: ToothSvgProps) {
-  // Determine fills and strokes based on condition (History, Treatment Done, Treatment Planned, Not Selected)
-  // Legend:
-  // - History: Blue
-  // - Treatment Done: Green
-  // - Treatment Planned: Red
-  // - Not Selected: Light Grey / Slate
+export function ToothSvg({
+  type,
+  orientation,
+  condition,
+  isSelected,
+  surfaces = [],
+  toothNumber,
+  className = "",
+}: ToothSvgProps) {
+  const isUpper = orientation === "upper";
 
-  let strokeColor = "#cbd5e1"; // Slate 300
-  let crownFill = "url(#crownGradient)";
-  let rootFill = "url(#rootGradient)";
+  // Normalize condition
+  const cond = condition || "healthy";
+  const isExtracted = cond === "extracted" || cond === "missing";
+  const isPlanned = cond === "planned" || cond === "watch";
+  const isExistingWork = cond === "existing_work" || cond === "filled";
+  const isRootCanal = cond === "root_canal";
+  const isCaries = cond === "caries" || cond === "cavity";
+  const isCrowned = cond === "crowned";
+  const isImplant = cond === "implant";
+  const isImpacted = cond === "impacted";
 
-  // Handle condition styles
-  switch (condition) {
-    case "cavity":
-      strokeColor = "#dc2626"; // Red
-      crownFill = "url(#cavityGradient)";
-      break;
-    case "filled":
-      strokeColor = "#2563eb"; // Blue
-      crownFill = "url(#filledGradient)";
-      break;
-    case "root_canal":
-      strokeColor = "#d97706"; // Amber
-      rootFill = "url(#rootCanalGradient)";
-      crownFill = "url(#rootCanalCrownGradient)";
-      break;
-    case "crowned":
-      strokeColor = "#ca8a04"; // Yellow
-      crownFill = "url(#crownGoldGradient)";
-      break;
-    case "extracted":
-    case "missing":
-      strokeColor = "#94a3b8"; // Slate 400
-      crownFill = "transparent";
-      rootFill = "transparent";
-      break;
-    case "implant":
-      strokeColor = "#0d9488"; // Teal
-      rootFill = "url(#implantGradient)";
-      crownFill = "url(#implantCrownGradient)";
-      break;
-    case "bridge":
-      strokeColor = "#7c3aed"; // Purple
-      crownFill = "url(#bridgeGradient)";
-      break;
-    case "watch":
-      strokeColor = "#d97706"; // Amber
-      crownFill = "url(#watchGradient)";
-      break;
-    default:
-      // healthy
-      strokeColor = "#94a3b8";
-      break;
+  // Dynamic Base Strokes & Fills
+  let strokeColor = isSelected ? "#4f46e5" : "#94a3b8"; // Indigo-600 when selected, Slate-400 default
+  let crownFill = "url(#enamelGradient)";
+  let rootFill = "url(#dentinRootGradient)";
+
+  if (isPlanned) {
+    strokeColor = isSelected ? "#4f46e5" : "#f59e0b"; // Amber-500
+    crownFill = "url(#plannedGradient)";
+    rootFill = "url(#plannedRootGradient)";
+  } else if (isExistingWork) {
+    strokeColor = isSelected ? "#4f46e5" : "#2563eb"; // Blue-600
+    crownFill = "url(#existingWorkGradient)";
+    rootFill = "url(#dentinRootGradient)";
+  } else if (isRootCanal) {
+    strokeColor = isSelected ? "#4f46e5" : "#ea580c"; // Orange-600
+    crownFill = "url(#rctCrownGradient)";
+    rootFill = "url(#rctRootGradient)";
+  } else if (isCaries) {
+    strokeColor = isSelected ? "#4f46e5" : "#b91c1c"; // Red-700
+    crownFill = "url(#cariesGradient)";
+  } else if (isCrowned) {
+    strokeColor = isSelected ? "#4f46e5" : "#d97706"; // Amber-600
+    crownFill = "url(#goldCrownGradient)";
+  } else if (isImplant) {
+    strokeColor = isSelected ? "#4f46e5" : "#0d9488"; // Teal-600
+    crownFill = "url(#implantCrownGradient)";
+    rootFill = "url(#titaniumImplantGradient)";
   }
 
-  // Highlight selected tooth
-  if (isSelected) {
-    strokeColor = "#1b5e20"; // Forest Green from the design
-  }
+  // Coordinate system: viewBox 0 0 36 76
+  // Upper Jaw: Root points UP (Y: 4 -> 36), Crown is DOWN (Y: 36 -> 72)
+  // Lower Jaw: Crown is UP (Y: 4 -> 40), Root points DOWN (Y: 40 -> 72)
 
-  // Render SVG based on tooth type
-  // Coordinate space: width 32, height 70
-  // Upper: root at top (points up), crown at bottom.
-  // Lower: crown at top, root at bottom (points down).
+  // ─── ANATOMICAL PATHS BY TOOTH MORPHOLOGY ───
 
-  const renderToothPaths = () => {
-    const isUpper = orientation === "upper";
-    
-    // Tooth type geometries
+  const renderAnatomicalCrown = () => {
     if (type === "molar" || type === "wisdom") {
-      // Molars: wider crown, triple roots (upper) or double roots (lower)
+      // Quadricuspid / Multi-cuspid Molar Crown
       if (isUpper) {
         return (
-          <g>
-            {/* Triple Root pointing up */}
+          <g id="crown-upper-molar">
+            {/* Main Upper Molar Crown Body */}
             <path
-              d="M 6 35 C 5 25, 4 10, 8 6 C 10 4, 11 12, 13 22 C 14 12, 16 4, 18 6 C 21 8, 20 22, 21 28 C 22 18, 25 10, 27 12 C 29 14, 27 25, 26 35 Z"
-              fill={rootFill}
-              stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
-              strokeLinejoin="round"
-              className="transition-colors duration-200"
-            />
-            {/* Crown at bottom */}
-            <path
-              d="M 5 35 C 4 42, 3 58, 6 62 C 8 65, 12 66, 14 63 C 16 66, 21 66, 23 63 C 25 66, 28 65, 30 62 C 32 58, 31 42, 29 35 Z"
+              d="M 5 36 C 4 45, 3 61, 6 67 C 8 71, 13 72, 16 68 C 18 72, 23 72, 25 68 C 28 72, 31 71, 33 67 C 35 61, 34 45, 33 36 Z"
               fill={crownFill}
               stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
+              strokeWidth={isSelected ? 2 : 1.3}
               strokeLinejoin="round"
-              className="transition-colors duration-200"
+            />
+            {/* Occlusal Fissures & Cusp Contour Lines */}
+            <path
+              d="M 10 50 C 13 54, 23 54, 27 50 M 18 42 L 18 64"
+              stroke={isCaries ? "#78350f" : "#cbd5e1"}
+              strokeWidth="1.2"
+              strokeLinecap="round"
+              fill="none"
+              opacity="0.8"
             />
           </g>
         );
       } else {
         return (
-          <g>
-            {/* Crown at top */}
+          <g id="crown-lower-molar">
+            {/* Main Lower Molar Crown Body */}
             <path
-              d="M 5 35 C 4 28, 3 12, 6 8 C 8 5, 12 4, 14 7 C 16 4, 21 4, 23 7 C 25 4, 28 5, 30 8 C 32 12, 31 28, 29 35 Z"
+              d="M 5 40 C 4 31, 3 15, 6 9 C 8 5, 13 4, 16 8 C 18 4, 23 4, 25 8 C 28 4, 31 5, 33 9 C 35 15, 34 31, 33 40 Z"
               fill={crownFill}
               stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
+              strokeWidth={isSelected ? 2 : 1.3}
               strokeLinejoin="round"
-              className="transition-colors duration-200"
             />
-            {/* Double Root pointing down */}
+            {/* Occlusal Fissures */}
             <path
-              d="M 6 35 C 5 45, 6 62, 10 65 C 12 66, 14 55, 16 48 C 18 55, 20 66, 22 65 C 26 62, 27 45, 26 35 Z"
-              fill={rootFill}
-              stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
-              strokeLinejoin="round"
-              className="transition-colors duration-200"
+              d="M 10 26 C 13 22, 23 22, 27 26 M 18 12 L 18 34"
+              stroke={isCaries ? "#78350f" : "#cbd5e1"}
+              strokeWidth="1.2"
+              strokeLinecap="round"
+              fill="none"
+              opacity="0.8"
             />
           </g>
         );
       }
     } else if (type === "premolar") {
-      // Premolars: medium crown, single/fused root
+      // Bicuspid Premolar Crown
       if (isUpper) {
         return (
-          <g>
-            {/* Root pointing up */}
+          <g id="crown-upper-premolar">
             <path
-              d="M 10 35 C 8 22, 11 8, 16 5 C 21 8, 24 22, 22 35 Z"
-              fill={rootFill}
-              stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
-              strokeLinejoin="round"
-              className="transition-colors duration-200"
-            />
-            {/* Crown at bottom */}
-            <path
-              d="M 7 35 C 6 40, 5 54, 8 58 C 10 61, 14 62, 16 59 C 18 62, 22 61, 24 58 C 27 54, 26 40, 25 35 Z"
+              d="M 8 36 C 6 43, 6 60, 9 66 C 12 70, 16 71, 18 67 C 20 71, 25 70, 28 66 C 31 60, 31 43, 29 36 Z"
               fill={crownFill}
               stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
+              strokeWidth={isSelected ? 2 : 1.3}
               strokeLinejoin="round"
-              className="transition-colors duration-200"
+            />
+            {/* Cusp Grooves */}
+            <path
+              d="M 13 48 C 16 52, 21 52, 24 48 M 18 40 L 18 62"
+              stroke={isCaries ? "#78350f" : "#cbd5e1"}
+              strokeWidth="1"
+              strokeLinecap="round"
+              fill="none"
+              opacity="0.7"
             />
           </g>
         );
       } else {
         return (
-          <g>
-            {/* Crown at top */}
+          <g id="crown-lower-premolar">
             <path
-              d="M 7 35 C 6 30, 5 16, 8 12 C 10 9, 14 8, 16 11 C 18 8, 22 9, 24 12 C 27 16, 26 30, 25 35 Z"
+              d="M 8 40 C 6 33, 6 16, 9 10 C 12 6, 16 5, 18 9 C 20 5, 25 6, 28 10 C 31 16, 31 33, 29 40 Z"
               fill={crownFill}
               stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
+              strokeWidth={isSelected ? 2 : 1.3}
               strokeLinejoin="round"
-              className="transition-colors duration-200"
             />
-            {/* Root pointing down */}
             <path
-              d="M 10 35 C 8 48, 11 62, 16 65 C 21 62, 24 48, 22 35 Z"
-              fill={rootFill}
-              stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
-              strokeLinejoin="round"
-              className="transition-colors duration-200"
+              d="M 13 28 C 16 24, 21 24, 24 28 M 18 14 L 18 36"
+              stroke={isCaries ? "#78350f" : "#cbd5e1"}
+              strokeWidth="1"
+              strokeLinecap="round"
+              fill="none"
+              opacity="0.7"
             />
           </g>
         );
       }
     } else if (type === "canine") {
-      // Canines: slightly pointed crown, long single root
+      // Pointed Cuspid Canine Crown
       if (isUpper) {
         return (
-          <g>
-            {/* Extra long single root pointing up */}
+          <g id="crown-upper-canine">
             <path
-              d="M 11 32 C 9 18, 12 3, 16 1 C 20 3, 23 18, 21 32 Z"
-              fill={rootFill}
-              stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
-              strokeLinejoin="round"
-              className="transition-colors duration-200"
-            />
-            {/* Crown at bottom (pointed cusp) */}
-            <path
-              d="M 8 32 C 7 38, 7 50, 16 61 C 25 50, 25 38, 24 32 Z"
+              d="M 9 34 C 7 42, 8 56, 18 71 C 29 56, 30 42, 28 34 Z"
               fill={crownFill}
               stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
+              strokeWidth={isSelected ? 2 : 1.3}
               strokeLinejoin="round"
-              className="transition-colors duration-200"
+            />
+            {/* Labial Ridge Accent */}
+            <path
+              d="M 18 38 L 18 66"
+              stroke="#e2e8f0"
+              strokeWidth="1"
+              strokeLinecap="round"
+              opacity="0.7"
             />
           </g>
         );
       } else {
         return (
-          <g>
-            {/* Crown at top */}
+          <g id="crown-lower-canine">
             <path
-              d="M 8 38 C 7 32, 7 20, 16 9 C 25 20, 25 32, 24 38 Z"
+              d="M 9 42 C 7 34, 8 20, 18 5 C 29 20, 30 34, 28 42 Z"
               fill={crownFill}
               stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
+              strokeWidth={isSelected ? 2 : 1.3}
               strokeLinejoin="round"
-              className="transition-colors duration-200"
             />
-            {/* Root pointing down */}
             <path
-              d="M 11 38 C 9 52, 12 67, 16 69 C 20 67, 23 52, 21 38 Z"
-              fill={rootFill}
-              stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
-              strokeLinejoin="round"
-              className="transition-colors duration-200"
+              d="M 18 38 L 18 10"
+              stroke="#e2e8f0"
+              strokeWidth="1"
+              strokeLinecap="round"
+              opacity="0.7"
             />
           </g>
         );
       }
     } else {
-      // Incisors: narrow single root, chisel-shaped crown
+      // Incisor Chisel Crown
       if (isUpper) {
         return (
-          <g>
-            {/* Root pointing up */}
+          <g id="crown-upper-incisor">
             <path
-              d="M 11 32 C 9 18, 12 4, 16 2 C 20 4, 23 18, 21 32 Z"
-              fill={rootFill}
-              stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
-              strokeLinejoin="round"
-              className="transition-colors duration-200"
-            />
-            {/* Crown at bottom */}
-            <path
-              d="M 9 32 C 8 37, 7 54, 8 57 C 9 59, 13 60, 16 60 C 19 60, 23 59, 24 57 C 25 54, 24 37, 23 32 Z"
+              d="M 9 34 C 8 40, 8 60, 10 66 C 12 69, 25 69, 27 66 C 29 60, 29 40, 28 34 Z"
               fill={crownFill}
               stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
+              strokeWidth={isSelected ? 2 : 1.3}
               strokeLinejoin="round"
-              className="transition-colors duration-200"
             />
+            {/* Mamelon / Incisal edge detail */}
+            <line x1="12" y1="67" x2="25" y2="67" stroke="#e2e8f0" strokeWidth="1.5" strokeLinecap="round" />
           </g>
         );
       } else {
         return (
-          <g>
-            {/* Crown at top */}
+          <g id="crown-lower-incisor">
             <path
-              d="M 9 38 C 8 33, 7 16, 8 13 C 9 11, 13 10, 16 10 C 19 10, 23 11, 24 13 C 25 16, 24 33, 23 38 Z"
+              d="M 9 42 C 8 36, 8 16, 10 10 C 12 7, 25 7, 27 10 C 29 16, 29 36, 28 42 Z"
               fill={crownFill}
               stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
+              strokeWidth={isSelected ? 2 : 1.3}
               strokeLinejoin="round"
-              className="transition-colors duration-200"
             />
-            {/* Root pointing down */}
-            <path
-              d="M 11 38 C 9 52, 12 66, 16 68 C 20 66, 23 52, 21 38 Z"
-              fill={rootFill}
-              stroke={strokeColor}
-              strokeWidth={isSelected ? 2 : 1.2}
-              strokeLinejoin="round"
-              className="transition-colors duration-200"
-            />
+            <line x1="12" y1="9" x2="25" y2="9" stroke="#e2e8f0" strokeWidth="1.5" strokeLinecap="round" />
           </g>
         );
       }
     }
   };
 
+  const renderAnatomicalRoots = () => {
+    if (isImplant) {
+      // Titanium Implant Screw Vector
+      if (isUpper) {
+        return (
+          <g id="implant-upper-screw">
+            <path
+              d="M 13 36 L 13 8 C 13 5, 23 5, 23 8 L 23 36 Z"
+              fill={rootFill}
+              stroke={strokeColor}
+              strokeWidth="1.2"
+            />
+            {/* Screw Threads */}
+            <line x1="11" y1="12" x2="25" y2="12" stroke="#475569" strokeWidth="1.5" />
+            <line x1="11" y1="18" x2="25" y2="18" stroke="#475569" strokeWidth="1.5" />
+            <line x1="11" y1="24" x2="25" y2="24" stroke="#475569" strokeWidth="1.5" />
+            <line x1="11" y1="30" x2="25" y2="30" stroke="#475569" strokeWidth="1.5" />
+          </g>
+        );
+      } else {
+        return (
+          <g id="implant-lower-screw">
+            <path
+              d="M 13 40 L 13 68 C 13 71, 23 71, 23 68 L 23 40 Z"
+              fill={rootFill}
+              stroke={strokeColor}
+              strokeWidth="1.2"
+            />
+            <line x1="11" y1="46" x2="25" y2="46" stroke="#475569" strokeWidth="1.5" />
+            <line x1="11" y1="52" x2="25" y2="52" stroke="#475569" strokeWidth="1.5" />
+            <line x1="11" y1="58" x2="25" y2="58" stroke="#475569" strokeWidth="1.5" />
+            <line x1="11" y1="64" x2="25" y2="64" stroke="#475569" strokeWidth="1.5" />
+          </g>
+        );
+      }
+    }
+
+    if (type === "molar" || type === "wisdom") {
+      if (isUpper) {
+        // Upper Molar: Triple Root System (Mesiobuccal, Distobuccal, Palatal)
+        return (
+          <g id="roots-upper-molar">
+            {/* Mesiobuccal (Left), Palatal (Center), Distobuccal (Right) */}
+            <path
+              d="M 6 36 C 5 24, 4 9, 8 5 C 10 3, 11 11, 14 22 C 15 11, 17 3, 19 5 C 21 7, 21 21, 23 26 C 24 16, 27 7, 29 9 C 31 11, 30 25, 31 36 Z"
+              fill={rootFill}
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 2 : 1.3}
+              strokeLinejoin="round"
+            />
+            {/* Endodontic Lines for Root Canal */}
+            {isRootCanal && (
+              <g id="rct-upper-molar-canals">
+                <path d="M 8 7 C 9 14, 11 26, 12 36" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" />
+                <path d="M 19 7 C 19 14, 18 26, 18 36" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" />
+                <path d="M 29 11 C 28 18, 25 26, 24 36" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" />
+                {/* Pulpal Chamber Marker */}
+                <circle cx="18" cy="38" r="2.5" fill="#ef4444" />
+              </g>
+            )}
+          </g>
+        );
+      } else {
+        // Lower Molar: Double Root System (Mesial & Distal)
+        return (
+          <g id="roots-lower-molar">
+            <path
+              d="M 6 40 C 5 52, 6 69, 10 72 C 12 73, 15 62, 17 52 C 19 62, 22 73, 25 72 C 29 69, 30 52, 30 40 Z"
+              fill={rootFill}
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 2 : 1.3}
+              strokeLinejoin="round"
+            />
+            {/* Endodontic Lines for Lower Molar */}
+            {isRootCanal && (
+              <g id="rct-lower-molar-canals">
+                <path d="M 10 70 C 11 60, 13 48, 14 40" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" />
+                <path d="M 25 70 C 24 60, 22 48, 22 40" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" />
+                <circle cx="18" cy="38" r="2.5" fill="#ef4444" />
+              </g>
+            )}
+          </g>
+        );
+      }
+    } else if (type === "premolar") {
+      if (isUpper) {
+        // Upper Premolar: Bifurcated Double Apex
+        return (
+          <g id="roots-upper-premolar">
+            <path
+              d="M 10 36 C 8 23, 10 7, 14 4 C 16 6, 17 16, 19 16 C 20 16, 21 6, 23 4 C 27 7, 28 23, 26 36 Z"
+              fill={rootFill}
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 2 : 1.3}
+              strokeLinejoin="round"
+            />
+            {isRootCanal && (
+              <g id="rct-upper-premolar-canals">
+                <path d="M 14 6 C 14 16, 16 26, 17 36" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" />
+                <path d="M 23 6 C 22 16, 20 26, 19 36" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" />
+                <circle cx="18" cy="38" r="2.2" fill="#ef4444" />
+              </g>
+            )}
+          </g>
+        );
+      } else {
+        // Lower Premolar: Single Sturdy Root
+        return (
+          <g id="roots-lower-premolar">
+            <path
+              d="M 11 40 C 9 53, 12 68, 18 72 C 24 68, 27 53, 25 40 Z"
+              fill={rootFill}
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 2 : 1.3}
+              strokeLinejoin="round"
+            />
+            {isRootCanal && (
+              <g id="rct-lower-premolar-canals">
+                <path d="M 18 70 L 18 40" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="18" cy="38" r="2.2" fill="#ef4444" />
+              </g>
+            )}
+          </g>
+        );
+      }
+    } else if (type === "canine") {
+      // Canine: Long Single Tapered Root
+      if (isUpper) {
+        return (
+          <g id="roots-upper-canine">
+            <path
+              d="M 11 34 C 9 19, 12 3, 18 1 C 24 3, 27 19, 25 34 Z"
+              fill={rootFill}
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 2 : 1.3}
+              strokeLinejoin="round"
+            />
+            {isRootCanal && (
+              <g id="rct-upper-canine-canals">
+                <path d="M 18 3 L 18 34" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="18" cy="36" r="2.2" fill="#ef4444" />
+              </g>
+            )}
+          </g>
+        );
+      } else {
+        return (
+          <g id="roots-lower-canine">
+            <path
+              d="M 11 42 C 9 57, 12 73, 18 75 C 24 73, 27 57, 25 42 Z"
+              fill={rootFill}
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 2 : 1.3}
+              strokeLinejoin="round"
+            />
+            {isRootCanal && (
+              <g id="rct-lower-canine-canals">
+                <path d="M 18 73 L 18 42" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="18" cy="40" r="2.2" fill="#ef4444" />
+              </g>
+            )}
+          </g>
+        );
+      }
+    } else {
+      // Incisor: Slender Straight Root
+      if (isUpper) {
+        return (
+          <g id="roots-upper-incisor">
+            <path
+              d="M 12 34 C 10 19, 13 4, 18 2 C 23 4, 26 19, 24 34 Z"
+              fill={rootFill}
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 2 : 1.3}
+              strokeLinejoin="round"
+            />
+            {isRootCanal && (
+              <g id="rct-upper-incisor-canals">
+                <path d="M 18 4 L 18 34" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="18" cy="36" r="2.2" fill="#ef4444" />
+              </g>
+            )}
+          </g>
+        );
+      } else {
+        return (
+          <g id="roots-lower-incisor">
+            <path
+              d="M 12 42 C 10 57, 13 72, 18 74 C 23 72, 26 57, 24 42 Z"
+              fill={rootFill}
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 2 : 1.3}
+              strokeLinejoin="round"
+            />
+            {isRootCanal && (
+              <g id="rct-lower-incisor-canals">
+                <path d="M 18 72 L 18 42" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="18" cy="40" r="2.2" fill="#ef4444" />
+              </g>
+            )}
+          </g>
+        );
+      }
+    }
+  };
+
+  // ─── CARIES / CAVITY SURFACE LESIONS ───
+  const renderCariesLesions = () => {
+    if (!isCaries) return null;
+    const cy = isUpper ? 52 : 24;
+    return (
+      <g id="caries-lesion-overlay">
+        <circle cx="18" cy={cy} r="4.5" fill="#451a03" stroke="#b91c1c" strokeWidth="1" />
+        <circle cx="18" cy={cy} r="2.5" fill="#1c0a00" />
+      </g>
+    );
+  };
+
+  // ─── EXISTING WORK RESTORATION OVERLAY ───
+  const renderRestorationOverlay = () => {
+    if (!isExistingWork) return null;
+    const cy = isUpper ? 52 : 24;
+    return (
+      <g id="restoration-overlay">
+        <rect
+          x="12"
+          y={cy - 4}
+          width="12"
+          height="8"
+          rx="3"
+          fill="#2563eb"
+          stroke="#1d4ed8"
+          strokeWidth="1"
+          opacity="0.9"
+        />
+        <line x1="14" y1={cy} x2="22" y2={cy} stroke="#93c5fd" strokeWidth="1" strokeLinecap="round" />
+      </g>
+    );
+  };
+
   return (
     <svg
-      viewBox="0 0 32 70"
-      className={`${className} select-none transition-transform duration-150 ${
-        isSelected ? "scale-105 filter drop-shadow-[0_0_4px_rgba(27,94,32,0.35)]" : "hover:scale-102"
+      viewBox="0 0 36 76"
+      className={`${className} select-none transition-all duration-200 ${
+        isSelected
+          ? "scale-110 drop-shadow-[0_0_8px_rgba(79,70,229,0.5)] z-20"
+          : "hover:scale-105 hover:drop-shadow-sm"
       }`}
       style={{ overflow: "visible" }}
     >
       <defs>
-        {/* Shading gradients */}
-        <linearGradient id="crownGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        {/* Natural Tooth Enamel Gradient */}
+        <linearGradient id="enamelGradient" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="70%" stopColor="#f8fafc" />
+          <stop offset="60%" stopColor="#f8fafc" />
           <stop offset="100%" stopColor="#e2e8f0" />
         </linearGradient>
-        <linearGradient id="rootGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#f1f5f9" />
+
+        {/* Dentin & Root Gradient */}
+        <linearGradient id="dentinRootGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#f8fafc" />
+          <stop offset="70%" stopColor="#f1f5f9" />
           <stop offset="100%" stopColor="#cbd5e1" />
         </linearGradient>
-        
-        {/* Condition gradients */}
-        <linearGradient id="cavityGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#fee2e2" />
-          <stop offset="50%" stopColor="#fca5a5" />
-          <stop offset="100%" stopColor="#ef4444" />
+
+        {/* Planned / Yellow Amber Gradients */}
+        <linearGradient id="plannedGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#fffbeb" />
+          <stop offset="60%" stopColor="#fef3c7" />
+          <stop offset="100%" stopColor="#fde68a" />
         </linearGradient>
-        <linearGradient id="filledGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#dbeafe" />
-          <stop offset="50%" stopColor="#93c5fd" />
-          <stop offset="100%" stopColor="#3b82f6" />
+        <linearGradient id="plannedRootGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#fef3c7" />
+          <stop offset="100%" stopColor="#fcd34d" />
         </linearGradient>
-        <linearGradient id="crownGoldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#fef9c3" />
-          <stop offset="50%" stopColor="#fde047" />
-          <stop offset="100%" stopColor="#eab308" />
+
+        {/* Existing Work / Blue Gradients */}
+        <linearGradient id="existingWorkGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#eff6ff" />
+          <stop offset="50%" stopColor="#bfdbfe" />
+          <stop offset="100%" stopColor="#93c5fd" />
         </linearGradient>
-        <linearGradient id="rootCanalGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ffedd5" />
-          <stop offset="100%" stopColor="#f97316" />
-        </linearGradient>
-        <linearGradient id="rootCanalCrownGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ffffff" />
+
+        {/* Root Canal Gradients */}
+        <linearGradient id="rctCrownGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#fff7ed" />
           <stop offset="100%" stopColor="#ffedd5" />
         </linearGradient>
-        <linearGradient id="implantGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#e2e8f0" />
+        <linearGradient id="rctRootGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ffedd5" />
+          <stop offset="100%" stopColor="#fed7aa" />
+        </linearGradient>
+
+        {/* Caries Gradients */}
+        <linearGradient id="cariesGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#fef2f2" />
+          <stop offset="60%" stopColor="#fecaca" />
+          <stop offset="100%" stopColor="#f87171" />
+        </linearGradient>
+
+        {/* Crown Gold Gradient */}
+        <linearGradient id="goldCrownGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#fef08a" />
+          <stop offset="50%" stopColor="#eab308" />
+          <stop offset="100%" stopColor="#ca8a04" />
+        </linearGradient>
+
+        {/* Titanium Implant Gradients */}
+        <linearGradient id="titaniumImplantGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#cbd5e1" />
           <stop offset="50%" stopColor="#94a3b8" />
-          <stop offset="100%" stopColor="#475569" />
+          <stop offset="100%" stopColor="#64748b" />
         </linearGradient>
         <linearGradient id="implantCrownGradient" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#f0fdfa" />
-          <stop offset="100%" stopColor="#5eead4" />
-        </linearGradient>
-        <linearGradient id="bridgeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#f3e8ff" />
-          <stop offset="100%" stopColor="#a855f7" />
-        </linearGradient>
-        <linearGradient id="watchGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#fffbeb" />
-          <stop offset="100%" stopColor="#f59e0b" />
+          <stop offset="100%" stopColor="#ccfbf1" />
         </linearGradient>
       </defs>
 
-      {/* Renders the actual paths */}
-      {condition !== "extracted" && condition !== "missing" && renderToothPaths()}
-      {(condition === "extracted" || condition === "missing") && (
-        <g opacity="0.25">
-          {renderToothPaths()}
-          {/* Red cross out indicator */}
-          <line x1="2" y1="2" x2="30" y2="68" stroke="#ef4444" strokeWidth="2.5" />
-          <line x1="30" y1="2" x2="2" y2="68" stroke="#ef4444" strokeWidth="2.5" />
+      {/* ── Selection Ring Halo ── */}
+      {isSelected && (
+        <rect
+          x="1"
+          y="1"
+          width="34"
+          height="74"
+          rx="8"
+          fill="rgba(99, 102, 241, 0.08)"
+          stroke="#4f46e5"
+          strokeWidth="1.8"
+          strokeDasharray="4 2"
+          className="animate-pulse"
+        />
+      )}
+
+      {/* Normal Tooth Elements */}
+      {!isExtracted && (
+        <g>
+          {renderAnatomicalRoots()}
+          {renderAnatomicalCrown()}
+          {renderRestorationOverlay()}
+          {renderCariesLesions()}
+
+          {/* Impacted Arrow / Indicator */}
+          {isImpacted && (
+            <g id="impacted-indicator" transform={isUpper ? "translate(4, 2)" : "translate(4, 60)"}>
+              <circle cx="14" cy="7" r="7" fill="#7e22ce" />
+              <path d="M 14 3 L 11 8 L 17 8 Z" fill="#ffffff" />
+            </g>
+          )}
+        </g>
+      )}
+
+      {/* Extracted / Missing Diagnostic Cross Overlay */}
+      {isExtracted && (
+        <g opacity="0.3">
+          {renderAnatomicalRoots()}
+          {renderAnatomicalCrown()}
+          <line x1="4" y1="6" x2="32" y2="70" stroke="#ef4444" strokeWidth="3" strokeLinecap="round" />
+          <line x1="32" y1="6" x2="4" y2="70" stroke="#ef4444" strokeWidth="3" strokeLinecap="round" />
         </g>
       )}
     </svg>

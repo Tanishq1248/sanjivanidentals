@@ -531,9 +531,9 @@ function PatientsManagement() {
       )}
 
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-[200px] shrink-0 border-r border-outline-variant/20 sticky top-0 h-screen shadow-sm flex-col bg-white">
+      <div className="hidden md:flex shrink-0 sticky top-0 h-screen shadow-2xs z-30">
         <Sidebar currentPage="patients" />
-      </aside>
+      </div>
 
       {/* Mobile Sidebar Drawer */}
       <div
@@ -550,18 +550,27 @@ function PatientsManagement() {
       {/* ═══ MAIN ═══ */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Bar */}
-        <header className="bg-white border-b border-outline-variant/20 px-4 md:px-8 py-4 flex items-center gap-3 sticky top-0 z-20 shadow-sm">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="md:hidden p-2 rounded-lg hover:bg-surface-variant text-primary shrink-0 cursor-pointer"
-            aria-label="Open menu"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+        <header className="bg-white border-b border-outline-variant/20 px-4 md:px-8 py-4 flex items-center justify-between sticky top-0 z-20 shadow-sm">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden p-2 rounded-lg hover:bg-surface-variant text-primary shrink-0 cursor-pointer"
+              aria-label="Open menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
 
-          <h1 className="text-lg md:text-xl font-bold text-primary shrink-0">
-            Patient Management
-          </h1>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-lg md:text-xl font-bold text-primary shrink-0">
+                Patient Management
+              </h1>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary-container/70 text-primary border border-primary/10 text-xs font-semibold">
+                <Users className="w-3.5 h-3.5 text-primary" />
+                <span>{isListLoading ? "—" : totalCount}</span>
+                <span className="hidden sm:inline text-on-surface-variant font-normal">Patients</span>
+              </div>
+            </div>
+          </div>
 
           <div className="flex items-center gap-2 md:gap-3 shrink-0 ml-auto">
             <div className="text-right hidden lg:block">
@@ -581,61 +590,6 @@ function PatientsManagement() {
         </header>
 
         <main className="flex-1 p-4 md:p-8">
-          {/* Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-            <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm p-6 flex items-center justify-between hover:shadow-md transition-shadow">
-              <div>
-                <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-                  Total Patients
-                </p>
-                <p className="text-3xl font-extrabold text-on-surface tracking-tight">
-                  {isListLoading ? "—" : totalCount}
-                </p>
-                <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-semibold mt-2 bg-emerald-50 px-2 py-0.5 rounded-md w-fit">
-                  <TrendingUp className="w-3.5 h-3.5" />
-                  <span>Live Sync</span>
-                </div>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-secondary-container flex items-center justify-center shrink-0">
-                <Users className="w-6 h-6 text-primary" />
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm p-6 flex items-center justify-between hover:shadow-md transition-shadow">
-              <div>
-                <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-                  Search Results
-                </p>
-                <p className="text-3xl font-extrabold text-on-surface tracking-tight">
-                  {isListLoading ? "—" : filtered.length}
-                </p>
-                <p className="text-xs text-on-surface-variant font-medium mt-2 bg-slate-50 px-2 py-0.5 rounded-md w-fit">
-                  {search ? `Matching "${search}"` : "Showing all"}
-                </p>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-violet-100 flex items-center justify-center shrink-0">
-                <UserPlus className="w-6 h-6 text-violet-600" />
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm p-6 flex items-center justify-between hover:shadow-md transition-shadow">
-              <div>
-                <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-                  WhatsApp Reachable
-                </p>
-                <p className="text-3xl font-extrabold text-on-surface tracking-tight">
-                  {isListLoading ? "—" : totalCount}
-                </p>
-                <p className="text-xs text-on-surface-variant font-medium mt-2 bg-green-50 px-2 py-0.5 rounded-md w-fit text-green-700">
-                  With phone numbers
-                </p>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center shrink-0">
-                <WhatsAppIcon className="w-6 h-6 text-green-600" />
-              </div>
-            </div>
-          </div>
-
           {/* Full-width Patient Registry Card */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -646,11 +600,17 @@ function PatientsManagement() {
             {/* Header + Toolbar */}
             <div className="px-6 py-5 border-b border-outline-variant/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-lg md:text-xl font-bold text-on-surface">
-                  Patient Registry
-                </h2>
+                <div className="flex items-center gap-2.5">
+                  <h2 className="text-lg md:text-xl font-bold text-on-surface">
+                    Patient Registry
+                  </h2>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-secondary-container text-primary font-semibold text-xs border border-primary/10">
+                    <Users className="w-3.5 h-3.5 text-primary" />
+                    <span>{isListLoading ? "—" : totalCount}</span>
+                  </span>
+                </div>
                 <p className="text-xs text-on-surface-variant mt-0.5">
-                  {filtered.length} patient{filtered.length !== 1 ? "s" : ""} found
+                  {search ? `${filtered.length} patient${filtered.length !== 1 ? "s" : ""} found` : `${totalCount} total registered`}
                 </p>
               </div>
               <div className="flex flex-1 items-center gap-3 w-full md:max-w-xl md:justify-end">

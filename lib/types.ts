@@ -120,7 +120,10 @@ export interface PatientEncounter {
   doctorId: string;
   doctorName: string;
   visitDate: string; // YYYY-MM-DD
+  visitTime?: string; // HH:MM or 04:20 PM
+  casePaperNumber?: number;
   chiefComplaint: string;
+  chiefComplaints?: string[];
   diagnosis: string;
   treatments: string[];
   toothTreatments?: ToothTreatmentEntry[];
@@ -323,11 +326,14 @@ export type AppointmentFilter = "today" | "upcoming" | "history" | "all";
 /* ─── Prescription ─── */
 export interface Medication {
   medicine: string;
+  genericName?: string;
+  form?: string;
   dosage: string;
   frequency: string;
   duration: string;
   timing?: string; // e.g., "After Food", "Before Food", "At Bedtime"
   notes?: string;   // e.g., "If pain persists"
+  drugClass?: string;
 }
 
 export interface Prescription {

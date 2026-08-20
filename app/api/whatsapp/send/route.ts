@@ -573,6 +573,9 @@ export async function POST(req: Request) {
     const client = twilio(accountSid, authToken);
     const statusCallbackUrl = `${baseUrl}/api/whatsapp/status`;
 
+    // Detect sandbox vs production Twilio number
+    const isSandbox = fromWhatsApp.includes("14155238886");
+
     const messageParams: any = {
       from: fromWhatsApp,
       to: toWhatsApp,
@@ -580,16 +583,29 @@ export async function POST(req: Request) {
       statusCallback: statusCallbackUrl,
     };
 
+    // Only attach media on production number
+    // Twilio Sandbox does not support PDF/media attachments
     if (
+      !isSandbox &&
       mediaUrl &&
       isValidPublicMediaUrl(mediaUrl) &&
       payload.messageType !== "appointment_reminder"
     ) {
       messageParams.mediaUrl = [mediaUrl];
-    } else if (mediaUrl) {
+    } else if (mediaUrl && !isSandbox) {
       console.warn(
         `[Twilio Notice] Excluded mediaUrl '${mediaUrl}' from Twilio request because localhost/non-public URLs cannot be fetched by Twilio cloud servers.`
       );
+    }
+
+    // For sandbox: append download link to message body instead
+    if (
+      isSandbox &&
+      mediaUrl &&
+      isValidPublicMediaUrl(mediaUrl) &&
+      payload.messageType !== "appointment_reminder"
+    ) {
+      messageParams.body = `${messageBody}\n\n📄 View Document:\n${mediaUrl}`;
     }
 
     // ── 8. RETRY MECHANISM WITH EXPONENTIAL BACKOFF ──

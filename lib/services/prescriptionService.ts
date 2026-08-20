@@ -146,8 +146,19 @@ export async function savePrescription(
     }
   }
 
-  // After getting savedId — generate and upload PDF to Firebase Storage (non-blocking)
+  // Force regenerate PDF on every save to capture medicine changes (non-blocking)
   try {
+    // If an existing storagePath exists, delete it so getOrEnsurePrescriptionPdf regenerates fresh PDF
+    const existingRxSnap = await getDoc(doc(db, COLLECTION, savedId));
+    const existingStoragePath = existingRxSnap.exists() ? existingRxSnap.data()?.storagePath : null;
+    if (existingStoragePath) {
+      try {
+        await DocumentStorageService.deleteDocument(existingStoragePath);
+      } catch (delErr) {
+        // Ignore if file was not present
+      }
+    }
+
     const { storagePath } = await DocumentStorageService.getOrEnsurePrescriptionPdf(
       savedId,
       { ...data, prescriptionId: savedId } as Prescription,
