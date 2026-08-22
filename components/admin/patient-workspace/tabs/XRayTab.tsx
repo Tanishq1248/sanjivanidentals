@@ -63,7 +63,7 @@ export const XRayTab: React.FC<XRayTabProps> = ({ patient }) => {
       fileSize: "2.8 MB",
       mimeType: "image/png",
       previewUrl: "https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=900&auto=format&fit=crop&q=80",
-      doctorName: "Dr. Julian Moore",
+      doctorName: "Dr. Rajesh Sharma",
       notes: "Interproximal enamel caries evaluated on distal surface of #46.",
     },
     {
@@ -78,7 +78,7 @@ export const XRayTab: React.FC<XRayTabProps> = ({ patient }) => {
       fileSize: "1.9 MB",
       mimeType: "image/png",
       previewUrl: "https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=900&auto=format&fit=crop&q=80",
-      doctorName: "Dr. Julian Moore",
+      doctorName: "Dr. Rajesh Sharma",
       notes: "Post-endodontic obturation check. Apex cleanly sealed.",
     },
     {
@@ -92,7 +92,7 @@ export const XRayTab: React.FC<XRayTabProps> = ({ patient }) => {
       fileSize: "6.4 MB",
       mimeType: "image/jpeg",
       previewUrl: "https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=900&auto=format&fit=crop&q=80",
-      doctorName: "Dr. Julian Moore",
+      doctorName: "Dr. Rajesh Sharma",
       notes: "Initial comprehensive baseline survey. Wisdom teeth impaction evaluation.",
     },
   ]);
@@ -152,7 +152,7 @@ export const XRayTab: React.FC<XRayTabProps> = ({ patient }) => {
         fileSize: fileSizeStr,
         mimeType: uploadForm.file?.type || "image/png",
         previewUrl,
-        doctorName: "Dr. Julian Moore",
+        doctorName: "Dr. Rajesh Sharma",
         notes: uploadForm.notes,
       };
 

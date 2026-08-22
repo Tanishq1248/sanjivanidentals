@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2, AlertCircle, Printer, Stethoscope, FileText, Phone, Mail, MapPin } from "lucide-react";
 import { getPrescriptionById } from "../../../lib/services/prescriptionService";
 import { getAppointmentById } from "../../../lib/services/appointmentService";
-import { getClinicInfo } from "../../../lib/services/settingsService";
+import { getClinicInfo, formatClinicAddress, getDoctorCredentials } from "../../../lib/services/clinicSettingsService";
 import type { Appointment, Prescription, ClinicBasicInfo } from "../../../lib/types";
 import { queryKeys } from "../../../lib/query/queryKeys";
 import { PublicPrescriptionSkeleton, useDelayLoading } from "../../../components/ui/Skeletons";
@@ -88,6 +88,9 @@ export default function PublicPrescriptionPage({ params }: PublicPrescriptionPag
         "Avoid very hot, cold, or hard food items during recovery.",
       ];
 
+  const creds = getDoctorCredentials(clinicInfo, prescription.doctorName);
+  const formattedAddress = formatClinicAddress(clinicInfo);
+
   return (
     <div className="bg-slate-100 min-h-screen py-6 print:py-0 print:bg-white text-gray-800 font-sans">
       {/* Top Floating Action Bar */}
@@ -117,33 +120,39 @@ export default function PublicPrescriptionPage({ params }: PublicPrescriptionPag
           {/* HEADER: Clinic Details & Lead Doctor */}
           <div className="border-b-2 border-primary/20 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div className="flex items-start gap-3">
-              <div className="w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center font-bold shrink-0 mt-0.5">
-                <Stethoscope className="w-6 h-6 text-primary" />
-              </div>
+              {clinicInfo?.logoUrl || clinicInfo?.clinicLogoUrl ? (
+                <img
+                  src={clinicInfo.logoUrl || clinicInfo.clinicLogoUrl}
+                  alt={clinicInfo.clinicName}
+                  className="w-12 h-12 rounded-xl object-contain border border-gray-200 shrink-0"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center font-bold shrink-0 mt-0.5">
+                  <Stethoscope className="w-6 h-6 text-primary" />
+                </div>
+              )}
               <div>
                 <h1 className="text-xl font-black text-gray-900 tracking-tight leading-tight">
                   {clinicInfo?.clinicName || "Sanjivani Dental Clinic"}
                 </h1>
                 <p className="text-xs text-gray-600 font-medium mt-0.5">
-                  {clinicInfo?.addressLine1
-                    ? `${clinicInfo.addressLine1}${clinicInfo.addressLine2 ? `, ${clinicInfo.addressLine2}` : ""}, ${clinicInfo.city}, ${clinicInfo.state} ${clinicInfo.pincode}`
-                    : "Suite 402, Medical Enclave, M.G. Road, Pune, MH 411001"}
+                  {formattedAddress}
                 </p>
                 <p className="text-[11px] text-gray-500 font-medium mt-0.5">
-                  Ph: {clinicInfo?.phone || "+91 98765 43210"} | Email: {clinicInfo?.email || "contact@sanjivanidentals.com"}
+                  Ph: {clinicInfo?.primaryPhone || clinicInfo?.phone || "+91 98765 43210"} | Email: {clinicInfo?.email || "contact@sanjivanidentals.com"}
                 </p>
               </div>
             </div>
 
             <div className="text-left sm:text-right border-l-2 sm:border-l-0 border-primary/20 pl-3 sm:pl-0 shrink-0">
               <h2 className="text-base font-extrabold text-gray-900 leading-tight">
-                {clinicInfo?.doctorName || "Dr. Rajesh Sharma"}
+                {creds.doctorName}
               </h2>
               <p className="text-xs text-primary font-bold">
-                {clinicInfo?.qualification || "BDS, MDS (Oral & Maxillofacial Surgery)"}
+                {creds.qualification}
               </p>
               <p className="text-[11px] text-gray-500 font-semibold mt-0.5">
-                Reg. No: {clinicInfo?.registrationNumber || "MH-D-18492"}
+                Reg. No: {creds.registrationNumber}
               </p>
             </div>
           </div>
@@ -247,17 +256,17 @@ export default function PublicPrescriptionPage({ params }: PublicPrescriptionPag
         <div className="pt-6 mt-8 border-t border-gray-200 flex flex-col sm:flex-row items-end sm:items-center justify-between gap-6">
           <div className="text-[10px] text-gray-500 space-y-0.5 max-w-sm">
             <p className="font-bold text-gray-700">
-              {clinicInfo?.prescriptionFooterText || "Take medicines strictly as prescribed. For emergency assistance call clinic helpline."}
+              {clinicInfo?.prescriptionFooterNote || clinicInfo?.prescriptionFooterText || "Take medicines strictly as prescribed. For emergency assistance call clinic helpline."}
             </p>
             <p>Printed: {printDate} • System Generated Digital Prescription Pad</p>
           </div>
 
           <div className="text-center sm:text-right shrink-0">
             <div className="w-36 h-12 mx-auto sm:ml-auto flex items-end justify-center pb-1 text-gray-700 font-serif italic text-base font-bold border-b border-gray-400">
-              {clinicInfo?.doctorName || "Dr. Rajesh Sharma"}
+              {creds.doctorName}
             </div>
             <p className="text-xs font-bold text-gray-900 mt-1">Authorized Doctor Signature</p>
-            <p className="text-[10px] text-gray-400 font-medium">Clinic Stamp</p>
+            <p className="text-[10px] text-gray-400 font-medium">{clinicInfo?.clinicName || "Clinic Stamp"}</p>
           </div>
         </div>
       </div>

@@ -86,7 +86,7 @@ export function EncounterHeader({
             👨‍⚕️ Doctor
           </span>
           <span className="font-bold text-on-surface truncate block" title={encounter.doctorName}>
-            {encounter.doctorName || "Dr. Moore"}
+            {encounter.doctorName || "Dr. Rajesh Sharma"}
           </span>
         </div>
 

@@ -15,7 +15,10 @@ import {
   FileText,
   Loader2,
 } from "lucide-react";
-import type { Invoice, PatientEncounter, Patient } from "../../../../lib/types";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "../../../../lib/query/queryKeys";
+import { getClinicSettings } from "../../../../lib/services/clinicSettingsService";
+import type { Invoice, PatientEncounter, Patient, ClinicSettingsData } from "../../../../lib/types";
 import { sendWhatsAppMessage } from "../../../../lib/services/whatsappService";
 import { DocumentStorageService } from "../../../../lib/services/documentStorageService";
 import { sendInvoiceEmail } from "../../../../lib/services/emailService";
@@ -56,10 +59,16 @@ export const InvoicesPaymentsTab: React.FC<InvoicesPaymentsTabProps> = ({
   patient,
   onOpenBillingReview,
 }) => {
-  const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [emailingId, setEmailingId] = useState<string | null>(null);
+  const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const { data: clinicSettings } = useQuery<ClinicSettingsData>({
+    queryKey: queryKeys.settings.clinicInfo,
+    queryFn: getClinicSettings,
+    staleTime: 10 * 60 * 1000,
+  });
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -369,13 +378,15 @@ export const InvoicesPaymentsTab: React.FC<InvoicesPaymentsTabProps> = ({
                               if (sendingInvoiceId === inv.id) return;
                               setSendingInvoiceId(inv.id);
                               try {
+                                const clinicName = clinicSettings?.clinicName || "Sanjivani Dental Clinic";
+                                const currency = clinicSettings?.currencySymbol || "₹";
                                 const res = await sendWhatsAppMessage({
                                   messageType: "invoice",
                                   recipient: patient.phone,
                                   patientId: patient.id,
                                   patientName: patient.name,
                                   invoiceId: inv.id,
-                                  clinicName: "Sanjivani Dentals",
+                                  clinicName,
                                 });
                                 if (res.success) {
                                   showToast(res.message);
@@ -383,7 +394,7 @@ export const InvoicesPaymentsTab: React.FC<InvoicesPaymentsTabProps> = ({
                                   showToast("Message is already being sent.");
                                 } else {
                                   const digits = patient.phone.replace(/\D/g, "");
-                                  const msg = `Hello ${patient.name}!\n\nYour invoice #${inv.id.slice(0, 8).toUpperCase()} for ₹${formatINR(inv.total || inv.amount)} from Sanjivani Dentals has been generated.\n\nThank you!`;
+                                  const msg = `Hello ${patient.name}!\n\nYour invoice #${inv.id.slice(0, 8).toUpperCase()} for ${currency}${formatINR(inv.total || inv.amount)} from ${clinicName} has been generated.\n\nThank you!`;
                                   window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, "_blank");
                                 }
                               } finally {

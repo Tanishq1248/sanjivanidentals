@@ -41,7 +41,11 @@ import type {
   ClinicBasicInfo,
   PatientMedicalProfile,
 } from "../../../lib/types";
-import { getClinicInfo } from "../../../lib/services/settingsService";
+import {
+  getClinicSettings,
+  formatClinicAddress,
+  getDoctorCredentials,
+} from "../../../lib/services/clinicSettingsService";
 import {
   getPrescriptionByEncounter,
   getPrescriptionById,
@@ -50,6 +54,7 @@ import {
 } from "../../../lib/services/prescriptionService";
 import { sendWhatsAppMessage } from "../../../lib/services/whatsappService";
 import { sendPrescriptionEmail } from "../../../lib/services/emailService";
+import { useActiveDoctors } from "../../../lib/hooks/useDoctors";
 import { queryKeys } from "../../../lib/query/queryKeys";
 import {
   DENTAL_MEDICATION_CATALOG,
@@ -137,12 +142,22 @@ export function PrescriptionModal({
     setTimeout(() => setToast(null), 3000);
   };
 
-  // ── Fetch Clinic Settings (Cached) ──────────────────────────────────────
-  const { data: clinicInfo } = useQuery<ClinicBasicInfo>({
-    queryKey: ["clinicInfo"],
-    queryFn: getClinicInfo,
+  // ── Fetch Clinic Settings (Single Source of Truth) ─────────────────────
+  const { data: clinicInfo } = useQuery({
+    queryKey: queryKeys.settings.clinicInfo,
+    queryFn: getClinicSettings,
     staleTime: 10 * 60 * 1000,
   });
+
+  // ── Active Doctors (Single Source of Truth from Settings > Team Members) ──
+  const { doctors: activeDoctors = [] } = useActiveDoctors();
+  const matchedDoctor =
+    activeDoctors.find(
+      (d) => d.id === encounter.doctorId || d.fullName === encounter.doctorName
+    ) || activeDoctors[0];
+  const resolvedDoctorName = encounter.doctorName || matchedDoctor?.fullName || clinicInfo?.doctorName || "Dr. Rajesh Sharma";
+  const resolvedDoctorSpecialization = matchedDoctor?.specialization || clinicInfo?.qualification || "Dental Surgeon";
+  const resolvedDoctorRegNo = matchedDoctor?.registrationNumber || clinicInfo?.registrationNumber || "";
 
   // ── Fetch Existing Prescription (if any) ───────────────────────────────
   const { data: existingRx, isLoading: isRxLoading } = useQuery<Prescription | null>({
@@ -363,10 +378,10 @@ export function PrescriptionModal({
         patientAge: patient.age || "",
         patientGender: patient.gender || "",
         appointmentId: encounter.appointmentId || "",
-        doctorId: encounter.doctorId || "",
-        doctorName: encounter.doctorName || clinicInfo?.doctorName || "Dr. Julian Moore",
-        doctorSpecialization: clinicInfo?.qualification || "Dental Surgeon",
-        doctorRegistrationNumber: clinicInfo?.registrationNumber || "",
+        doctorId: encounter.doctorId || matchedDoctor?.id || "",
+        doctorName: resolvedDoctorName,
+        doctorSpecialization: resolvedDoctorSpecialization,
+        doctorRegistrationNumber: resolvedDoctorRegNo,
         clinicName: clinicInfo?.clinicName || "Sanjivani Dentals",
         clinicAddress: `${clinicInfo?.addressLine1 || ""}, ${clinicInfo?.city || ""}`.trim(),
         clinicPhone: clinicInfo?.phone || "",
@@ -438,6 +453,9 @@ export function PrescriptionModal({
 
       showToast("Sending WhatsApp prescription...");
 
+      const clinicName = clinicInfo?.clinicName || "Sanjivani Dental Clinic";
+      const creds = getDoctorCredentials(clinicInfo, encounter.doctorName);
+
       const res = await sendWhatsAppMessage({
         messageType: "prescription",
         recipient: patient.phone,
@@ -445,8 +463,8 @@ export function PrescriptionModal({
         patientName: patient.name,
         encounterId: encounter.id,
         prescriptionId: targetId,
-        clinicName: clinicInfo?.clinicName || "Sanjivani Dentals",
-        doctorName: encounter.doctorName || clinicInfo?.doctorName || "Dr. Julian Moore",
+        clinicName,
+        doctorName: creds.doctorName,
       });
 
       if (res.success) {
@@ -458,7 +476,7 @@ export function PrescriptionModal({
         const medSummary = validMeds
           .map((m, i) => `${i + 1}. *${m.medicine}*\n   Dosage: ${m.dosage || "1 Tab"} | ${m.frequency} | ${m.duration} (${m.timing || "After Food"})`)
           .join("\n\n");
-        const fallbackMsg = `*${clinicInfo?.clinicName || "SANJIVANI DENTALS"} — DIGITAL PRESCRIPTION*\n\nDear *${patient.name}*,\nHere is your prescription for visit on ${encounter.visitDate}:\n\n🩺 *Diagnosis:* ${diagnosis || "Dental Treatment"}\n\n💊 *Prescribed Medications:*\n${medSummary}\n\n⚠️ *Doctor Advice:* ${advice || "Take all medicines as directed."}\n🗓️ *Next Visit:* ${followUpDate || "As needed"}\n\n_Wish you a speedy recovery!_ ✨`;
+        const fallbackMsg = `*${clinicName.toUpperCase()} — DIGITAL PRESCRIPTION*\n\nDear *${patient.name}*,\nHere is your prescription for visit on ${encounter.visitDate}:\n\n🩺 *Diagnosis:* ${diagnosis || "Dental Treatment"}\n\n💊 *Prescribed Medications:*\n${medSummary}\n\n⚠️ *Doctor Advice:* ${advice || "Take all medicines as directed."}\n🗓️ *Next Visit:* ${followUpDate || "As needed"}\n\n_Wish you a speedy recovery!_ ✨`;
         window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(fallbackMsg)}`, "_blank");
       }
     } finally {
@@ -1003,25 +1021,25 @@ export function PrescriptionModal({
             <div className="max-w-3xl mx-auto bg-white p-8 rounded-2xl border border-slate-300 shadow-md space-y-6 font-sans">
               
               {/* Header Branding */}
-              <div className="flex items-center justify-between border-b-2 border-indigo-600 pb-4">
+              <div className="flex items-center justify-between border-b-2 border-primary/20 pb-4">
                 <div className="space-y-1">
-                  <h1 className="text-xl font-black text-indigo-900 tracking-tight">
+                  <h1 className="text-xl font-black text-slate-900 tracking-tight">
                     {clinicInfo?.clinicName || "SANJIVANI DENTAL CLINIC"}
                   </h1>
                   <p className="text-xs font-bold text-slate-800">
-                    {encounter.doctorName || clinicInfo?.doctorName || "Dr. Julian Moore"}
+                    {resolvedDoctorName}
                   </p>
                   <p className="text-[11px] text-slate-500 font-medium">
-                    {clinicInfo?.qualification || "BDS, MDS - Dental Surgeon"}
-                    {clinicInfo?.registrationNumber ? ` · Reg No: ${clinicInfo.registrationNumber}` : ""}
+                    {resolvedDoctorSpecialization}
+                    {resolvedDoctorRegNo ? ` · Reg No: ${resolvedDoctorRegNo}` : ""}
                   </p>
                   <p className="text-[11px] text-slate-500">
-                    {clinicInfo?.addressLine1}, {clinicInfo?.city} · Tel: {clinicInfo?.phone}
+                    {formatClinicAddress(clinicInfo)} · Tel: {clinicInfo?.primaryPhone || clinicInfo?.phone || "+91 98765 43210"}
                   </p>
                 </div>
 
                 <div className="text-right space-y-1">
-                  <div className="inline-block px-3 py-1 bg-indigo-50 text-indigo-700 font-mono font-bold text-xs rounded-lg border border-indigo-200">
+                  <div className="inline-block px-3 py-1 bg-primary/10 text-primary font-mono font-bold text-xs rounded-lg border border-primary/20">
                     {prescriptionNumber}
                   </div>
                   <p className="text-xs text-slate-500 font-medium">
@@ -1130,7 +1148,7 @@ export function PrescriptionModal({
                   <div className="h-10"></div>
                   <div className="border-t border-slate-400 pt-1">
                     <p className="font-bold text-slate-800">
-                      {encounter.doctorName || clinicInfo?.doctorName || "Dr. Julian Moore"}
+                      {resolvedDoctorName}
                     </p>
                     <p className="text-[10px] text-slate-500">Authorized Signature & Stamp</p>
                   </div>
@@ -1139,7 +1157,7 @@ export function PrescriptionModal({
 
               {/* Footer Note */}
               <p className="text-[10px] text-center text-slate-400 pt-4 border-t border-slate-100">
-                {clinicInfo?.prescriptionFooterText || "Take medicines strictly as prescribed. For emergency assistance call clinic helpline."}
+                {clinicInfo?.prescriptionFooterNote || clinicInfo?.prescriptionFooterText || "Take medicines strictly as prescribed. For emergency assistance call clinic helpline."}
               </p>
             </div>
           )}

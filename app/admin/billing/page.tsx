@@ -46,7 +46,8 @@ import { PatientDetailsModal } from "../../../components/admin/PatientDetailsMod
 import { PaymentDialog } from "../../../components/admin/PaymentDialog";
 import { queryKeys } from "../../../lib/query/queryKeys";
 import { TableSkeleton, CardListSkeleton, StatsCardSkeleton, useDelayLoading } from "../../../components/ui/Skeletons";
-import type { Patient, Invoice } from "../../../lib/types";
+import { getClinicSettings } from "../../../lib/services/clinicSettingsService";
+import type { Patient, Invoice, ClinicSettingsData } from "../../../lib/types";
 import { useSidebarStore } from "../../../lib/store/useSidebarStore";
 import { usePatientStore } from "../../../lib/store/usePatientStore";
 import { useDashboardStore } from "../../../lib/store/useDashboardStore";
@@ -98,18 +99,20 @@ const WhatsAppIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-function buildInvoiceWhatsAppUrl(phone: string, name: string, inv: any) {
+function buildInvoiceWhatsAppUrl(phone: string, name: string, inv: any, clinicSettings?: ClinicSettingsData | null) {
   const digits = phone.replace(/\D/g, "");
   const amountDue = inv.remainingAmount !== undefined ? inv.remainingAmount : (inv.total || inv.amount || 0);
   const invIdShort = inv.id.slice(0, 8).toUpperCase();
   const invStatus = inv.status || inv.paymentStatus || "Pending";
   const dateStr = inv.dueDate || inv.invoiceDate;
+  const clinicName = clinicSettings?.clinicName || "Sanjivani Dental Clinic";
+  const currency = clinicSettings?.currencySymbol || "₹";
   
   const message = encodeURIComponent(
-    `Hello ${name}! 👋 This is Sanjivani Dental Clinic. A friendly reminder regarding your invoice #${invIdShort} with remaining due ₹${formatINR(amountDue)} dated ${dateStr}.\n\n` +
+    `Hello ${name}! 👋 This is ${clinicName}. A friendly reminder regarding your invoice #${invIdShort} with remaining due ${currency}${formatINR(amountDue)} dated ${dateStr}.\n\n` +
     `Status: *${invStatus}*\n\n` +
     `You can pay using Cash, Card, or UPI during your visit. If you have already paid, please ignore this message. Thank you! 😊\n\n` +
-    `– Sanjivani Dental Clinic`
+    `– ${clinicName}`
   );
   return `https://wa.me/${digits}?text=${message}`;
 }
@@ -141,6 +144,12 @@ type FilterTab = "All" | "PENDING" | "PARTIAL" | "PAID" | "OVERDUE" | "DUE_TODAY
 /* ─── Billing Page Component ─── */
 function BillingPageContent() {
   const { logout, user } = useAuth();
+  const { data: clinicSettings } = useQuery<ClinicSettingsData>({
+    queryKey: queryKeys.settings.clinicInfo,
+    queryFn: getClinicSettings,
+    staleTime: 10 * 60 * 1000,
+  });
+
   const queryClient = useQueryClient();
   const router = useRouter();
 
@@ -817,7 +826,7 @@ function BillingPageContent() {
                                     {/* Send WhatsApp Reminder */}
                                     {patientPhone && invStatus !== "PAID" && (
                                       <a
-                                        href={buildInvoiceWhatsAppUrl(patientPhone, patientName, inv)}
+                                        href={buildInvoiceWhatsAppUrl(patientPhone, patientName, inv, clinicSettings)}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="w-8 h-8 rounded-lg hover:bg-emerald-50 text-emerald-600 flex items-center justify-center cursor-pointer transition-colors border border-outline-variant/20 bg-white"

@@ -66,9 +66,9 @@ export function generateWhatsAppMessageBody(
 ): string {
   const variables = {
     patientName: payload.patientName || "Valued Patient",
-    doctorName: payload.doctorName || "Doctor",
-    clinicName: payload.clinicName || "DentaPure Clinic",
-    clinicPhone: payload.clinicPhone || "Clinic Office",
+    doctorName: payload.doctorName || "Dr. Rajesh Sharma",
+    clinicName: payload.clinicName || "Sanjivani Dental Clinic",
+    clinicPhone: payload.clinicPhone || "+91 98765 43210",
     appointmentDate: payload.date || "Scheduled Date",
     appointmentTime: payload.time || "Scheduled Time",
     invoiceNumber: payload.invoiceNumber || payload.invoiceId || "N/A",

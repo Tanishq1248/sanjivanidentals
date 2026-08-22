@@ -33,10 +33,19 @@ import {
   Phone,
   Tag,
   ChevronRight,
+  Building2,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "../../../../lib/query/queryKeys";
+import {
+  getClinicSettings,
+  formatClinicAddress,
+  getDoctorCredentials,
+} from "../../../../lib/services/clinicSettingsService";
 import { DentalChart } from "../../../dental-chart/DentalChart";
 import { ToothDetailPanel } from "../../../dental-chart/ToothDetailPanel";
 import { PrescriptionModal } from "../../encounters/PrescriptionModal";
+import { useActiveDoctors } from "../../../../lib/hooks/useDoctors";
 import { useDentalChartStore } from "../../../../lib/store/useDentalChartStore";
 import type {
   Patient,
@@ -46,6 +55,7 @@ import type {
   ToothTreatmentEntry,
   SurfaceType,
   Doctor,
+  ClinicSettingsData,
 } from "../../../../lib/types";
 import { getTreatmentStatus } from "../../../../lib/types";
 
@@ -141,6 +151,8 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
   doctors = [],
 }) => {
   const router = useRouter();
+  const { doctors: activeDoctors = [] } = useActiveDoctors();
+  const availableDoctors = doctors && doctors.length > 0 ? doctors : activeDoctors;
   const { syncEncounters, selectedTooth, closeTooth } = useDentalChartStore();
 
   // Sync dental chart store with encounters
@@ -257,7 +269,7 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
         surfaces: tt.surfaces,
         procedure: tt.treatmentName,
         diagnosis: encounter.diagnosis || encounter.chiefComplaint || "Dental Restoration",
-        assignedDoctor: encounter.doctorName || "Dr. Julian Moore",
+        assignedDoctor: encounter.doctorName || "Dr. Rajesh Sharma",
         fee: tt.fee || 0,
         date: tt.date || encounter.visitDate,
         status: clinicalStatus,
@@ -279,7 +291,7 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
         encounterId: encounter.id,
         procedure: tName,
         diagnosis: encounter.diagnosis || encounter.chiefComplaint || "Clinical Procedure",
-        assignedDoctor: encounter.doctorName || "Dr. Julian Moore",
+        assignedDoctor: encounter.doctorName || "Dr. Rajesh Sharma",
         fee: 0,
         date: encounter.visitDate,
         status: clinicalStatus,
@@ -384,21 +396,91 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
     }
   };
 
+  // ─── Clinic Settings (Single Source of Truth) ───
+  const { data: clinicSettings } = useQuery<ClinicSettingsData>({
+    queryKey: queryKeys.settings.clinicInfo,
+    queryFn: getClinicSettings,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const clinicName = clinicSettings?.clinicName || "Sanjivani Dental Clinic";
+  const clinicAddress = formatClinicAddress(clinicSettings);
+  const creds = getDoctorCredentials(clinicSettings, encounter.doctorName);
+  const clinicPhone = clinicSettings?.primaryPhone || clinicSettings?.phone || "+91 98765 43210";
+  const clinicEmail = clinicSettings?.email || "contact@sanjivanidentals.com";
+
   // WhatsApp Share URL
   const whatsappText = encodeURIComponent(
-    `Hello ${patient.name}, here is your clinical summary for Case Paper #${casePaperNumber} at Sanjivani Dental Clinic on ${formatDate(
+    `Hello ${patient.name}, here is your clinical summary for Case Paper #${casePaperNumber} at ${clinicName} on ${formatDate(
       encounter.visitDate
-    )}. Treating Doctor: ${encounter.doctorName || "Dr. Julian Moore"}. Status: ${currentStatus}.`
+    )}. Treating Doctor: ${creds.doctorName}. Status: ${currentStatus}.`
   );
   const whatsappUrl = `https://wa.me/${patient.phone.replace(/[^0-9]/g, "")}?text=${whatsappText}`;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col print:bg-white">
       
+      {/* ═════════════════════════════════════════════════════════════════════
+          PRINT-ONLY CLINIC LETTERHEAD (OFFICIAL CASE PAPER)
+      ══════════════════════════════════════════════════════════════════════ */}
+      <div className="hidden print:block mb-6 p-6 border-b-2 border-primary/30">
+        <div className="flex flex-row justify-between items-start gap-4">
+          <div className="flex items-start gap-3">
+            {clinicSettings?.logoUrl || clinicSettings?.clinicLogoUrl ? (
+              <img
+                src={clinicSettings.logoUrl || clinicSettings.clinicLogoUrl}
+                alt={clinicName}
+                className="w-14 h-14 rounded-xl object-contain border border-gray-200 shrink-0"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center font-bold shrink-0">
+                <Stethoscope className="w-6 h-6 text-primary" />
+              </div>
+            )}
+            <div>
+              <h1 className="text-xl font-black text-slate-900 leading-tight">{clinicName}</h1>
+              <p className="text-xs text-slate-600 font-medium mt-0.5">{clinicAddress}</p>
+              <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                Ph: {clinicPhone} | Email: {clinicEmail}
+                {clinicSettings?.gstin ? ` | GSTIN: ${clinicSettings.gstin}` : ""}
+              </p>
+            </div>
+          </div>
+
+          <div className="text-right shrink-0">
+            <h2 className="text-base font-extrabold text-slate-900 leading-tight">{creds.doctorName}</h2>
+            <p className="text-xs text-primary font-bold">{creds.qualification}</p>
+            <p className="text-[11px] text-slate-500 font-semibold mt-0.5">Reg. No: {creds.registrationNumber}</p>
+          </div>
+        </div>
+
+        {/* Patient Metadata Bar in Print Header */}
+        <div className="mt-4 pt-3 border-t border-slate-200 grid grid-cols-4 gap-3 text-xs">
+          <div>
+            <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block">Patient Name</span>
+            <span className="font-bold text-slate-900">{patient.name}</span>
+          </div>
+          <div>
+            <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block">Age / Gender / ID</span>
+            <span className="font-semibold text-slate-800">
+              {patient.age ? `${patient.age} yrs` : "N/A"} • {patient.gender || "N/A"} • #{patient.id.slice(0, 8).toUpperCase()}
+            </span>
+          </div>
+          <div>
+            <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block">Encounter Date</span>
+            <span className="font-semibold text-slate-800">{formatDate(encounter.visitDate)}</span>
+          </div>
+          <div>
+            <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block">Case Paper No.</span>
+            <span className="font-bold text-primary font-mono">CP-#{casePaperNumber}</span>
+          </div>
+        </div>
+      </div>
+
       {/* ═════════════════════════════════════════════════════════════════════
           1. STICKY DEDICATED SESSION HEADER & WORKSPACE NAVIGATION
       ══════════════════════════════════════════════════════════════════════ */}
-      <header className="sticky top-0 z-40 bg-white border-b border-outline-variant/20 shadow-xs backdrop-blur-md">
+      <header className="sticky top-0 z-40 bg-white border-b border-outline-variant/20 shadow-xs backdrop-blur-md print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
           
           {/* Left: Back Link & Patient Snapshot */}
@@ -550,16 +632,40 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
                     {currentStatus}
                   </span>
                 </h2>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium mt-0.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-500 font-medium mt-1">
                   <span className="flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5 text-primary" />
                     <span>{formatDate(encounter.visitDate)} {encounter.visitTime ? `at ${encounter.visitTime}` : ""}</span>
                   </span>
                   <span>•</span>
-                  <span className="flex items-center gap-1 text-slate-800 font-semibold">
-                    <User className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Treating Dentist: {encounter.doctorName || "Dr. Julian Moore"}</span>
-                  </span>
+                  <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                    <User className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <span className="text-[11px] font-bold text-slate-600">Assigned Doctor:</span>
+                    <select
+                      value={encounter.doctorId || (availableDoctors.find((d) => d.fullName === encounter.doctorName)?.id || availableDoctors[0]?.id || "tm-1")}
+                      onChange={async (e) => {
+                        const selectedDocId = e.target.value;
+                        const selectedDoc = availableDoctors.find((d) => d.id === selectedDocId);
+                        if (selectedDoc) {
+                          await onUpdateEncounter(encounter.id, {
+                            doctorId: selectedDoc.id,
+                            doctorName: selectedDoc.fullName,
+                          });
+                        }
+                      }}
+                      className="bg-transparent font-bold text-slate-800 text-xs focus:outline-none cursor-pointer pr-1 hover:text-primary transition-colors"
+                      title="Change Assigned Doctor for this Case Paper"
+                    >
+                      {availableDoctors.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.fullName} ({d.specialization || "Dental Surgeon"})
+                        </option>
+                      ))}
+                      {availableDoctors.length === 0 && (
+                        <option value="tm-1">Dr. Rajesh Sharma (Oral &amp; Maxillofacial Surgery)</option>
+                      )}
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1432,11 +1538,53 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
 
       {/* Toast Notification */}
       {notesToast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 print:hidden">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>{notesToast}</span>
         </div>
       )}
+
+      {/* Print-Only Signature & Stamp Block */}
+      <div className="hidden print:flex flex-row items-center justify-between pt-8 mt-12 border-t border-slate-300 px-6">
+        <div className="text-[10px] text-slate-500 space-y-0.5">
+          <p className="font-bold text-slate-700">Official Clinical Case Record — {clinicName}</p>
+          <p>Generated digitally for patient clinical history documentation.</p>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="w-40 h-10 ml-auto flex items-end justify-center pb-1 text-slate-800 font-serif italic text-sm font-bold border-b border-slate-400">
+            {creds.doctorName}
+          </div>
+          <p className="text-xs font-bold text-slate-900 mt-1">Authorized Dentist Signature</p>
+          <p className="text-[10px] text-slate-400 font-medium">{clinicName}</p>
+        </div>
+      </div>
+
+      {/* CSS Styles for exact print rendering */}
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 10mm;
+          }
+          body {
+            background: white !important;
+            color: black !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .print\:hidden {
+            display: none !important;
+          }
+          .print\:block {
+            display: block !important;
+          }
+          .print\:flex {
+            display: flex !important;
+          }
+        }
+      `}</style>
 
     </div>
   );

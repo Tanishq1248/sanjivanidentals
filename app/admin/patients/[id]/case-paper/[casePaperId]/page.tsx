@@ -14,7 +14,7 @@ import {
   updatePatientEncounter,
   logToothTreatment,
 } from "../../../../../../lib/services/patientService";
-import { getDoctors } from "../../../../../../lib/services/doctorService";
+import { useActiveDoctors } from "../../../../../../lib/hooks/useDoctors";
 import { queryKeys } from "../../../../../../lib/query/queryKeys";
 import type { PatientEncounter, SurfaceType, Patient, PatientMedicalProfile, Doctor } from "../../../../../../lib/types";
 
@@ -55,11 +55,8 @@ export default function CasePaperSessionPage({ params }: PageProps) {
     enabled: !!patientId,
   });
 
-  // 4. Clinic Doctors query
-  const { data: doctors = [] } = useQuery<Doctor[]>({
-    queryKey: ["doctors"],
-    queryFn: () => getDoctors(),
-  });
+  // 4. Clinic Active Doctors query (Single Source of Truth from Settings > Team Members)
+  const { doctors = [] } = useActiveDoctors();
 
   // ── Mutations ──
   const updateEncounterMutation = useMutation({
@@ -86,8 +83,8 @@ export default function CasePaperSessionPage({ params }: PageProps) {
         surfaces?: SurfaceType[];
       };
     }) => {
-      const docId = doctors[0]?.id || "dr-julian-moore";
-      const docName = doctors[0]?.fullName || "Dr. Julian Moore";
+      const docId = doctors[0]?.id || "tm-1";
+      const docName = doctors[0]?.fullName || "Dr. Rajesh Sharma";
       return logToothTreatment(
         patientId,
         toothNumber,

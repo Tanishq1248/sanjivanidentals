@@ -80,7 +80,7 @@ export const TreatmentPlanTab: React.FC<TreatmentPlanTabProps> = ({
           toothNumber: tt.toothNumber,
           surfaces: tt.surfaces,
           procedure: tt.treatmentName,
-          assignedDoctor: enc.doctorName || "Dr. Julian Moore",
+          assignedDoctor: enc.doctorName || "Dr. Rajesh Sharma",
           estimatedCost: tt.fee || 0,
           date: tt.date || enc.visitDate,
           status: clinicalStatus,
@@ -100,7 +100,7 @@ export const TreatmentPlanTab: React.FC<TreatmentPlanTabProps> = ({
         treatmentItems.push({
           id: `${enc.id}-t-${idx}`,
           procedure: tName,
-          assignedDoctor: enc.doctorName || "Dr. Julian Moore",
+          assignedDoctor: enc.doctorName || "Dr. Rajesh Sharma",
           estimatedCost: 0,
           date: enc.visitDate,
           status: clinicalStatus,

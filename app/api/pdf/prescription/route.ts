@@ -4,8 +4,9 @@ import { db } from "../../../../lib/firebase";
 import { COLLECTIONS } from "../../../../lib/services/firestoreConfig";
 import { generatePrescriptionPdfBuffer } from "../../../../lib/services/pdfServerService";
 import { DocumentStorageService } from "../../../../lib/services/documentStorageService";
+import { getClinicSettings } from "../../../../lib/services/clinicSettingsService";
 import { createErrorResponse, logServerError } from "../../../../lib/errors/messagingErrors";
-import type { Prescription, ClinicBasicInfo } from "../../../../lib/types";
+import type { Prescription } from "../../../../lib/types";
 
 export async function GET(req: Request) {
   try {
@@ -26,10 +27,8 @@ export async function GET(req: Request) {
 
     const prescription = rxSnap.data() as Prescription;
 
-    // 2. Fetch Clinic Settings from Firestore
-    const clinicRef = doc(db, COLLECTIONS.CLINIC_SETTINGS, "info");
-    const clinicSnap = await getDoc(clinicRef);
-    const clinicInfo = clinicSnap.exists() ? (clinicSnap.data() as ClinicBasicInfo) : undefined;
+    // 2. Fetch Clinic Settings (single source of truth)
+    const clinicInfo = await getClinicSettings();
 
     // 3. Retrieve existing valid PDF from Storage or generate & upload exactly once
     const { pdfBuffer, reused } = await DocumentStorageService.getOrEnsurePrescriptionPdf(

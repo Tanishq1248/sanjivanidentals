@@ -3,9 +3,10 @@ import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore";
 import { db } from "../../../../../lib/firebase";
 import { COLLECTIONS } from "../../../../../lib/services/firestoreConfig";
 import { DocumentStorageService } from "../../../../../lib/services/documentStorageService";
+import { getClinicSettings } from "../../../../../lib/services/clinicSettingsService";
 import { Resend } from "resend";
 import { env } from "../../../../../lib/config/env";
-import type { Invoice, ClinicBasicInfo } from "../../../../../lib/types";
+import type { Invoice } from "../../../../../lib/types";
 
 type Params = { id: string };
 
@@ -48,11 +49,9 @@ export async function POST(
       );
     }
 
-    // 2. Fetch Clinic Settings
-    const clinicRef = doc(db, COLLECTIONS.CLINIC_SETTINGS, "info");
-    const clinicSnap = await getDoc(clinicRef);
-    const clinicInfo = clinicSnap.exists() ? (clinicSnap.data() as ClinicBasicInfo) : undefined;
-    clinicName = clinicName || clinicInfo?.clinicName || "Sanjivani Dentals";
+    // 2. Fetch Clinic Settings (single source of truth)
+    const clinicInfo = await getClinicSettings();
+    clinicName = clinicName || clinicInfo.clinicName;
 
     // 3. Retrieve PDF Buffer from Firebase Storage via DocumentStorageService
     const pdfBuffer = await DocumentStorageService.getInvoicePdf(id, invoice, clinicInfo);

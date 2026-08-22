@@ -73,6 +73,8 @@ export default function TeamManagementSection() {
     mutationFn: addTeamMember,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.settings.teamMembers });
+      queryClient.invalidateQueries({ queryKey: ["teamMembers", "active-doctors"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.doctors.all });
     },
   });
 
@@ -81,6 +83,8 @@ export default function TeamManagementSection() {
       updateTeamMember(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.settings.teamMembers });
+      queryClient.invalidateQueries({ queryKey: ["teamMembers", "active-doctors"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.doctors.all });
     },
   });
 
@@ -88,6 +92,8 @@ export default function TeamManagementSection() {
     mutationFn: deleteTeamMember,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.settings.teamMembers });
+      queryClient.invalidateQueries({ queryKey: ["teamMembers", "active-doctors"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.doctors.all });
     },
   });
 
@@ -169,12 +175,16 @@ export default function TeamManagementSection() {
                 </div>
                 <h3 className="text-lg font-bold text-on-surface mb-1.5 group-hover:text-primary transition-colors flex items-center justify-between">
                   <span>👥 Team Members</span>
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-mono">
+                  <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full font-mono border ${
+                    doctorCount >= maxDoctors
+                      ? "bg-amber-100 text-amber-900 border-amber-300"
+                      : "bg-emerald-100 text-emerald-900 border-emerald-300"
+                  }`}>
                     {doctorCount}/{maxDoctors} Doctors
                   </span>
                 </h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed mb-6">
-                  Manage doctors, assistants, receptionists, and clinic staff accounts.
+                  Manage doctors, receptionists, and clinic staff accounts.
                 </p>
               </div>
               <div className="pt-4 border-t border-outline-variant/15 flex items-center justify-between">

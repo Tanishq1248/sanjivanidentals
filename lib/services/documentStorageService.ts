@@ -18,6 +18,7 @@ import {
 import { storage, db } from "../firebase";
 import { COLLECTIONS } from "./firestoreConfig";
 import { generatePrescriptionPdfBuffer, generateInvoicePdfBuffer } from "./pdfServerService";
+import { getClinicSettings } from "./clinicSettingsService";
 import type {
   UploadDocumentOptions,
   UploadResult,
@@ -26,6 +27,7 @@ import type {
   Prescription,
   Invoice,
   ClinicBasicInfo,
+  ClinicSettingsData,
 } from "../types";
 
 /** Default fallback clinic identifier */
@@ -498,7 +500,8 @@ export class DocumentStorageService {
     }
 
     try {
-      const pdfBuffer = generatePrescriptionPdfBuffer(rxData, clinicInfo);
+      const effectiveClinicInfo = clinicInfo || (await getClinicSettings());
+      const pdfBuffer = generatePrescriptionPdfBuffer(rxData, effectiveClinicInfo);
       const clinicId = rxData.clinicId || DEFAULT_CLINIC_ID;
 
       const uploadResult = await DocumentStorageService.uploadDocument({
@@ -624,7 +627,8 @@ export class DocumentStorageService {
     }
 
     try {
-      const pdfBuffer = generateInvoicePdfBuffer(invoiceData, clinicInfo);
+      const effectiveClinicInfo = clinicInfo || (await getClinicSettings());
+      const pdfBuffer = generateInvoicePdfBuffer(invoiceData, effectiveClinicInfo);
       const clinicId = DEFAULT_CLINIC_ID;
 
       const uploadResult = await DocumentStorageService.uploadDocument({

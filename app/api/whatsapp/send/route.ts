@@ -21,6 +21,7 @@ import {
 } from "../../../../lib/errors/messagingErrors";
 import { generatePrescriptionPdfBuffer } from "../../../../lib/services/pdfServerService";
 import { DocumentStorageService } from "../../../../lib/services/documentStorageService";
+import { getClinicSettings } from "../../../../lib/services/clinicSettingsService";
 import { env } from "../../../../lib/config/env";
 import type {
   WhatsAppMessagePayload,
@@ -218,12 +219,10 @@ export async function POST(req: Request) {
     // ── 2. SERVER-SIDE DATA LOAD FROM FIRESTORE ──
     let clinicInfo: ClinicBasicInfo | undefined;
     try {
-      const clinicSnap = await getDoc(doc(db, COLLECTIONS.CLINIC_SETTINGS, "info"));
-      if (clinicSnap.exists()) {
-        clinicInfo = clinicSnap.data() as ClinicBasicInfo;
-        clinicName = clinicName || clinicInfo.clinicName;
-        doctorName = doctorName || clinicInfo.doctorName;
-      }
+      const settings = await getClinicSettings();
+      clinicInfo = settings;
+      clinicName = clinicName || settings.clinicName;
+      doctorName = doctorName || settings.leadDoctorName || settings.doctorName;
     } catch (err: any) {
       logServerError(err, { action: "Fetch Clinic Info" });
     }

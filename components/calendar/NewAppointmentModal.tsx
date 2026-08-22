@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { X, Search, Phone, Loader2, CalendarDays, Clock, Armchair, AlertCircle } from "lucide-react";
+import { X, Search, Phone, Loader2, CalendarDays, Clock, Armchair, AlertCircle, User, Stethoscope } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createAppointmentByAdmin } from "../../lib/services/appointmentService";
 import { getPatients } from "../../lib/services/patientService";
 import { getClinicResources } from "../../lib/services/settingsService";
+import { useActiveDoctors } from "../../lib/hooks/useDoctors";
 import { DURATION_OPTIONS } from "../../lib/types";
-import type { Patient, AppointmentStatus } from "../../lib/types";
+import type { Patient, AppointmentStatus, Doctor } from "../../lib/types";
 import { queryKeys } from "../../lib/query/queryKeys";
 
 /* ─── Common dental services list ─── */
@@ -50,6 +51,9 @@ export function NewAppointmentModal({
     staleTime: 2 * 60_000,
   });
 
+  /* ── Active Doctors (Single Source of Truth from Settings > Team Members) ── */
+  const { doctors = [] } = useActiveDoctors();
+
   /* ── Clinic Resources (Chairs) ── */
   const {
     data: clinicResources,
@@ -85,6 +89,8 @@ export function NewAppointmentModal({
     service: "",
     customService: "",
     chairId: "",
+    doctorId: "",
+    doctorName: "",
     duration: 30,
     status: "Confirmed" as AppointmentStatus,
     patientName: "",
@@ -95,16 +101,25 @@ export function NewAppointmentModal({
   /* Sync defaults when modal opens */
   useEffect(() => {
     if (isOpen) {
-      setForm((f) => ({ ...f, date: defaultDate, time: defaultTime, chairId: "" }));
+      const defaultDoc = doctors[0];
+      setForm((f) => ({
+        ...f,
+        date: defaultDate,
+        time: defaultTime,
+        chairId: "",
+        doctorId: defaultDoc?.id || "doc-1",
+        doctorName: defaultDoc?.fullName || "Dr. Rajesh Sharma",
+      }));
       setSelectedPatient(null);
       setPatientSearch("");
     }
-  }, [isOpen, defaultDate, defaultTime]);
+  }, [isOpen, defaultDate, defaultTime, doctors]);
 
   /* ── Mutation ── */
   const mutation = useMutation({
     mutationFn: () => {
       const selectedChairObj = activeChairs.find((c) => c.id === form.chairId);
+      const selectedDoctor = doctors.find((d) => d.id === form.doctorId) || doctors[0];
       return createAppointmentByAdmin({
         patientName:  selectedPatient?.name  ?? form.patientName,
         patientPhone: selectedPatient?.phone ?? form.patientPhone,
@@ -113,6 +128,8 @@ export function NewAppointmentModal({
         service:      form.service === "__custom__" ? form.customService : form.service,
         date:         form.date,
         time:         form.time,
+        doctorId:     form.doctorId || selectedDoctor?.id || "doc-1",
+        doctorName:   form.doctorName || selectedDoctor?.fullName || "Dr. Rajesh Sharma",
         chairId:      form.chairId || undefined,
         chair:        selectedChairObj?.name || undefined,
         duration:     form.duration,
@@ -153,7 +170,7 @@ export function NewAppointmentModal({
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto font-sans">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-outline-variant/15 sticky top-0 bg-white z-10">
           <div className="flex items-center gap-3">
@@ -264,13 +281,40 @@ export function NewAppointmentModal({
             )}
           </div>
 
+          {/* ── Assigned Doctor ── */}
+          <div>
+            <label className="block text-xs font-bold text-on-surface mb-1.5">
+              <Stethoscope className="w-3.5 h-3.5 inline mr-1 text-primary" />
+              Assigned Doctor *
+            </label>
+            <select
+              value={form.doctorId}
+              onChange={(e) => {
+                const docId = e.target.value;
+                const found = doctors.find((d) => d.id === docId);
+                setForm((f) => ({
+                  ...f,
+                  doctorId: docId,
+                  doctorName: found?.fullName || "",
+                }));
+              }}
+              className="w-full px-3 py-2.5 text-sm rounded-xl border border-outline-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-white font-medium"
+            >
+              {doctors.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.fullName} ({d.specialization || "General Dentistry"})
+                </option>
+              ))}
+              {doctors.length === 0 && (
+                <option value="doc-1">Dr. Rajesh Sharma (Oral & Maxillofacial Surgery)</option>
+              )}
+            </select>
+          </div>
+
           {/* ── Date & Time ── */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-on-surface mb-1.5">
-                <CalendarDays className="w-3 h-3 inline mr-1 text-primary" />
-                Date *
-              </label>
+              <label className="block text-xs font-bold text-on-surface mb-1.5">Date *</label>
               <input
                 type="date"
                 value={form.date}
@@ -279,24 +323,17 @@ export function NewAppointmentModal({
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-on-surface mb-1.5">
-                <Clock className="w-3 h-3 inline mr-1 text-primary" />
-                Time *
-              </label>
+              <label className="block text-xs font-bold text-on-surface mb-1.5">Time *</label>
               <input
                 type="time"
-                value={form.time.includes("AM") || form.time.includes("PM")
-                  ? (() => {
-                      const match = form.time.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-                      if (!match) return "09:00";
-                      let h = parseInt(match[1], 10);
-                      const m = match[2];
-                      const period = match[3].toUpperCase();
-                      if (period === "PM" && h !== 12) h += 12;
-                      if (period === "AM" && h === 12) h = 0;
-                      return `${String(h).padStart(2, "0")}:${m}`;
-                    })()
-                  : form.time}
+                value={(() => {
+                  const m = form.time.match(/(\d+):(\d+)\s*(AM|PM)/i);
+                  if (!m) return "09:00";
+                  let h = parseInt(m[1], 10);
+                  if (m[3].toUpperCase() === "PM" && h !== 12) h += 12;
+                  if (m[3].toUpperCase() === "AM" && h === 12) h = 0;
+                  return `${String(h).padStart(2, "0")}:${m[2]}`;
+                })()}
                 onChange={(e) => {
                   const [h, m] = e.target.value.split(":").map(Number);
                   const suffix = h >= 12 ? "PM" : "AM";

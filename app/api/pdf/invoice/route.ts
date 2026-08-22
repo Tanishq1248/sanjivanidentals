@@ -3,8 +3,9 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../../../lib/firebase";
 import { COLLECTIONS } from "../../../../lib/services/firestoreConfig";
 import { DocumentStorageService } from "../../../../lib/services/documentStorageService";
+import { getClinicSettings } from "../../../../lib/services/clinicSettingsService";
 import { createErrorResponse, logServerError } from "../../../../lib/errors/messagingErrors";
-import type { Invoice, ClinicBasicInfo } from "../../../../lib/types";
+import type { Invoice } from "../../../../lib/types";
 
 export async function GET(req: Request) {
   try {
@@ -25,10 +26,8 @@ export async function GET(req: Request) {
 
     const invoice = invSnap.data() as Invoice;
 
-    // 2. Fetch Clinic Settings from Firestore
-    const clinicRef = doc(db, COLLECTIONS.CLINIC_SETTINGS, "info");
-    const clinicSnap = await getDoc(clinicRef);
-    const clinicInfo = clinicSnap.exists() ? (clinicSnap.data() as ClinicBasicInfo) : undefined;
+    // 2. Fetch Clinic Settings (single source of truth)
+    const clinicInfo = await getClinicSettings();
 
     // 3. Retrieve or generate PDF in Firebase Storage with 1-time upload & automatic recovery
     const { pdfBuffer } = await DocumentStorageService.getOrEnsureInvoicePdf(

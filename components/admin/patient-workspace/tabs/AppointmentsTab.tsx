@@ -89,7 +89,7 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
         patientName: apt.patientName || patientName,
         appointmentId: apt.id,
         clinicName: "Sanjivani Dentals",
-        doctorName: apt.doctorName || "Dr. Julian Moore",
+        doctorName: apt.doctorName || "Dr. Rajesh Sharma",
         date: apt.date,
         time: apt.time,
       });
@@ -216,7 +216,7 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
                       {formatVisitDate(apt.date)} • {apt.time}
                     </span>
                     <h4 className="text-sm font-bold text-slate-900 pt-1">
-                      {apt.doctorName || "Dr. Julian Moore"}
+                      {apt.doctorName || "Dr. Rajesh Sharma"}
                     </h4>
                     <p className="text-xs text-slate-500 font-medium">
                       {apt.service || "General Dental Consultation"}

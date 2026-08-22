@@ -38,7 +38,7 @@ import {
   logToothTreatment,
   getPatientsByReferrer,
 } from "../../../../lib/services/patientService";
-import { getDoctors } from "../../../../lib/services/doctorService";
+import { useActiveDoctors } from "../../../../lib/hooks/useDoctors";
 import { addInvoice, getInvoicesByPatientId } from "../../../../lib/services/invoiceService";
 import { getAppointmentsByPhone } from "../../../../lib/services/appointmentService";
 import { queryKeys } from "../../../../lib/query/queryKeys";
@@ -356,11 +356,8 @@ export default function PatientProfilePage({ params }: PageProps) {
     enabled: !!patientId,
   });
 
-  // 4. Doctors list
-  const { data: doctorsList = [] } = useQuery({
-    queryKey: queryKeys.doctors.all,
-    queryFn: getDoctors,
-  });
+  // 4. Active Doctors list (Single Source of Truth from Settings > Team Members)
+  const { doctors: doctorsList = [] } = useActiveDoctors();
 
   // 5. Referred patients
   const { data: referredPatients = [] } = useQuery({
@@ -445,8 +442,8 @@ export default function PatientProfilePage({ params }: PageProps) {
         surfaces?: SurfaceType[];
       };
     }) => {
-      const docId = doctorsList[0]?.id || "dr-julian-moore";
-      const docName = doctorsList[0]?.fullName || "Dr. Julian Moore";
+      const docId = doctorsList[0]?.id || "tm-1";
+      const docName = doctorsList[0]?.fullName || "Dr. Rajesh Sharma";
       return logToothTreatment(patientId, toothNumber, treatmentData, docId, docName);
     },
     onSuccess: () => {

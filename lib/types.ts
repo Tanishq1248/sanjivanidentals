@@ -143,10 +143,13 @@ export interface Doctor {
   specialization: string;
   phone: string;
   email: string;
-  availability: string[];
-  status: "Active" | "Inactive";
+  availability?: string[];
+  status?: "Active" | "Inactive";
+  qualification?: string;
+  registrationNumber?: string;
+  active?: boolean;
   clinicId?: string;
-  createdAt: Timestamp;
+  createdAt?: Timestamp;
 }
 
 /* ─── Invoice ─── */
@@ -715,29 +718,50 @@ export interface SecuritySession {
   clinicId?: string;
 }
 
-export interface ClinicBasicInfo {
-  clinicName: string;
-  clinicLogoUrl?: string;
-  doctorName: string;
-  qualification?: string;
-  registrationNumber?: string;
-  addressLine1: string;
-  addressLine2?: string;
+export interface ClinicAddressDetails {
+  line1: string;
+  line2?: string;
   city: string;
   state: string;
   pincode: string;
-  phone: string;
+}
+
+export interface ClinicBasicInfo {
+  clinicName: string;
+  leadDoctorName?: string;
+  doctorQualifications?: string;
+  dentalCouncilRegNo?: string;
+  primaryPhone?: string;
   whatsappNumber?: string;
   email: string;
+  websiteUrl?: string;
+  address?: ClinicAddressDetails | string;
+  gstin?: string;
+  currencySymbol?: string;
+  invoiceFooterNote?: string;
+  prescriptionFooterNote?: string;
+  logoUrl?: string;
+
+  // Backward compatibility alias properties
+  clinicLogoUrl?: string;
+  doctorName?: string;
+  qualification?: string;
+  registrationNumber?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  phone?: string;
   website?: string;
   invoiceFooterText?: string;
   prescriptionFooterText?: string;
-  currencySymbol?: string;
   gstNumber?: string;
+
   subscription?: ClinicSubscriptionData;
   clinicId?: string;
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
+  createdAt?: Timestamp | any;
+  updatedAt?: Timestamp | any;
 }
 
 /* ─── Twilio WhatsApp Messaging ─── */
@@ -831,7 +855,7 @@ export interface ClinicSettingsData extends ClinicBasicInfo {
   updatedAt?: Timestamp;
   // Backward compatibility alias fields
   doctorTitle?: string;
-  address?: string;
+  address?: ClinicAddressDetails | string;
   gstin?: string;
   timing?: string;
   chairsCount?: number;

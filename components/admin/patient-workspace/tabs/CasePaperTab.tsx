@@ -28,6 +28,10 @@ import {
   Tag,
   Check,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "../../../../lib/query/queryKeys";
+import { getClinicSettings, getDoctorCredentials } from "../../../../lib/services/clinicSettingsService";
+import { useActiveDoctors } from "../../../../lib/hooks/useDoctors";
 import type {
   Patient,
   PatientEncounter,
@@ -36,6 +40,8 @@ import type {
   Appointment,
   ToothTreatmentEntry,
   SurfaceType,
+  ClinicSettingsData,
+  Doctor,
 } from "../../../../lib/types";
 
 interface CasePaperTabProps {
@@ -102,6 +108,9 @@ export const CasePaperTab: React.FC<CasePaperTabProps> = ({
 }) => {
   const router = useRouter();
 
+  // Active Doctors List (Single Source of Truth from Settings > Team Members)
+  const { doctors: doctorsList = [] } = useActiveDoctors();
+
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -147,11 +156,19 @@ export const CasePaperTab: React.FC<CasePaperTabProps> = ({
     }
   };
 
+  const { data: clinicSettings } = useQuery<ClinicSettingsData>({
+    queryKey: queryKeys.settings.clinicInfo,
+    queryFn: getClinicSettings,
+    staleTime: 10 * 60 * 1000,
+  });
+
   const generateWhatsAppShare = (enc: PatientEncounter, casePaperNum: number) => {
+    const clinicName = clinicSettings?.clinicName || "Sanjivani Dental Clinic";
+    const creds = getDoctorCredentials(clinicSettings, enc.doctorName);
     const text = encodeURIComponent(
-      `Hello ${patient.name}, here is your clinical summary for Case Paper #${casePaperNum} at Sanjivani Dental Clinic on ${formatVisitDate(
+      `Hello ${patient.name}, here is your clinical summary for Case Paper #${casePaperNum} at ${clinicName} on ${formatVisitDate(
         enc.visitDate
-      )}. Doctor: ${enc.doctorName || "Dr. Julian Moore"}. Diagnosis: ${enc.diagnosis || enc.chiefComplaint || "General Checkup"}. Status: ${enc.status}.`
+      )}. Doctor: ${creds.doctorName}. Diagnosis: ${enc.diagnosis || enc.chiefComplaint || "General Checkup"}. Status: ${enc.status}.`
     );
     return `https://wa.me/${patient.phone.replace(/[^0-9]/g, "")}?text=${text}`;
   };
@@ -325,10 +342,35 @@ export const CasePaperTab: React.FC<CasePaperTabProps> = ({
                           {enc.visitTime && <span>at {enc.visitTime}</span>}
                         </span>
                         <span>•</span>
-                        <span className="flex items-center gap-1">
-                          <User className="w-3.5 h-3.5 text-slate-400" />
-                          <span>Treating Doctor: <strong>{enc.doctorName || "Dr. Julian Moore"}</strong></span>
-                        </span>
+                        <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                          <User className="w-3.5 h-3.5 text-primary shrink-0" />
+                          <span className="text-[11px] text-slate-500 font-bold">Doctor:</span>
+                          <select
+                            value={enc.doctorId || (doctorsList.find((d) => d.fullName === enc.doctorName)?.id || doctorsList[0]?.id || "doc-1")}
+                            onChange={async (e) => {
+                              const selectedDocId = e.target.value;
+                              const selectedDoc = doctorsList.find((d) => d.id === selectedDocId);
+                              if (selectedDoc && onEditEncounter) {
+                                onEditEncounter({
+                                  ...enc,
+                                  doctorId: selectedDoc.id,
+                                  doctorName: selectedDoc.fullName,
+                                });
+                              }
+                            }}
+                            className="bg-transparent font-bold text-slate-800 text-xs focus:outline-none cursor-pointer pr-1 hover:text-primary transition-colors"
+                            title="Change Assigned Doctor for this Case Paper"
+                          >
+                            {doctorsList.map((d) => (
+                              <option key={d.id} value={d.id}>
+                                {d.fullName} ({d.specialization || "Dental Surgeon"})
+                              </option>
+                            ))}
+                            {doctorsList.length === 0 && (
+                              <option value="tm-1">{enc.doctorName || "Dr. Rajesh Sharma"}</option>
+                            )}
+                          </select>
+                        </div>
                       </div>
                     </div>
                   </div>

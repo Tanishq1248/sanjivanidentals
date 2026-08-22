@@ -99,7 +99,16 @@ export function TeamMembersTable({
             </button>
           )}
           <div>
-            <h2 className="text-lg font-bold text-on-surface">Team Members ({members.length})</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-on-surface">Team Members ({members.length})</h2>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                doctorCount >= maxDoctors
+                  ? "bg-amber-50 text-amber-800 border-amber-300"
+                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
+              }`}>
+                {doctorCount}/{maxDoctors} Doctors (Basic Plan)
+              </span>
+            </div>
             <p className="text-xs text-on-surface-variant">Manage staff accounts, roles, and access credentials</p>
           </div>
         </div>

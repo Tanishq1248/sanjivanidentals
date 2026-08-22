@@ -3,40 +3,37 @@ import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore";
 import { db } from "../../../../../lib/firebase";
 import { COLLECTIONS } from "../../../../../lib/services/firestoreConfig";
 import { DocumentStorageService } from "../../../../../lib/services/documentStorageService";
+import { getClinicSettings } from "../../../../../lib/services/clinicSettingsService";
 import { Resend } from "resend";
 import { env } from "../../../../../lib/config/env";
-import type { Prescription, ClinicBasicInfo } from "../../../../../lib/types";
-
-type Params = { id: string };
+import type { Prescription } from "../../../../../lib/types";
 
 export async function POST(
-  request: NextRequest,
-  context: { params: Promise<Params> }
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await context.params;
-    const body = await request.json().catch(() => ({}));
-    let patientEmail = body?.email;
-    let patientName = body?.patientName;
-    let clinicName = body?.clinicName;
-
-    if (!id) {
-      return NextResponse.json({ error: "Prescription ID parameter is required." }, { status: 400 });
-    }
+    const { id } = await params;
+    const body = await req.json().catch(() => ({}));
+    let { patientEmail, patientName, clinicName } = body;
 
     // 1. Fetch Prescription from Firestore
     const rxRef = doc(db, COLLECTIONS.PRESCRIPTIONS, id);
     const rxSnap = await getDoc(rxRef);
+
     if (!rxSnap.exists()) {
-      return NextResponse.json({ error: "Prescription not found." }, { status: 404 });
+      return NextResponse.json({ error: "Prescription not found" }, { status: 404 });
     }
 
-    const prescription = { prescriptionId: rxSnap.id, ...rxSnap.data() } as Prescription;
+    const prescription = rxSnap.data() as Prescription;
     patientEmail = patientEmail || (prescription as any).patientEmail;
     patientName = patientName || prescription.patientName || "Patient";
 
-    if (!patientEmail) {
-      return NextResponse.json({ error: "Patient email is required." }, { status: 400 });
+    if (!patientEmail || !patientEmail.includes("@")) {
+      return NextResponse.json(
+        { error: "Invalid or missing recipient email address." },
+        { status: 400 }
+      );
     }
 
     const apiKey = env.resend.apiKey;
@@ -48,11 +45,9 @@ export async function POST(
       );
     }
 
-    // 2. Fetch Clinic Settings
-    const clinicRef = doc(db, COLLECTIONS.CLINIC_SETTINGS, "info");
-    const clinicSnap = await getDoc(clinicRef);
-    const clinicInfo = clinicSnap.exists() ? (clinicSnap.data() as ClinicBasicInfo) : undefined;
-    clinicName = clinicName || clinicInfo?.clinicName || "Sanjivani Dentals";
+    // 2. Fetch Clinic Settings (single source of truth)
+    const clinicInfo = await getClinicSettings();
+    clinicName = clinicName || clinicInfo.clinicName;
 
     // 3. Retrieve PDF Buffer from Firebase Storage via DocumentStorageService
     const pdfBuffer = await DocumentStorageService.getPrescriptionPdf(id, prescription, clinicInfo);

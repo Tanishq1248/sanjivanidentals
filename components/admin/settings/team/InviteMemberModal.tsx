@@ -13,26 +13,36 @@ interface InviteMemberModalProps {
 }
 
 export function InviteMemberModal({ isOpen, onClose, onInvite, roles, clinicInfo, members = [] }: InviteMemberModalProps) {
+  const doctorCount = members.filter((m) => m.role?.toLowerCase() === "doctor" || m.roleId === "role-doctor").length;
+  const maxDoctors = getMaximumDoctors(clinicInfo);
+  const isDoctorLimitReached = !canAddDoctor(doctorCount, clinicInfo);
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState(roles[0]?.name || "Doctor");
+
+  // Initialize role to Receptionist or Admin if Doctor limit is reached
+  const [role, setRole] = useState(() => {
+    if (isDoctorLimitReached) {
+      const nonDoctor = roles.find((r) => r.name.toLowerCase() !== "doctor");
+      return nonDoctor?.name || "Receptionist";
+    }
+    return roles[0]?.name || "Doctor";
+  });
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const doctorCount = members.filter((m) => m.role?.toLowerCase() === "doctor" || m.roleId === "role-doctor").length;
-  const isDoctorRole = role.toLowerCase() === "doctor";
-  const maxDoctors = getMaximumDoctors(clinicInfo);
-  const isDoctorLimitReached = isDoctorRole && !canAddDoctor(doctorCount, clinicInfo);
+  const isSelectedRoleDoctor = role.toLowerCase() === "doctor";
+  const isSubmitDisabled = isSelectedRoleDoctor && isDoctorLimitReached;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) return;
 
-    if (isDoctorLimitReached) {
-      setErrorMessage(`You have reached the maximum number of doctors allowed in the Basic Plan (${maxDoctors} Doctors). Upgrade to Professional for up to 4 doctors.`);
+    if (isSelectedRoleDoctor && isDoctorLimitReached) {
+      setErrorMessage(`Doctor limit reached for Basic Plan (Max 2). Upgrade to Professional to add more doctors.`);
       return;
     }
 
@@ -145,21 +155,25 @@ export function InviteMemberModal({ isOpen, onClose, onInvite, roles, clinicInfo
                 }}
                 className="w-full pl-9 pr-3 py-2 bg-white border border-outline-variant/30 rounded-xl text-xs font-medium text-on-surface focus:outline-none focus:border-primary transition-all appearance-none cursor-pointer"
               >
-                {roles.map((r) => (
-                  <option key={r.id} value={r.name}>
-                    {r.name} ({r.permissionCount} permissions)
-                  </option>
-                ))}
+                {roles.map((r) => {
+                  const isDoc = r.name.toLowerCase() === "doctor";
+                  const isBlocked = isDoc && isDoctorLimitReached;
+                  return (
+                    <option key={r.id} value={r.name} disabled={isBlocked}>
+                      {r.name} ({r.permissionCount} permissions){isBlocked ? " — (Basic Plan Limit Reached: 2/2)" : ""}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           </div>
 
           {/* Limit Warning / Error Alert */}
-          {(isDoctorLimitReached || errorMessage) && (
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          {((isSelectedRoleDoctor && isDoctorLimitReached) || errorMessage) && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs font-semibold text-amber-900 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <span>
-                {errorMessage || `You have reached the maximum number of doctors allowed in the Basic Plan (${maxDoctors} Doctors). Upgrade to Professional for up to 4 doctors.`}
+                {errorMessage || "Doctor limit reached for Basic Plan (Max 2). Upgrade to Professional to add more doctors."}
               </span>
             </div>
           )}
@@ -175,7 +189,7 @@ export function InviteMemberModal({ isOpen, onClose, onInvite, roles, clinicInfo
             </button>
             <button
               type="submit"
-              disabled={loading || isDoctorLimitReached}
+              disabled={loading || isSubmitDisabled}
               className="px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-dark transition-all cursor-pointer flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}

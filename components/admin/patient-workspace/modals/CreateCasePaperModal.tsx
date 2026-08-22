@@ -22,6 +22,8 @@ import type {
   PatientEncounter,
 } from "../../../../lib/types";
 
+import { useActiveDoctors } from "../../../../lib/hooks/useDoctors";
+
 export interface CreateCasePaperFormData {
   chiefComplaint: string;
   chiefComplaints: string[];
@@ -42,22 +44,24 @@ interface CreateCasePaperModalProps {
   onClose: () => void;
   onSubmit: (data: CreateCasePaperFormData, shouldOpenSession: boolean) => Promise<string | void>;
   isSubmitting?: boolean;
-  doctors: Doctor[];
+  doctors?: Doctor[];
   nextCasePaperNumber: number;
   initialData?: PatientEncounter | null;
 }
 
 const COMMON_CHIEF_COMPLAINTS = [
-  "Tooth Sensitivity",
-  "Pain on Chewing",
-  "Bleeding Gums",
-  "Swelling / Abscess",
-  "Broken / Chipped Tooth",
-  "Routine Dental Cleaning",
+  "Routine Dental Checkup",
+  "Toothache / Severe Pain",
+  "Bleeding / Swollen Gums",
+  "Sensitivity (Hot / Cold)",
   "Cavity / Food Lodgement",
+  "Broken / Chipped Tooth",
+  "Crown / Bridge Loosening",
+  "Missing Teeth / Implant Consultation",
+  "Orthodontic / Alignment Review",
+  "Stained / Discolored Teeth",
   "Wisdom Tooth Impaction",
-  "Crown / Bridge Dislodged",
-  "Orthodontic Consultation",
+  "Mouth Ulcer / Soft Tissue Lesion",
 ];
 
 const COMMON_DIAGNOSES = [
@@ -78,10 +82,13 @@ export const CreateCasePaperModal: React.FC<CreateCasePaperModalProps> = ({
   onClose,
   onSubmit,
   isSubmitting = false,
-  doctors,
+  doctors = [],
   nextCasePaperNumber,
   initialData = null,
 }) => {
+  const { doctors: activeDoctors = [] } = useActiveDoctors();
+  const availableDoctors = doctors && doctors.length > 0 ? doctors : activeDoctors;
+
   const isEditing = !!initialData;
   const displayNumber = isEditing
     ? initialData.casePaperNumber || nextCasePaperNumber
@@ -101,8 +108,8 @@ export const CreateCasePaperModal: React.FC<CreateCasePaperModalProps> = ({
     }),
     followUpDate: "",
     notes: "",
-    doctorId: doctors[0]?.id || "dr-julian-moore",
-    doctorName: doctors[0]?.fullName || "Dr. Julian Moore",
+    doctorId: availableDoctors[0]?.id || "tm-1",
+    doctorName: availableDoctors[0]?.fullName || "Dr. Rajesh Sharma",
     casePaperNumber: displayNumber,
   });
 
@@ -134,8 +141,8 @@ export const CreateCasePaperModal: React.FC<CreateCasePaperModalProps> = ({
           }),
         followUpDate: initialData.followUpDate || "",
         notes: initialData.notes || "",
-        doctorId: initialData.doctorId || doctors[0]?.id || "dr-julian-moore",
-        doctorName: initialData.doctorName || doctors[0]?.fullName || "Dr. Julian Moore",
+        doctorId: initialData.doctorId || availableDoctors[0]?.id || "tm-1",
+        doctorName: initialData.doctorName || availableDoctors[0]?.fullName || "Dr. Rajesh Sharma",
         casePaperNumber: initialData.casePaperNumber || displayNumber,
       });
     } else {
@@ -153,12 +160,12 @@ export const CreateCasePaperModal: React.FC<CreateCasePaperModalProps> = ({
         }),
         followUpDate: "",
         notes: "",
-        doctorId: doctors[0]?.id || "dr-julian-moore",
-        doctorName: doctors[0]?.fullName || "Dr. Julian Moore",
+        doctorId: availableDoctors[0]?.id || "tm-1",
+        doctorName: availableDoctors[0]?.fullName || "Dr. Rajesh Sharma",
         casePaperNumber: displayNumber,
       });
     }
-  }, [initialData, doctors, displayNumber, isOpen]);
+  }, [initialData, availableDoctors, displayNumber, isOpen]);
 
   if (!isOpen) return null;
 
@@ -460,14 +467,14 @@ export const CreateCasePaperModal: React.FC<CreateCasePaperModalProps> = ({
                   onChange={(e) => handleDoctorChange(e.target.value)}
                   className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-800 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-2xs cursor-pointer"
                 >
-                  {doctors.map((d) => (
+                  {availableDoctors.map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.fullName} ({d.specialization || "General Dentistry"})
                     </option>
                   ))}
-                  {doctors.length === 0 && (
-                    <option value="dr-julian-moore">
-                      Dr. Julian Moore (General Dentistry)
+                  {availableDoctors.length === 0 && (
+                    <option value="tm-1">
+                      Dr. Rajesh Sharma (Oral &amp; Maxillofacial Surgery)
                     </option>
                   )}
                 </select>

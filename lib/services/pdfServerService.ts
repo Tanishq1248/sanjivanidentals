@@ -1,5 +1,10 @@
 import { jsPDF } from "jspdf";
-import type { Prescription, Invoice, ClinicBasicInfo } from "../types";
+import type { Prescription, Invoice, ClinicBasicInfo, ClinicSettingsData } from "../types";
+import {
+  normalizeClinicSettings,
+  formatClinicAddress,
+  getDoctorCredentials,
+} from "./clinicSettingsService";
 
 /**
  * Server-Side PDF Generator for Prescriptions.
@@ -7,7 +12,7 @@ import type { Prescription, Invoice, ClinicBasicInfo } from "../types";
  */
 export function generatePrescriptionPdfBuffer(
   prescription: Prescription,
-  clinicInfo?: ClinicBasicInfo
+  clinicInfo?: ClinicBasicInfo | ClinicSettingsData
 ): Buffer {
   const doc = new jsPDF({
     orientation: "portrait",
@@ -15,14 +20,16 @@ export function generatePrescriptionPdfBuffer(
     format: "a4",
   });
 
-  const clinicName = clinicInfo?.clinicName || "Sanjivani Dental Clinic";
-  const doctorName = prescription.doctorName || clinicInfo?.doctorName || "Dr. Rajesh Sharma";
-  const doctorQual = clinicInfo?.qualification || "BDS, MDS (Oral & Maxillofacial Surgery)";
-  const doctorReg = clinicInfo?.registrationNumber || "MH-D-18492";
-  const address = clinicInfo?.addressLine1
-    ? `${clinicInfo.addressLine1}${clinicInfo.addressLine2 ? `, ${clinicInfo.addressLine2}` : ""}, ${clinicInfo.city}, ${clinicInfo.state}`
-    : "Suite 402, Medical Enclave, M.G. Road, Pune";
-  const phone = clinicInfo?.phone || "+91 98765 43210";
+  const norm = normalizeClinicSettings(clinicInfo);
+  const clinicName = norm.clinicName;
+  const creds = getDoctorCredentials(norm, prescription.doctorName);
+  const doctorName = creds.doctorName;
+  const doctorQual = creds.qualification;
+  const doctorReg = creds.registrationNumber;
+  const address = formatClinicAddress(norm);
+  const phone = norm.primaryPhone || norm.phone;
+  const email = norm.email;
+  const footerNote = norm.prescriptionFooterNote || norm.prescriptionFooterText;
 
   // Top Accent Bar
   doc.setFillColor(15, 118, 110); // Teal accent
@@ -38,7 +45,7 @@ export function generatePrescriptionPdfBuffer(
   doc.setFontSize(9);
   doc.setTextColor(100, 116, 139);
   doc.text(address, 14, 24);
-  doc.text(`Ph: ${phone} | Email: ${clinicInfo?.email || "contact@sanjivanidentals.com"}`, 14, 29);
+  doc.text(`Ph: ${phone} | Email: ${email}`, 14, 29);
 
   // Doctor Info Right Aligned
   doc.setFont("helvetica", "bold");
@@ -224,11 +231,11 @@ export function generatePrescriptionPdfBuffer(
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
   doc.text(
-    clinicInfo?.prescriptionFooterText || "Take medicines strictly as prescribed. For assistance call clinic helpline.",
+    footerNote || "Take medicines strictly as prescribed. For emergency assistance call clinic helpline.",
     14,
     footerY + 6
   );
-  doc.text(`Printed: ${dateStr} • System Generated Digital Prescription`, 14, footerY + 11);
+  doc.text(`Printed: ${dateStr} • System Generated Digital Prescription Pad`, 14, footerY + 11);
 
   // Doctor Signature Line Right
   doc.setDrawColor(148, 163, 184);
@@ -252,7 +259,7 @@ export function generatePrescriptionPdfBuffer(
  */
 export function generateInvoicePdfBuffer(
   invoice: Invoice,
-  clinicInfo?: ClinicBasicInfo
+  clinicInfo?: ClinicBasicInfo | ClinicSettingsData
 ): Buffer {
   const doc = new jsPDF({
     orientation: "portrait",
@@ -260,12 +267,15 @@ export function generateInvoicePdfBuffer(
     format: "a4",
   });
 
-  const clinicName = clinicInfo?.clinicName || "Sanjivani Dental Clinic";
-  const address = clinicInfo?.addressLine1
-    ? `${clinicInfo.addressLine1}${clinicInfo.addressLine2 ? `, ${clinicInfo.addressLine2}` : ""}, ${clinicInfo.city}, ${clinicInfo.state}`
-    : "Suite 402, Medical Enclave, M.G. Road, Pune";
-  const phone = clinicInfo?.phone || "+91 98765 43210";
-  const email = clinicInfo?.email || "contact@sanjivanidentals.com";
+  const norm = normalizeClinicSettings(clinicInfo);
+  const clinicName = norm.clinicName;
+  const address = formatClinicAddress(norm);
+  const phone = norm.primaryPhone || norm.phone;
+  const email = norm.email;
+  const gstin = norm.gstin || norm.gstNumber;
+  const currency = norm.currencySymbol || "₹";
+  const footerNote = norm.invoiceFooterNote || norm.invoiceFooterText || "Thank you for choosing Sanjivani Dentals!";
+  const creds = getDoctorCredentials(norm);
 
   // Top Accent Bar
   doc.setFillColor(15, 23, 42);
@@ -281,7 +291,8 @@ export function generateInvoicePdfBuffer(
   doc.setFontSize(9);
   doc.setTextColor(100, 116, 139);
   doc.text(address, 14, 24);
-  doc.text(`Ph: ${phone} | Email: ${email}`, 14, 29);
+  const contactText = `Ph: ${phone} | Email: ${email}${gstin ? ` | GSTIN: ${gstin}` : ""}`;
+  doc.text(contactText, 14, 29);
 
   // Invoice Title Right
   doc.setFont("helvetica", "bold");
@@ -344,18 +355,18 @@ export function generateInvoicePdfBuffer(
   doc.text("Amount", 175, y + 5, { align: "right" });
 
   y += 7;
-  const treatments = invoice.treatments || ["Dental Consultation"];
+  const treatments = invoice.treatments || (invoice.items ? invoice.items.map((it: any) => it.treatmentName) : ["Dental Consultation"]);
   const totalAmount = invoice.total || invoice.amount || 0;
   const itemAmt = (totalAmount / Math.max(1, treatments.length)).toFixed(2);
 
-  treatments.forEach((item, idx) => {
+  treatments.forEach((item: string, idx: number) => {
     y += 7;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(15, 23, 42);
     doc.text(`${idx + 1}`, 18, y);
     doc.text(item, 28, y);
-    doc.text(`INR ${itemAmt}`, 175, y, { align: "right" });
+    doc.text(`${currency} ${itemAmt}`, 175, y, { align: "right" });
 
     y += 2;
     doc.setDrawColor(241, 245, 249);
@@ -370,7 +381,7 @@ export function generateInvoicePdfBuffer(
   doc.text("Grand Total:", 145, y);
   doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
-  doc.text(`INR ${totalAmount.toFixed(2)}`, 196, y, { align: "right" });
+  doc.text(`${currency} ${totalAmount.toFixed(2)}`, 196, y, { align: "right" });
 
   const paidAmt = invoice.paidAmount || (status.toUpperCase() === "PAID" ? totalAmount : 0);
   y += 6;
@@ -378,7 +389,7 @@ export function generateInvoicePdfBuffer(
   doc.setTextColor(71, 85, 105);
   doc.text("Amount Paid:", 145, y);
   doc.setTextColor(16, 185, 129);
-  doc.text(`INR ${paidAmt.toFixed(2)}`, 196, y, { align: "right" });
+  doc.text(`${currency} ${paidAmt.toFixed(2)}`, 196, y, { align: "right" });
 
   const balance = Math.max(0, totalAmount - paidAmt);
   y += 6;
@@ -386,7 +397,7 @@ export function generateInvoicePdfBuffer(
   doc.setTextColor(71, 85, 105);
   doc.text("Balance Due:", 145, y);
   doc.setTextColor(balance > 0 ? 225 : 100, balance > 0 ? 29 : 116, balance > 0 ? 72 : 139);
-  doc.text(`INR ${balance.toFixed(2)}`, 196, y, { align: "right" });
+  doc.text(`${currency} ${balance.toFixed(2)}`, 196, y, { align: "right" });
 
   // Footer
   const footerY = 265;
@@ -396,8 +407,20 @@ export function generateInvoicePdfBuffer(
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
-  doc.text(clinicInfo?.invoiceFooterText || "Thank you for choosing Sanjivani Dentals!", 14, footerY + 6);
+  doc.text(footerNote, 14, footerY + 6);
   doc.text(`Generated: ${invDate} • Official Tax Invoice`, 14, footerY + 11);
+
+  // Authorized Signatory Right Aligned
+  doc.setDrawColor(148, 163, 184);
+  doc.line(145, footerY + 12, 196, footerY + 12);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(15, 23, 42);
+  doc.text(creds.doctorName || clinicName, 196, footerY + 16, { align: "right" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(148, 163, 184);
+  doc.text("Authorized Signatory", 196, footerY + 20, { align: "right" });
 
   const arrayBuffer = doc.output("arraybuffer");
   return Buffer.from(arrayBuffer);

@@ -108,7 +108,7 @@ export const EncounterDesktopTable = memo(function EncounterDesktopTable({
                   </span>
                   <span className="text-outline-variant/40 text-xs">|</span>
                   <span className="text-xs text-on-surface-variant font-semibold">
-                    {e.doctorName || "Dr. Moore"}
+                    {e.doctorName || "Dr. Rajesh Sharma"}
                   </span>
                   <span className="text-outline-variant/40 text-xs">|</span>
                   <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${statusColor}`}>

@@ -150,18 +150,18 @@ const samplePatients = [
 
 const sampleDoctors = [
   {
-    fullName: "Dr. Julian Moore",
-    specialization: "General Dentistry & Endodontics",
-    phone: "+1 (555) 111-2222",
-    email: "j.moore@sanjivanidentals.com",
+    fullName: "Dr. Rajesh Sharma",
+    specialization: "Oral & Maxillofacial Surgery",
+    phone: "+91 98765 43210",
+    email: "rajesh.sharma@sanjivanidentals.com",
     availability: ["Monday 9:00 AM - 5:00 PM", "Wednesday 9:00 AM - 5:00 PM", "Friday 9:00 AM - 3:00 PM"],
     status: "Active",
   },
   {
-    fullName: "Dr. Sarah Taylor",
-    specialization: "Orthodontics & Pedodontics",
-    phone: "+1 (555) 333-4444",
-    email: "s.taylor@sanjivanidentals.com",
+    fullName: "Dr. Ananya Verma",
+    specialization: "Conservative Dentistry & Endodontics",
+    phone: "+91 98123 88765",
+    email: "ananya.verma@sanjivanidentals.com",
     availability: ["Tuesday 10:00 AM - 6:00 PM", "Thursday 10:00 AM - 6:00 PM"],
     status: "Active",
   }
@@ -232,9 +232,9 @@ async function seed() {
     // Seed a clinical encounter document if they have a condition
     if (condition) {
       const encountersRef = collection(db, "patientEncounters");
-      const chosenDoctor = condition.includes("Orthodontic") || condition.includes("braces") 
-        ? "Dr. Sarah Taylor" 
-        : "Dr. Julian Moore";
+      const chosenDoctor = condition.includes("Root Canal") || condition.includes("Endodontics") 
+        ? "Dr. Ananya Verma" 
+        : "Dr. Rajesh Sharma";
       const chosenDoctorId = doctorMap[chosenDoctor] || doctorIds[0];
 
       const encounterDocRef = await addDoc(encountersRef, {
