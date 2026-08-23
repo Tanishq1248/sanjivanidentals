@@ -23,6 +23,8 @@ import {
 } from "firebase/auth";
 import { db, auth } from "../firebase";
 import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
+import { getClinicInfo } from "./clinicSettingsService";
+import { FeatureAccessService, canUseTwoFactorAuth, canViewAuditLogs } from "./featureAccessService";
 import type {
   LoginHistoryEntry,
   AuditLogEntry,
@@ -312,6 +314,12 @@ export async function getAuditLogs(
   pageSize = 50,
   lastDoc?: QueryDocumentSnapshot<DocumentData>
 ): Promise<{ entries: AuditLogEntry[]; lastVisible: QueryDocumentSnapshot<DocumentData> | null }> {
+  // Backend validation: check if current clinic subscription plan has auditLogs access
+  const clinicInfo = await getClinicInfo();
+  if (!canViewAuditLogs(clinicInfo)) {
+    return { entries: [], lastVisible: null };
+  }
+
   const constraints: any[] = [orderBy("timestamp", "desc"), limit(pageSize)];
 
   if (filter !== "all") {
@@ -351,6 +359,7 @@ export async function getAuditLogs(
 export const DEFAULT_SECURITY_SETTINGS: SecuritySettingsData = {
   sessionTimeoutMinutes: 30,
   auditLoggingEnabled: true,
+  twoFactorAuthEnabled: false,
 };
 
 let memorySecuritySettingsCache: SecuritySettingsData = { ...DEFAULT_SECURITY_SETTINGS };
@@ -380,6 +389,16 @@ export async function getSecuritySettings(): Promise<SecuritySettingsData> {
 export async function createOrUpdateSecuritySettings(
   data: Partial<SecuritySettingsData>
 ): Promise<SecuritySettingsData> {
+  // Backend validation: check if attempting to enable 2FA on Basic Plan
+  if (data.twoFactorAuthEnabled) {
+    const clinicInfo = await getClinicInfo();
+    if (!canUseTwoFactorAuth(clinicInfo)) {
+      throw new Error(
+        "Two-Factor Authentication (2FA) is available only in the Professional Plan. Please upgrade to enable 2FA."
+      );
+    }
+  }
+
   const current = await getSecuritySettings();
   const clinicId = data.clinicId || current.clinicId || (typeof window !== "undefined" ? localStorage.getItem("clinicId") || undefined : undefined);
 

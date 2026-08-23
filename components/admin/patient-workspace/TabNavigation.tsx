@@ -127,9 +127,9 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
   ];
 
   return (
-    <div className="bg-white border-b border-outline-variant/15 sticky top-[72px] z-10 shadow-xs">
-      <div className="overflow-x-auto no-scrollbar scroll-smooth">
-        <div className="flex min-w-max px-4 sm:px-6 gap-2 border-b border-slate-100">
+    <div className="bg-white border-b border-outline-variant/15 sticky top-[72px] z-10 shadow-xs max-w-full">
+      <div className="overflow-x-auto no-scrollbar scroll-smooth w-full">
+        <div className="flex min-w-max px-3 sm:px-6 gap-1.5 sm:gap-2 border-b border-slate-100">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = currentPrimaryTab === tab.key;
@@ -139,14 +139,14 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
                 key={tab.key}
                 id={`tab-${tab.key}`}
                 onClick={() => onTabChange(tab.key)}
-                className={`relative py-3.5 px-4 sm:px-5 text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 border-b-2 cursor-pointer outline-none whitespace-nowrap select-none ${
+                className={`relative py-2.5 sm:py-3.5 px-3 sm:px-5 text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 sm:gap-2 border-b-2 cursor-pointer outline-none whitespace-nowrap select-none min-h-[44px] ${
                   isActive
                     ? "border-primary text-primary font-bold bg-primary/5 rounded-t-xl shadow-2xs"
                     : "border-transparent text-on-surface-variant hover:text-on-surface hover:bg-slate-50 rounded-t-xl"
                 }`}
               >
                 <Icon
-                  className={`w-4 h-4 transition-colors ${
+                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-colors shrink-0 ${
                     isActive ? "text-primary stroke-[2.5]" : "text-on-surface-variant/70"
                   }`}
                 />
@@ -154,11 +154,11 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
 
                 {tab.badge !== undefined && (
                   <span
-                    className={`ml-1 text-[10px] px-1.5 py-0.2 rounded-full font-bold leading-tight ${
+                    className={`ml-1 px-1.5 py-0.5 text-[10px] sm:text-[11px] rounded-full shrink-0 ${
                       tab.badgeColor ||
                       (isActive
-                        ? "bg-primary text-white"
-                        : "bg-slate-100 text-slate-700 border border-slate-200")
+                        ? "bg-primary text-white font-bold"
+                        : "bg-slate-100 text-slate-700 font-semibold")
                     }`}
                   >
                     {tab.badge}

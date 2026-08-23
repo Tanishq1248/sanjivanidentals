@@ -33,6 +33,8 @@ import {
   Phone,
   Tag,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Building2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -172,6 +174,24 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
   // Prescription modal
   const [isRxModalOpen, setIsRxModalOpen] = useState(false);
 
+  // Mobile Kanban Tab Selection (Planned, In Progress, Completed)
+  const [mobileKanbanTab, setMobileKanbanTab] = useState<"planned" | "in_progress" | "completed">("planned");
+
+  // Collapsible Accordion States for Mobile Ancillary Modules
+  const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({
+    lab: true,
+    rx: true,
+    scans: true,
+    consumables: true,
+  });
+
+  const toggleAccordion = (key: string) => {
+    setOpenAccordions((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
   // ─── Examination Tags State ───
   const initialComplaints =
     encounter.chiefComplaints && encounter.chiefComplaints.length > 0
@@ -256,147 +276,139 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
   const [newConsumableName, setNewConsumableName] = useState("");
   const [newConsumableQty, setNewConsumableQty] = useState(1);
 
-  // ─── Extract Treatments for Session Kanban ───
-  const sessionTreatments: KanbanTreatmentItem[] = [];
+  // ─── Extract All Treatments into Kanban Items ───
+  const sessionTreatments: KanbanTreatmentItem[] = useMemo(() => {
+    const items: KanbanTreatmentItem[] = [];
 
-  if (encounter.toothTreatments && encounter.toothTreatments.length > 0) {
-    encounter.toothTreatments.forEach((tt) => {
-      const clinicalStatus = getTreatmentStatus(tt, currentStatus);
-      sessionTreatments.push({
-        id: tt.id || `${encounter.id}-${tt.toothNumber}`,
-        encounterId: encounter.id,
-        toothNumber: tt.toothNumber,
-        surfaces: tt.surfaces,
-        procedure: tt.treatmentName,
-        diagnosis: encounter.diagnosis || encounter.chiefComplaint || "Dental Restoration",
-        assignedDoctor: encounter.doctorName || "Dr. Rajesh Sharma",
-        fee: tt.fee || 0,
-        date: tt.date || encounter.visitDate,
-        status: clinicalStatus,
-        billingStatus: tt.billingStatus === "Billed" ? "Billed" : "Unbilled",
-        notes: tt.notes,
+    // 1. Tooth Treatments
+    if (encounter.toothTreatments && encounter.toothTreatments.length > 0) {
+      encounter.toothTreatments.forEach((tt) => {
+        items.push({
+          id: tt.id,
+          encounterId: encounter.id,
+          toothNumber: tt.toothNumber,
+          surfaces: tt.surfaces,
+          procedure: tt.treatmentName,
+          diagnosis: tt.diagnosis || encounter.diagnosis || "Dental Caries",
+          assignedDoctor: tt.doctorName || encounter.doctorName || "Dr. Rajesh Sharma",
+          fee: tt.fee || 0,
+          date: encounter.visitDate || "",
+          status: (tt.status as any) || "Completed",
+          billingStatus: tt.billingStatus || "Unbilled",
+          notes: tt.notes,
+        });
       });
-    });
-  } else if (encounter.treatments && encounter.treatments.length > 0) {
-    encounter.treatments.forEach((tName, idx) => {
-      const clinicalStatus: "Planned" | "In Progress" | "Completed" =
-        currentStatus === "In Progress"
-          ? "In Progress"
-          : currentStatus === "Pending"
-          ? "Planned"
-          : "Completed";
+    }
 
-      sessionTreatments.push({
-        id: `${encounter.id}-t-${idx}`,
-        encounterId: encounter.id,
-        procedure: tName,
-        diagnosis: encounter.diagnosis || encounter.chiefComplaint || "Clinical Procedure",
-        assignedDoctor: encounter.doctorName || "Dr. Rajesh Sharma",
-        fee: 0,
-        date: encounter.visitDate,
-        status: clinicalStatus,
-        billingStatus: "Unbilled",
-        notes: encounter.notes,
+    // 2. Legacy / String Treatments
+    if (encounter.treatments && encounter.treatments.length > 0) {
+      encounter.treatments.forEach((tStr, idx) => {
+        const alreadyCovered = items.some((i) => i.procedure.toLowerCase() === tStr.toLowerCase());
+        if (!alreadyCovered) {
+          items.push({
+            id: `legacy-${encounter.id}-${idx}`,
+            encounterId: encounter.id,
+            procedure: tStr,
+            diagnosis: encounter.diagnosis || "General Dental Procedure",
+            assignedDoctor: encounter.doctorName || "Dr. Rajesh Sharma",
+            fee: 0,
+            date: encounter.visitDate || "",
+            status: encounter.status === "Completed" ? "Completed" : "In Progress",
+            billingStatus: "Unbilled",
+          });
+        }
       });
-    });
-  }
+    }
 
+    return items;
+  }, [encounter]);
+
+  // Derived Kanban Columns
   const plannedTreatments = sessionTreatments.filter((t) => t.status === "Planned");
   const inProgressTreatments = sessionTreatments.filter((t) => t.status === "In Progress");
   const completedTreatments = sessionTreatments.filter((t) => t.status === "Completed");
 
-  // Handler for Kanban Lifecycle change
-  const handleMoveTreatmentStatus = async (
-    item: KanbanTreatmentItem,
-    newStatus: "Planned" | "In Progress" | "Completed"
-  ) => {
-    if (encounter.toothTreatments && encounter.toothTreatments.length > 0) {
-      const updatedToothTreatments = encounter.toothTreatments.map((tt) => {
-        if (tt.id === item.id || `${encounter.id}-${tt.toothNumber}` === item.id) {
-          return {
-            ...tt,
-            status: newStatus,
-            treatmentStatus: newStatus,
-          };
-        }
-        return tt;
-      });
-
-      await onUpdateEncounter(encounter.id, {
-        toothTreatments: updatedToothTreatments,
-      });
-    } else {
-      const newEncounterStatus: EncounterStatus =
-        newStatus === "Completed"
-          ? "Completed"
-          : newStatus === "In Progress"
-          ? "In Progress"
-          : "Pending";
-      setCurrentStatus(newEncounterStatus);
-      await onUpdateEncounter(encounter.id, { status: newEncounterStatus });
-    }
-  };
-
+  // ─── Status Handler ───
   const handleStatusSelect = async (newStatus: EncounterStatus) => {
-    setCurrentStatus(newStatus);
+    if (newStatus === currentStatus) return;
     setIsUpdatingStatus(true);
+    setCurrentStatus(newStatus);
     try {
       await onUpdateEncounter(encounter.id, { status: newStatus });
-      setNotesToast(`Case paper status updated to ${newStatus}`);
-      setTimeout(() => setNotesToast(null), 2500);
+      setNotesToast(`Status updated to ${newStatus}`);
+      setTimeout(() => setNotesToast(null), 3000);
+    } catch (err) {
+      console.error("Error updating status:", err);
+      setCurrentStatus(encounter.status || "In Progress");
     } finally {
       setIsUpdatingStatus(false);
     }
   };
 
-  const handleAddTag = async (category: string) => {
-    if (!newTagInput || !newTagInput.value.trim()) return;
-    const val = newTagInput.value.trim();
+  // ─── Move Kanban Item ───
+  const handleMoveTreatmentStatus = async (
+    item: KanbanTreatmentItem,
+    targetStatus: "Planned" | "In Progress" | "Completed"
+  ) => {
+    const updatedToothTreatments = (encounter.toothTreatments || []).map((tt) => {
+      if (tt.id === item.id) {
+        return {
+          ...tt,
+          status: targetStatus,
+        };
+      }
+      return tt;
+    });
 
-    if (category === "complaints") {
-      const updated = [...chiefComplaints, val];
-      setChiefComplaints(updated);
+    try {
       await onUpdateEncounter(encounter.id, {
-        chiefComplaints: updated,
-        chiefComplaint: updated.join(", "),
+        toothTreatments: updatedToothTreatments,
       });
+      setNotesToast(`Treatment status moved to ${targetStatus}`);
+      setTimeout(() => setNotesToast(null), 2500);
+    } catch (err) {
+      console.error("Error moving treatment:", err);
     }
-    if (category === "medical") setMedicalTags((prev) => [...prev, val]);
-    if (category === "dental") setDentalHistoryTags((prev) => [...prev, val]);
-    if (category === "allergies") setAllergyTags((prev) => [...prev, val]);
+  };
 
+  // ─── Tag Handlers ───
+  const handleAddTag = (category: string) => {
+    if (!newTagInput || !newTagInput.value.trim()) {
+      setNewTagInput(null);
+      return;
+    }
+    const val = newTagInput.value.trim();
+    if (category === "complaints") setChiefComplaints((prev) => [...prev, val]);
+    else if (category === "medical") setMedicalTags((prev) => [...prev, val]);
+    else if (category === "dental") setDentalHistoryTags((prev) => [...prev, val]);
+    else if (category === "allergies") setAllergyTags((prev) => [...prev, val]);
     setNewTagInput(null);
   };
 
-  const handleRemoveTag = async (category: string, index: number) => {
-    if (category === "complaints") {
-      const updated = chiefComplaints.filter((_, i) => i !== index);
-      setChiefComplaints(updated);
-      await onUpdateEncounter(encounter.id, {
-        chiefComplaints: updated,
-        chiefComplaint: updated.join(", "),
-      });
-    }
-    if (category === "medical") setMedicalTags((prev) => prev.filter((_, i) => i !== index));
-    if (category === "dental") setDentalHistoryTags((prev) => prev.filter((_, i) => i !== index));
-    if (category === "allergies") setAllergyTags((prev) => prev.filter((_, i) => i !== index));
+  const handleRemoveTag = (category: string, index: number) => {
+    if (category === "complaints") setChiefComplaints((prev) => prev.filter((_, i) => i !== index));
+    else if (category === "medical") setMedicalTags((prev) => prev.filter((_, i) => i !== index));
+    else if (category === "dental") setDentalHistoryTags((prev) => prev.filter((_, i) => i !== index));
+    else if (category === "allergies") setAllergyTags((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // ─── Progress Notes Save ───
   const handleSaveNotes = async () => {
     setIsSavingNotes(true);
     try {
-      await onUpdateEncounter(encounter.id, { notes: sessionNotes });
-      setNotesToast("Clinical progress notes saved successfully.");
+      await onUpdateEncounter(encounter.id, {
+        notes: sessionNotes,
+        chiefComplaints,
+      });
+      setNotesToast("Clinical progress notes saved successfully!");
       setTimeout(() => setNotesToast(null), 3000);
-    } catch {
-      setNotesToast("Failed to save progress notes.");
-      setTimeout(() => setNotesToast(null), 3000);
+    } catch (err) {
+      console.error("Error saving notes:", err);
     } finally {
       setIsSavingNotes(false);
     }
   };
 
-  // ─── Clinic Settings (Single Source of Truth) ───
   const { data: clinicSettings } = useQuery<ClinicSettingsData>({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicSettings,
@@ -418,7 +430,7 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
   const whatsappUrl = `https://wa.me/${patient.phone.replace(/[^0-9]/g, "")}?text=${whatsappText}`;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col print:bg-white">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col print:bg-white w-full max-w-full overflow-x-hidden">
       
       {/* ═════════════════════════════════════════════════════════════════════
           PRINT-ONLY CLINIC LETTERHEAD (OFFICIAL CASE PAPER)
@@ -480,25 +492,25 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
       {/* ═════════════════════════════════════════════════════════════════════
           1. STICKY DEDICATED SESSION HEADER & WORKSPACE NAVIGATION
       ══════════════════════════════════════════════════════════════════════ */}
-      <header className="sticky top-0 z-40 bg-white border-b border-outline-variant/20 shadow-xs backdrop-blur-md print:hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <header className="sticky top-0 z-40 bg-white/95 border-b border-outline-variant/20 shadow-xs backdrop-blur-md print:hidden max-w-full">
+        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-2.5 sm:py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 max-w-full">
           
           {/* Left: Back Link & Patient Snapshot */}
-          <div className="flex items-center gap-3.5">
+          <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0 max-w-full">
             <Link
               href={`/admin/patients/${patient.id}`}
-              className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors flex items-center gap-1 text-xs font-bold shrink-0 cursor-pointer shadow-2xs"
+              className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors flex items-center gap-1 text-xs font-bold shrink-0 cursor-pointer shadow-2xs min-w-[36px] min-h-[36px] justify-center"
               title="Return to Patient Profile"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Back to Patient Profile</span>
+              <span className="hidden md:inline">Back</span>
             </Link>
 
-            <div className="h-6 w-px bg-slate-200 hidden sm:block" />
+            <div className="h-6 w-px bg-slate-200 hidden sm:block shrink-0" />
 
             {/* Patient Context Pill */}
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary font-bold flex items-center justify-center text-xs border border-primary/20 shrink-0">
+            <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-primary/10 text-primary font-bold flex items-center justify-center text-xs border border-primary/20 shrink-0">
                 {patient.name
                   .split(" ")
                   .map((n) => n[0])
@@ -507,27 +519,27 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
                   .toUpperCase()}
               </div>
 
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-sm font-bold text-slate-900 font-sans">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <h1 className="text-xs sm:text-sm font-bold text-slate-900 font-sans truncate max-w-[140px] sm:max-w-[200px] md:max-w-none">
                     {patient.name}
                   </h1>
-                  <span className="text-[11px] text-slate-500 font-medium">
+                  <span className="text-[10px] sm:text-[11px] text-slate-500 font-medium shrink-0">
                     ({patient.age}y / {patient.gender})
                   </span>
                   {medicalProfile?.allergies && (
-                    <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-800 border border-rose-200 text-[10px] font-bold flex items-center gap-1">
-                      <ShieldAlert className="w-3 h-3 text-rose-600" />
-                      Allergy Alert
+                    <span className="px-1.5 py-0.2 rounded-full bg-rose-50 text-rose-800 border border-rose-200 text-[9px] sm:text-[10px] font-bold flex items-center gap-1 shrink-0">
+                      <ShieldAlert className="w-2.5 h-2.5 text-rose-600" />
+                      Allergy
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                  <span>{patient.phone}</span>
+                <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium truncate">
+                  <span className="truncate">{patient.phone}</span>
                   <span>•</span>
-                  <span className="text-primary font-bold">
-                    Case Paper #{casePaperNumber}
+                  <span className="text-primary font-bold shrink-0">
+                    CP #{casePaperNumber}
                   </span>
                 </div>
               </div>
@@ -535,17 +547,14 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
           </div>
 
           {/* Right: Status Pill & Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2 self-end md:self-auto">
+          <div className="flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2 shrink-0 pt-0.5 sm:pt-0 border-t sm:border-t-0 border-slate-100">
             {/* Status Dropdown */}
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
-              <span className="text-[11px] font-bold text-slate-500 uppercase px-2">
-                Status:
-              </span>
+            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200">
               <select
                 value={currentStatus}
                 onChange={(e) => handleStatusSelect(e.target.value as EncounterStatus)}
                 disabled={isUpdatingStatus}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer border shadow-2xs focus:outline-none ${
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer border shadow-2xs focus:outline-none min-h-[34px] ${
                   currentStatus === "Completed"
                     ? "bg-emerald-50 text-emerald-800 border-emerald-300"
                     : currentStatus === "In Progress"
@@ -561,43 +570,45 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
             </div>
 
             {/* Quick Actions */}
-            <button
-              onClick={() => setIsRxModalOpen(true)}
-              className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-              title="Issue Prescription"
-            >
-              <Pill className="w-3.5 h-3.5 text-emerald-700" />
-              <span>Rx</span>
-            </button>
-
-            {onOpenInvoice && (
+            <div className="flex items-center gap-1.5">
               <button
-                onClick={() => onOpenInvoice(encounter)}
-                className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                title="Generate Invoice"
+                onClick={() => setIsRxModalOpen(true)}
+                className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs min-h-[34px]"
+                title="Issue Prescription"
               >
-                <Receipt className="w-3.5 h-3.5 text-blue-700" />
-                <span>Bill</span>
+                <Pill className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Rx</span>
               </button>
-            )}
 
-            <a
-              href={whatsappUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2 bg-[#dcfce7] hover:bg-green-200 text-green-900 rounded-xl transition-colors border border-green-300 shadow-2xs cursor-pointer"
-              title="Share Clinical Summary on WhatsApp"
-            >
-              <Share2 className="w-4 h-4 text-green-700" />
-            </a>
+              {onOpenInvoice && (
+                <button
+                  onClick={() => onOpenInvoice(encounter)}
+                  className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs min-h-[34px]"
+                  title="Generate Invoice"
+                >
+                  <Receipt className="w-3.5 h-3.5 text-blue-700" />
+                  <span>Bill</span>
+                </button>
+              )}
 
-            <button
-              onClick={() => window.print()}
-              className="p-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl transition-colors cursor-pointer shadow-2xs"
-              title="Print Case Paper"
-            >
-              <Printer className="w-4 h-4" />
-            </button>
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 bg-[#dcfce7] hover:bg-green-200 text-green-900 rounded-xl transition-colors border border-green-300 shadow-2xs cursor-pointer min-h-[34px] min-w-[34px] flex items-center justify-center"
+                title="Share Clinical Summary on WhatsApp"
+              >
+                <Share2 className="w-3.5 h-3.5 text-green-700" />
+              </a>
+
+              <button
+                onClick={() => window.print()}
+                className="p-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl transition-colors cursor-pointer shadow-2xs min-h-[34px] min-w-[34px] flex items-center justify-center"
+                title="Print Case Paper"
+              >
+                <Printer className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -605,23 +616,23 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
       {/* ═════════════════════════════════════════════════════════════════════
           MAIN CLINICAL CANVAS BODY
       ══════════════════════════════════════════════════════════════════════ */}
-      <main className="max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6 flex-1">
+      <main className="max-w-7xl mx-auto w-full p-3.5 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 flex-1 max-w-full min-w-0">
         
         {/* ─────────────────────────────────────────────────────────────────
             SECTION A: CASE PAPER METADATA & STRUCTURED EXAMINATION TAGS
         ────────────────────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-2xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-2xs overflow-hidden max-w-full">
           {/* Sub Header */}
-          <div className="p-4 sm:p-5 border-b border-outline-variant/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 text-primary rounded-xl shrink-0">
+          <div className="p-3.5 sm:p-5 border-b border-outline-variant/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60 max-w-full min-w-0">
+            <div className="flex items-start sm:items-center gap-3 min-w-0">
+              <div className="p-2 bg-primary/10 text-primary rounded-xl shrink-0 mt-0.5 sm:mt-0">
                 <Stethoscope className="w-5 h-5" />
               </div>
-              <div>
-                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2 flex-wrap">
                   <span>Clinical Case Paper #{casePaperNumber}</span>
                   <span
-                    className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
+                    className={`text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full border ${
                       currentStatus === "Completed"
                         ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                         : currentStatus === "In Progress"
@@ -632,15 +643,15 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
                     {currentStatus}
                   </span>
                 </h2>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-500 font-medium mt-1">
-                  <span className="flex items-center gap-1">
+                <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 text-xs text-slate-500 font-medium mt-1 min-w-0">
+                  <span className="flex items-center gap-1 shrink-0">
                     <Calendar className="w-3.5 h-3.5 text-primary" />
                     <span>{formatDate(encounter.visitDate)} {encounter.visitTime ? `at ${encounter.visitTime}` : ""}</span>
                   </span>
-                  <span>•</span>
-                  <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                  <span className="shrink-0">•</span>
+                  <div className="flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-slate-200 shadow-2xs max-w-full min-w-0">
                     <User className="w-3.5 h-3.5 text-primary shrink-0" />
-                    <span className="text-[11px] font-bold text-slate-600">Assigned Doctor:</span>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-600 shrink-0">Doctor:</span>
                     <select
                       value={encounter.doctorId || (availableDoctors.find((d) => d.fullName === encounter.doctorName)?.id || availableDoctors[0]?.id || "tm-1")}
                       onChange={async (e) => {
@@ -653,16 +664,16 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
                           });
                         }
                       }}
-                      className="bg-transparent font-bold text-slate-800 text-xs focus:outline-none cursor-pointer pr-1 hover:text-primary transition-colors"
+                      className="bg-transparent font-bold text-slate-800 text-xs focus:outline-none cursor-pointer pr-1 hover:text-primary transition-colors truncate max-w-[130px] sm:max-w-[200px] md:max-w-none"
                       title="Change Assigned Doctor for this Case Paper"
                     >
                       {availableDoctors.map((d) => (
                         <option key={d.id} value={d.id}>
-                          {d.fullName} ({d.specialization || "Dental Surgeon"})
+                          {d.fullName}
                         </option>
                       ))}
                       {availableDoctors.length === 0 && (
-                        <option value="tm-1">Dr. Rajesh Sharma (Oral &amp; Maxillofacial Surgery)</option>
+                        <option value="tm-1">Dr. Rajesh Sharma</option>
                       )}
                     </select>
                   </div>
@@ -671,15 +682,15 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
             </div>
 
             {encounter.diagnosis && (
-              <div className="text-xs bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs self-start sm:self-auto">
+              <div className="text-xs bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs self-start sm:self-auto max-w-full min-w-0">
                 <span className="text-slate-400 font-bold uppercase text-[10px] block">Diagnosis:</span>
-                <span className="font-bold text-slate-800">{encounter.diagnosis}</span>
+                <span className="font-bold text-slate-800 truncate block max-w-[240px] sm:max-w-none">{encounter.diagnosis}</span>
               </div>
             )}
           </div>
 
           {/* 4 Structured Tag Rows: Chief Complaints, Medical History, Dental History, Allergies */}
-          <div className="p-5 space-y-4 text-xs">
+          <div className="p-3.5 sm:p-5 space-y-3.5 sm:space-y-4 text-xs max-w-full">
             
             {/* 1. Chief Complaints Row */}
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
@@ -892,8 +903,8 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
         {/* ─────────────────────────────────────────────────────────────────
             SECTION B: INTERACTIVE ODONTOGRAM & TOOTH TREATMENT PANEL
         ────────────────────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden flex flex-col lg:flex-row min-h-[520px]">
-          <div className="flex-1 overflow-hidden h-full">
+        <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden flex flex-col lg:flex-row min-h-[480px] sm:min-h-[520px] max-w-full">
+          <div className="flex-1 overflow-hidden h-full max-w-full">
             <DentalChart patientId={patient.id} patientName={patient.name} />
           </div>
 
@@ -906,14 +917,14 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
         </div>
 
         {/* ─────────────────────────────────────────────────────────────────
-            SECTION C: 3-COLUMN TREATMENT LIFECYCLE KANBAN
+            SECTION C: 3-COLUMN / TABBED TREATMENT LIFECYCLE KANBAN
         ────────────────────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-outline-variant/15 p-5 shadow-2xs space-y-4">
+        <div className="bg-white rounded-2xl border border-outline-variant/15 p-3.5 sm:p-5 shadow-2xs space-y-4 max-w-full">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-outline-variant/10">
             <div>
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 font-sans">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2 font-sans">
                 <FileSpreadsheet className="w-5 h-5 text-primary" />
-                Treatment Kanban (Session #{casePaperNumber})
+                <span>Treatment Kanban (Session #{casePaperNumber})</span>
               </h3>
               <p className="text-xs text-slate-500">
                 Track clinical progression from diagnostic planning to active execution and completion.
@@ -925,11 +936,52 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
             </div>
           </div>
 
-          {/* 3 Columns */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {/* Mobile Segmented Tab Bar (< 768px / md) */}
+          <div className="md:hidden flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setMobileKanbanTab("planned")}
+              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                mobileKanbanTab === "planned"
+                  ? "bg-amber-500 text-white shadow-2xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Planned ({plannedTreatments.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileKanbanTab("in_progress")}
+              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                mobileKanbanTab === "in_progress"
+                  ? "bg-blue-600 text-white shadow-2xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              In Progress ({inProgressTreatments.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileKanbanTab("completed")}
+              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                mobileKanbanTab === "completed"
+                  ? "bg-emerald-600 text-white shadow-2xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Done ({completedTreatments.length})
+            </button>
+          </div>
+
+          {/* Kanban Columns (Tabbed on mobile, 3-column grid on desktop) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
             
             {/* Column 1: PLANNED */}
-            <div className="bg-amber-50/40 border border-amber-200/80 rounded-2xl p-4 flex flex-col justify-between space-y-3">
+            <div
+              className={`bg-amber-50/40 border border-amber-200/80 rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between space-y-3 ${
+                mobileKanbanTab !== "planned" ? "hidden md:flex" : "flex"
+              }`}
+            >
               <div>
                 <div className="flex items-center justify-between pb-2.5 border-b border-amber-200/60 mb-3">
                   <span className="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
@@ -972,14 +1024,14 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
                           </span>
                         </div>
 
-                        <p className="text-[11px] text-slate-500">
+                        <p className="text-[11px] text-slate-500 truncate">
                           {item.diagnosis} • {item.assignedDoctor}
                         </p>
 
                         <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
                           <button
                             onClick={() => handleMoveTreatmentStatus(item, "In Progress")}
-                            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs min-h-[32px]"
                           >
                             <span>▶ Start Treatment</span>
                           </button>
@@ -998,7 +1050,11 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
             </div>
 
             {/* Column 2: IN PROGRESS */}
-            <div className="bg-blue-50/40 border border-blue-200/80 rounded-2xl p-4 flex flex-col justify-between space-y-3">
+            <div
+              className={`bg-blue-50/40 border border-blue-200/80 rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between space-y-3 ${
+                mobileKanbanTab !== "in_progress" ? "hidden md:flex" : "flex"
+              }`}
+            >
               <div>
                 <div className="flex items-center justify-between pb-2.5 border-b border-blue-200/60 mb-3">
                   <span className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
@@ -1041,14 +1097,14 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
                           </span>
                         </div>
 
-                        <p className="text-[11px] text-slate-500">
+                        <p className="text-[11px] text-slate-500 truncate">
                           {item.diagnosis} • {item.assignedDoctor}
                         </p>
 
                         <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
                           <button
                             onClick={() => handleMoveTreatmentStatus(item, "Completed")}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs min-h-[32px]"
                           >
                             <Check className="w-3 h-3" />
                             <span>Complete</span>
@@ -1068,7 +1124,11 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
             </div>
 
             {/* Column 3: COMPLETED */}
-            <div className="bg-emerald-50/40 border border-emerald-200/80 rounded-2xl p-4 flex flex-col justify-between space-y-3">
+            <div
+              className={`bg-emerald-50/40 border border-emerald-200/80 rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between space-y-3 ${
+                mobileKanbanTab !== "completed" ? "hidden md:flex" : "flex"
+              }`}
+            >
               <div>
                 <div className="flex items-center justify-between pb-2.5 border-b border-emerald-200/60 mb-3">
                   <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
@@ -1111,7 +1171,7 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
                           </span>
                         </div>
 
-                        <p className="text-[11px] text-slate-500">
+                        <p className="text-[11px] text-slate-500 truncate">
                           {item.diagnosis} • {item.assignedDoctor}
                         </p>
 
@@ -1144,147 +1204,210 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
         </div>
 
         {/* ─────────────────────────────────────────────────────────────────
-            SECTION D: ANCILLARY CLINICAL MODULES (2x2 GRID)
+            SECTION D: ANCILLARY CLINICAL MODULES (COLLAPSIBLE ACCORDIONS ON MOBILE)
         ────────────────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
           
           {/* Module 1: Laboratory Orders */}
-          <div className="bg-white rounded-2xl border border-outline-variant/15 p-5 shadow-2xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-outline-variant/10">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 font-sans">
-                <Package className="w-4.5 h-4.5 text-primary" />
-                Laboratory Orders & Prosthetics
+          <div className="bg-white rounded-2xl border border-outline-variant/15 p-3.5 sm:p-5 shadow-2xs space-y-3.5 sm:space-y-4">
+            <div
+              onClick={() => toggleAccordion("lab")}
+              className="flex items-center justify-between pb-2 sm:pb-3 border-b border-outline-variant/10 cursor-pointer lg:cursor-default select-none"
+            >
+              <h3 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2 font-sans">
+                <Package className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-primary" />
+                <span>Laboratory Orders &amp; Prosthetics</span>
+                <span className="text-[10px] font-mono bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded-full font-bold">
+                  {labOrders.length}
+                </span>
               </h3>
-              <button
-                onClick={() => setIsNewLabModalOpen(true)}
-                className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" /> New Lab Order
-              </button>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsNewLabModalOpen(true);
+                  }}
+                  className="text-[11px] sm:text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span>New Order</span>
+                </button>
+                <div className="lg:hidden text-slate-400">
+                  {openAccordions.lab ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </div>
+              </div>
             </div>
 
-            {labOrders.length === 0 ? (
-              <p className="text-xs text-slate-400 italic py-6 text-center bg-slate-50 rounded-xl">
-                No active laboratory prosthetic orders for this patient.
-              </p>
-            ) : (
-              <div className="space-y-2.5 text-xs">
-                {labOrders.map((order) => (
-                  <div
-                    key={order.id}
-                    className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-900">
-                        {order.prosthesisType} {order.toothNumber ? `(Tooth #${order.toothNumber})` : ""}
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                        {order.status}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-500 flex items-center justify-between">
-                      <span>Lab: <strong>{order.labName}</strong></span>
-                      <span>Shade: <strong>{order.shade}</strong></span>
-                      <span>Due: <strong>{order.dueDate}</strong></span>
-                    </div>
+            {(openAccordions.lab || typeof window === "undefined") && (
+              <>
+                {labOrders.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic py-5 text-center bg-slate-50 rounded-xl">
+                    No active laboratory prosthetic orders for this patient.
+                  </p>
+                ) : (
+                  <div className="space-y-2 text-xs">
+                    {labOrders.map((order) => (
+                      <div
+                        key={order.id}
+                        className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 truncate max-w-[200px] sm:max-w-none">
+                            {order.prosthesisType} {order.toothNumber ? `(#${order.toothNumber})` : ""}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                            {order.status}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-1">
+                          <span>Lab: <strong>{order.labName}</strong></span>
+                          <span>Shade: <strong>{order.shade}</strong></span>
+                          <span>Due: <strong>{order.dueDate}</strong></span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </div>
 
           {/* Module 2: Visit Prescriptions */}
-          <div className="bg-white rounded-2xl border border-outline-variant/15 p-5 shadow-2xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-outline-variant/10">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 font-sans">
-                <Pill className="w-4.5 h-4.5 text-emerald-600" />
-                Visit Prescriptions & Medications
+          <div className="bg-white rounded-2xl border border-outline-variant/15 p-3.5 sm:p-5 shadow-2xs space-y-3.5 sm:space-y-4">
+            <div
+              onClick={() => toggleAccordion("rx")}
+              className="flex items-center justify-between pb-2 sm:pb-3 border-b border-outline-variant/10 cursor-pointer lg:cursor-default select-none"
+            >
+              <h3 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2 font-sans">
+                <Pill className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-emerald-600" />
+                <span>Visit Prescriptions &amp; Medications</span>
               </h3>
-              <button
-                onClick={() => setIsRxModalOpen(true)}
-                className="text-xs font-bold text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" /> Prescribe Rx
-              </button>
-            </div>
-
-            <div className="space-y-2.5 text-xs">
-              <div className="p-3 bg-emerald-50/50 border border-emerald-200/80 rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-emerald-900">Standard Post-Op Medication Set</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                    Active
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <span className="px-2 py-0.5 bg-white border border-emerald-200 rounded-md text-[11px] text-emerald-900 font-semibold">
-                    Amoxicillin 500mg (1-0-1) × 5 days
-                  </span>
-                  <span className="px-2 py-0.5 bg-white border border-emerald-200 rounded-md text-[11px] text-emerald-900 font-semibold">
-                    Ibuprofen 400mg + Paracetamol (1-0-1) × 3 days
-                  </span>
-                  <span className="px-2 py-0.5 bg-white border border-emerald-200 rounded-md text-[11px] text-emerald-900 font-semibold">
-                    Chlorhexidine 0.2% Mouthwash (10ml TDS)
-                  </span>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsRxModalOpen(true);
+                  }}
+                  className="text-[11px] sm:text-xs font-bold text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span>Prescribe</span>
+                </button>
+                <div className="lg:hidden text-slate-400">
+                  {openAccordions.rx ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </div>
               </div>
             </div>
+
+            {(openAccordions.rx || typeof window === "undefined") && (
+              <div className="space-y-2 text-xs">
+                <div className="p-3 bg-emerald-50/50 border border-emerald-200/80 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-emerald-900">Standard Post-Op Medication Set</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 shrink-0">
+                      Active
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="px-2 py-0.5 bg-white border border-emerald-200 rounded-md text-[11px] text-emerald-900 font-semibold">
+                      Amoxicillin 500mg (1-0-1) × 5 days
+                    </span>
+                    <span className="px-2 py-0.5 bg-white border border-emerald-200 rounded-md text-[11px] text-emerald-900 font-semibold">
+                      Ibuprofen 400mg + Paracetamol (1-0-1) × 3 days
+                    </span>
+                    <span className="px-2 py-0.5 bg-white border border-emerald-200 rounded-md text-[11px] text-emerald-900 font-semibold">
+                      Chlorhexidine 0.2% Mouthwash (10ml TDS)
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Module 3: Scans & Diagnostics */}
-          <div className="bg-white rounded-2xl border border-outline-variant/15 p-5 shadow-2xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-outline-variant/10">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 font-sans">
-                <UploadCloud className="w-4.5 h-4.5 text-indigo-600" />
-                Diagnostic Scans & X-Rays
+          <div className="bg-white rounded-2xl border border-outline-variant/15 p-3.5 sm:p-5 shadow-2xs space-y-3.5 sm:space-y-4">
+            <div
+              onClick={() => toggleAccordion("scans")}
+              className="flex items-center justify-between pb-2 sm:pb-3 border-b border-outline-variant/10 cursor-pointer lg:cursor-default select-none"
+            >
+              <h3 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2 font-sans">
+                <UploadCloud className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-indigo-600" />
+                <span>Diagnostic Scans &amp; X-Rays</span>
               </h3>
-              <span className="text-xs font-bold text-slate-500">IOPA & Bitewings</span>
-            </div>
-
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
-                  IOPA
-                </div>
-                <div>
-                  <span className="font-bold text-slate-900 block">Bitewing Scan #14 Molar</span>
-                  <span className="text-[11px] text-slate-500">Taken for this session • Verified by Clinician</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500 hidden sm:inline">IOPA &amp; Bitewings</span>
+                <div className="lg:hidden text-slate-400">
+                  {openAccordions.scans ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </div>
               </div>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Attached
-              </span>
             </div>
+
+            {(openAccordions.scans || typeof window === "undefined") && (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs gap-2">
+                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
+                    IOPA
+                  </div>
+                  <div className="min-w-0">
+                    <span className="font-bold text-slate-900 block truncate">Bitewing Scan #14 Molar</span>
+                    <span className="text-[10px] sm:text-[11px] text-slate-500 truncate block">Taken for this session • Verified</span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                  Attached
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Module 4: Inventory & Consumables Used */}
-          <div className="bg-white rounded-2xl border border-outline-variant/15 p-5 shadow-2xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-outline-variant/10">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 font-sans">
-                <FileCheck className="w-4.5 h-4.5 text-amber-600" />
-                Consumables & Materials Log
+          <div className="bg-white rounded-2xl border border-outline-variant/15 p-3.5 sm:p-5 shadow-2xs space-y-3.5 sm:space-y-4">
+            <div
+              onClick={() => toggleAccordion("consumables")}
+              className="flex items-center justify-between pb-2 sm:pb-3 border-b border-outline-variant/10 cursor-pointer lg:cursor-default select-none"
+            >
+              <h3 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2 font-sans">
+                <FileCheck className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-amber-600" />
+                <span>Consumables &amp; Materials</span>
+                <span className="text-[10px] font-mono bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded-full font-bold">
+                  {consumablesUsed.length}
+                </span>
               </h3>
-              <button
-                onClick={() => setIsConsumableModalOpen(true)}
-                className="text-xs font-bold text-amber-800 hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Material
-              </button>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsConsumableModalOpen(true);
+                  }}
+                  className="text-[11px] sm:text-xs font-bold text-amber-800 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span>Add</span>
+                </button>
+                <div className="lg:hidden text-slate-400">
+                  {openAccordions.consumables ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-1.5 text-xs">
-              {consumablesUsed.map((c) => (
-                <div
-                  key={c.id}
-                  className="p-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between"
-                >
-                  <span className="text-slate-800 font-medium">{c.name}</span>
-                  <span className="font-bold text-slate-900 font-mono bg-white px-2 py-0.5 rounded border border-slate-200">
-                    {c.quantity} {c.unit}
-                  </span>
-                </div>
-              ))}
-            </div>
+            {(openAccordions.consumables || typeof window === "undefined") && (
+              <div className="space-y-1.5 text-xs">
+                {consumablesUsed.map((c) => (
+                  <div
+                    key={c.id}
+                    className="p-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between gap-2"
+                  >
+                    <span className="text-slate-800 font-medium truncate">{c.name}</span>
+                    <span className="font-bold text-slate-900 font-mono bg-white px-2 py-0.5 rounded border border-slate-200 shrink-0 text-[11px]">
+                      {c.quantity} {c.unit}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
         </div>
@@ -1292,12 +1415,12 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
         {/* ─────────────────────────────────────────────────────────────────
             SECTION E: CLINICAL PROGRESS NOTES (SOAP FORMAT)
         ────────────────────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-outline-variant/15 p-5 sm:p-6 shadow-2xs space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-outline-variant/10">
+        <div className="bg-white rounded-2xl border border-outline-variant/15 p-3.5 sm:p-6 shadow-2xs space-y-3.5 sm:space-y-4 max-w-full">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-outline-variant/10">
             <div>
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 font-sans">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2 font-sans">
                 <FileText className="w-5 h-5 text-primary" />
-                Clinical Examination & Progress Notes (SOAP)
+                <span>Clinical Examination &amp; Progress Notes (SOAP)</span>
               </h3>
               <p className="text-xs text-slate-500">
                 Structured observations: Subjective symptoms, Objective intraoral findings, Assessment/Prognosis, and Plan/Post-op guidance.
@@ -1307,7 +1430,7 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
             <button
               onClick={handleSaveNotes}
               disabled={isSavingNotes}
-              className="px-4 py-2 bg-primary hover:bg-primary/95 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+              className="px-4 py-2 bg-primary hover:bg-primary/95 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60 min-h-[38px] sm:min-h-0 self-stretch sm:self-auto"
             >
               {isSavingNotes ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
               <span>Save Progress Notes</span>
@@ -1320,7 +1443,7 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
               value={sessionNotes}
               onChange={(e) => setSessionNotes(e.target.value)}
               placeholder="Refined observations for this session... (Subjective complaints, Objective findings, Assessment/Diagnosis, Procedural steps & Post-operative instructions)"
-              className="w-full p-3.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all resize-y leading-relaxed font-medium"
+              className="w-full p-3 sm:p-3.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all resize-y leading-relaxed font-medium"
             />
           </div>
         </div>
@@ -1330,7 +1453,7 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
       {/* ── Modal: New Lab Order ── */}
       {isNewLabModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <Package className="w-5 h-5 text-primary" />
@@ -1426,13 +1549,13 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsNewLabModalOpen(false)}
-                  className="flex-1 py-2.5 border border-slate-200 rounded-xl font-semibold cursor-pointer"
+                  className="flex-1 py-2.5 border border-slate-200 rounded-xl font-semibold cursor-pointer min-h-[40px]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 bg-primary text-white font-bold rounded-xl cursor-pointer"
+                  className="flex-1 py-2.5 bg-primary text-white font-bold rounded-xl cursor-pointer min-h-[40px]"
                 >
                   Save Lab Order
                 </button>
@@ -1445,7 +1568,7 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
       {/* ── Modal: Add Consumable ── */}
       {isConsumableModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <FileCheck className="w-5 h-5 text-amber-600" />
@@ -1505,13 +1628,13 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsConsumableModalOpen(false)}
-                  className="flex-1 py-2.5 border border-slate-200 rounded-xl font-semibold cursor-pointer"
+                  className="flex-1 py-2.5 border border-slate-200 rounded-xl font-semibold cursor-pointer min-h-[40px]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 bg-primary text-white font-bold rounded-xl cursor-pointer"
+                  className="flex-1 py-2.5 bg-primary text-white font-bold rounded-xl cursor-pointer min-h-[40px]"
                 >
                   Add to Log
                 </button>

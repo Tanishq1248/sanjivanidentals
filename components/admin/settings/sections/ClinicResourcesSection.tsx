@@ -2,25 +2,53 @@
 
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Armchair, Save, CheckCircle2, Loader2, AlertCircle, ToggleLeft, ToggleRight } from "lucide-react";
+import {
+  Armchair,
+  Save,
+  CheckCircle2,
+  Loader2,
+  AlertCircle,
+  ToggleLeft,
+  ToggleRight,
+  Lock,
+  Sparkles,
+} from "lucide-react";
 import { queryKeys } from "../../../../lib/query/queryKeys";
 import {
   getClinicResources,
   saveClinicResources,
   validateClinicResources,
+  getClinicInfo,
 } from "../../../../lib/services/settingsService";
+import {
+  getSubscription,
+  getMaximumChairs,
+  FeatureAccessService,
+} from "../../../../lib/services/featureAccessService";
 import type { ClinicResourcesData, ChairItem } from "../../../../lib/types";
+import { UpgradeToProModal } from "../UpgradeToProModal";
 
 export default function ClinicResourcesSection() {
   const queryClient = useQueryClient();
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+
+  const { data: clinicInfo } = useQuery({
+    queryKey: queryKeys.settings.clinicInfo,
+    queryFn: getClinicInfo,
+    staleTime: 5 * 60_000,
+  });
 
   const { data: resourcesData, isLoading } = useQuery({
     queryKey: queryKeys.settings.clinicResources,
     queryFn: getClinicResources,
     staleTime: 5 * 60_000,
   });
+
+  const subscription = getSubscription(clinicInfo);
+  const isBasicPlan = subscription.plan === "basic";
+  const maxChairs = getMaximumChairs(clinicInfo);
 
   const [formData, setFormData] = useState<ClinicResourcesData>({
     chairCount: 1,
@@ -42,10 +70,18 @@ export default function ClinicResourcesSection() {
       setValidationErrors({});
       setTimeout(() => setSavedSuccess(false), 3000);
     },
+    onError: (err: any) => {
+      setValidationErrors({ server: err?.message || "Failed to save resources" });
+    },
   });
 
   const handleChairCountChange = (newCount: number) => {
-    const clamped = Math.min(4, Math.max(1, newCount));
+    if (newCount > maxChairs) {
+      setIsUpgradeModalOpen(true);
+      return;
+    }
+
+    const clamped = Math.min(maxChairs, Math.max(1, newCount));
     const currentChairs = [...formData.chairs];
 
     let newChairs: ChairItem[] = [];
@@ -94,7 +130,7 @@ export default function ClinicResourcesSection() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const validation = validateClinicResources(formData);
+    const validation = validateClinicResources(formData, maxChairs);
 
     if (!validation.isValid) {
       setValidationErrors(validation.errors);
@@ -125,9 +161,20 @@ export default function ClinicResourcesSection() {
               <Armchair className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-on-surface leading-tight">Clinic Resources</h2>
-              <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-                Configure the treatment chairs available in your clinic.
+              <div className="flex items-center gap-2 mb-0.5">
+                <h2 className="text-lg font-bold text-on-surface leading-tight">Clinic Resources</h2>
+                <span
+                  className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
+                    isBasicPlan
+                      ? "bg-amber-50 text-amber-900 border-amber-300"
+                      : "bg-emerald-50 text-emerald-900 border-emerald-300"
+                  }`}
+                >
+                  {isBasicPlan ? "Basic Plan (2 Chairs Max)" : "Pro Plan (Up to 10 Chairs)"}
+                </span>
+              </div>
+              <p className="text-xs text-on-surface-variant font-medium">
+                Configure the treatment chairs and operatory stations operating in your clinic.
               </p>
             </div>
           </div>
@@ -139,6 +186,37 @@ export default function ClinicResourcesSection() {
             </div>
           )}
         </div>
+
+        {/* Basic Plan Upgrade Callout Banner */}
+        {isBasicPlan && (
+          <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/80 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-900">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 shrink-0">
+                <Lock className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                  <span>Basic Plan Limit: 2 Treatment Chairs</span>
+                  <span className="text-[10px] px-2 py-0.2 rounded-full bg-amber-200 text-amber-950 font-extrabold">
+                    2/2 Configured
+                  </span>
+                </p>
+                <p className="text-[11px] text-amber-800/90 mt-0.5">
+                  Adding a 3rd chair or operatory is locked on the Basic Plan. Upgrade to Professional to manage up to 10 chairs.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsUpgradeModalOpen(true)}
+              className="px-3.5 py-1.5 rounded-xl bg-amber-800 hover:bg-amber-900 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0 self-end sm:self-center"
+            >
+              <Sparkles className="w-3.5 h-3.5 fill-amber-300 text-amber-300" />
+              <span>Upgrade to Pro</span>
+            </button>
+          </div>
+        )}
 
         {/* Global Validation Banner */}
         {Object.keys(validationErrors).length > 0 && (
@@ -157,9 +235,14 @@ export default function ClinicResourcesSection() {
 
         {/* Field 1: Number of Chairs Dropdown */}
         <div className="space-y-2 max-w-sm">
-          <label htmlFor="select-chair-count" className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-            Number of Chairs <span className="text-rose-500">*</span>
-          </label>
+          <div className="flex items-center justify-between">
+            <label htmlFor="select-chair-count" className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+              Number of Chairs <span className="text-rose-500">*</span>
+            </label>
+            <span className="text-[11px] font-bold text-slate-500 font-mono">
+              Max: {maxChairs} Chairs
+            </span>
+          </div>
           <select
             id="select-chair-count"
             value={formData.chairCount}
@@ -168,14 +251,32 @@ export default function ClinicResourcesSection() {
           >
             <option value={1}>1 Chair</option>
             <option value={2}>2 Chairs</option>
-            <option value={3}>3 Chairs</option>
-            <option value={4}>4 Chairs</option>
+            <option value={3} disabled={isBasicPlan}>
+              3 Chairs {isBasicPlan ? "— (🔒 Locked: Pro Feature)" : ""}
+            </option>
+            <option value={4} disabled={isBasicPlan}>
+              4 Chairs {isBasicPlan ? "— (🔒 Locked: Pro Feature)" : ""}
+            </option>
+            <option value={5} disabled={isBasicPlan}>
+              5 Chairs {isBasicPlan ? "— (🔒 Locked: Pro Feature)" : ""}
+            </option>
+            <option value={6} disabled={isBasicPlan}>
+              6 Chairs {isBasicPlan ? "— (🔒 Locked: Pro Feature)" : ""}
+            </option>
+            <option value={8} disabled={isBasicPlan}>
+              8 Chairs {isBasicPlan ? "— (🔒 Locked: Pro Feature)" : ""}
+            </option>
+            <option value={10} disabled={isBasicPlan}>
+              10 Chairs {isBasicPlan ? "— (🔒 Locked: Pro Feature)" : ""}
+            </option>
           </select>
           {validationErrors.chairCount && (
             <p className="text-[11px] font-bold text-rose-600">{validationErrors.chairCount}</p>
           )}
           <p className="text-[11px] text-slate-500 font-medium">
-            Select total treatment chairs operating in your clinic (Max: 4 chairs).
+            {isBasicPlan
+              ? "Basic Plan includes up to 2 treatment chairs. Upgrade to Professional for up to 10 chairs."
+              : "Select total treatment chairs operating in your clinic (Max: 10 chairs)."}
           </p>
         </div>
 
@@ -285,6 +386,14 @@ export default function ClinicResourcesSection() {
           </button>
         </div>
       </form>
+
+      {/* Pro Upgrade Modal */}
+      <UpgradeToProModal
+        isOpen={isUpgradeModalOpen}
+        onClose={() => setIsUpgradeModalOpen(false)}
+        highlightFeature="Treatment Chairs & Clinic Resources"
+        currentPlan={subscription.plan}
+      />
     </div>
   );
 }

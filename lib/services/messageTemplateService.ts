@@ -1,6 +1,8 @@
 import { doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
+import { getClinicInfo } from "./clinicSettingsService";
+import { FeatureAccessService, canEditCustomTemplates } from "./featureAccessService";
 import type {
   MessageTemplate,
   MessageTemplatesDocument,
@@ -129,6 +131,13 @@ export async function saveMessageTemplates(
   templates: MessageTemplatesDocument,
   updatedBy?: string
 ): Promise<boolean> {
+  const clinicInfo = await getClinicInfo();
+  if (!canEditCustomTemplates(clinicInfo)) {
+    throw new Error(
+      "Custom message template editing is available only in the Professional Plan. Please upgrade to customize templates."
+    );
+  }
+
   const sampleTemplate = Object.values(templates)[0];
   const clinicId = sampleTemplate?.clinicId;
 

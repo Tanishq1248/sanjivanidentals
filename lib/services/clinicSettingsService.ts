@@ -10,21 +10,8 @@ import type {
 
 export const CLINIC_SETTINGS_COLLECTION = COLLECTIONS.CLINIC_SETTINGS || "clinicSettings";
 
-export const DEFAULT_SUBSCRIPTION: ClinicSubscriptionData = {
-  plan: "basic",
-  status: "active",
-  features: {
-    rolePermissions: false,
-    maxDoctors: 2,
-    maxReceptionists: 1,
-    customRoles: false,
-    permissionEditing: false,
-    chairManagement: true,
-    advancedAnalytics: false,
-    whatsappAutomation: true,
-    auditLogs: false,
-  },
-};
+import { DEFAULT_SUBSCRIPTION } from "./featureAccessService";
+export { DEFAULT_SUBSCRIPTION };
 
 export const DEFAULT_CLINIC_ADDRESS: ClinicAddressDetails = {
   line1: "Suite 402, Medical Enclave",

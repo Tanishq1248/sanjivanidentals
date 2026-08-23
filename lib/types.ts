@@ -81,6 +81,8 @@ export interface ToothTreatmentEntry {
   toothNumber: number;
   surfaces?: SurfaceType[];
   treatmentName: string;
+  diagnosis?: string;
+  doctorName?: string;
   status: string; // Clinical status ("Completed" | "In Progress" | "Planned") for backward compatibility
   treatmentStatus?: ClinicalTreatmentStatus; // Explicit Clinical Status
   billingStatus?: BillingStatus; // Explicit Financial Status ("Unbilled" | "Billed")
@@ -539,22 +541,30 @@ export interface ClinicReferralConfig {
 
 export type SubscriptionPlanType = "basic" | "professional" | "enterprise";
 
-export interface SubscriptionFeatures {
-  rolePermissions: boolean;
-  maxDoctors: number;
-  maxReceptionists: number;
-  customRoles: boolean;
-  permissionEditing: boolean;
-  chairManagement: boolean;
-  advancedAnalytics: boolean;
-  whatsappAutomation: boolean;
-  auditLogs: boolean;
+export interface ClinicSubscriptionFeatures {
+  plan: SubscriptionPlanType;
+  maxDoctors: number;             // Basic: 2, Pro: 10
+  maxChairs: number;              // Basic: 2, Pro: 10
+  customMessageTemplates: boolean;// Basic: false, Pro: true
+  advancedAppointmentRules: boolean; // Basic: false, Pro: true
+  twoFactorAuth: boolean;         // Basic: false, Pro: true
+  auditLogs: boolean;             // Basic: false, Pro: true
+  bulkDataExport: boolean;        // Basic: false, Pro: true
+  rolePermissions?: boolean;
+  maxReceptionists?: number;
+  customRoles?: boolean;
+  permissionEditing?: boolean;
+  chairManagement?: boolean;
+  advancedAnalytics?: boolean;
+  whatsappAutomation?: boolean;
 }
+
+export type SubscriptionFeatures = ClinicSubscriptionFeatures;
 
 export interface ClinicSubscriptionData {
   plan: SubscriptionPlanType;
   status: "active" | "trial" | "expired" | "cancelled";
-  features: SubscriptionFeatures;
+  features: ClinicSubscriptionFeatures;
 }
 
 /** Lightweight subscription stub — ready for future billing integration. */
@@ -618,6 +628,7 @@ export interface AppointmentSettingsData {
   bufferTimeMinutes: number;          // 0, 5, 10, 15
   autoConfirmWebBookings: boolean;    // true / false
   allowChairOverbooking: boolean;     // true / false
+  chairRulesEnabled?: boolean;        // true / false (Pro feature)
   clinicId?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
@@ -689,6 +700,7 @@ export interface AuditLogEntry {
 export interface SecuritySettingsData {
   sessionTimeoutMinutes: number;   // 15, 30, 60, 120
   auditLoggingEnabled: boolean;
+  twoFactorAuthEnabled?: boolean;  // Pro feature
   clinicId?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;

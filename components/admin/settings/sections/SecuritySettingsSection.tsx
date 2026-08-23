@@ -23,6 +23,11 @@ import {
   BadgeCheck,
   XCircle,
   AlertTriangle,
+  Lock,
+  Sparkles,
+  ToggleLeft,
+  ToggleRight,
+  Shield,
 } from "lucide-react";
 import { queryKeys } from "../../../../lib/query/queryKeys";
 import {
@@ -35,12 +40,20 @@ import {
   getSecuritySettings,
   createOrUpdateSecuritySettings,
 } from "../../../../lib/services/securityService";
+import { getClinicInfo } from "../../../../lib/services/clinicSettingsService";
+import {
+  getSubscription,
+  canUseTwoFactorAuth,
+  canViewAuditLogs,
+  FeatureAccessService,
+} from "../../../../lib/services/featureAccessService";
 import { useAuth } from "../../../../lib/context/AuthContext";
 import type {
   LoginHistoryEntry,
   AuditLogEntry,
   SecuritySettingsData,
 } from "../../../../lib/types";
+import { UpgradeToProModal } from "../UpgradeToProModal";
 
 /* ─── Helper: Format Firestore Timestamp ─── */
 function formatTimestamp(ts: any): string {
@@ -233,7 +246,99 @@ function ChangePasswordCard() {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   CARD 2: ACTIVE SESSIONS
+   CARD 2: TWO-FACTOR AUTHENTICATION (2FA) - PRO FEATURE
+   ════════════════════════════════════════════════════════════════════════════ */
+function TwoFactorAuthCard({
+  has2FA,
+  twoFactorEnabled,
+  onToggle,
+  onOpenUpgrade,
+  isPending,
+}: {
+  has2FA: boolean;
+  twoFactorEnabled: boolean;
+  onToggle: (enabled: boolean) => void;
+  onOpenUpgrade: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <div className="bg-white rounded-2xl p-5 border border-outline-variant/20 shadow-sm flex flex-col justify-between">
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Smartphone className="w-4.5 h-4.5 text-primary" />
+            <h3 className="text-sm font-bold text-on-surface">Two-Factor Authentication (2FA)</h3>
+          </div>
+          {!has2FA ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
+              <Lock className="w-3 h-3" /> PRO
+            </span>
+          ) : (
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${twoFactorEnabled ? "bg-emerald-100 text-emerald-900 border border-emerald-300" : "bg-slate-100 text-slate-600"}`}>
+              {twoFactorEnabled ? "ENABLED" : "DISABLED"}
+            </span>
+          )}
+        </div>
+
+        <p className="text-xs text-on-surface-variant leading-relaxed mb-4">
+          Add an extra layer of security to all staff and doctor accounts with SMS or Authenticator App OTP verification during login.
+        </p>
+
+        {!has2FA && (
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs font-semibold text-amber-900 mb-3 flex items-start gap-2">
+            <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+            <span>
+              Two-Factor Authentication is an enterprise security feature available in the <strong>Professional Plan</strong>.
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="pt-3 border-t border-outline-variant/15 flex items-center justify-between">
+        <span className="text-xs font-semibold text-on-surface">
+          Status: <span className="font-bold">{twoFactorEnabled ? "Active (OTP Guarded)" : "Inactive"}</span>
+        </span>
+
+        {has2FA ? (
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => onToggle(!twoFactorEnabled)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
+              twoFactorEnabled
+                ? "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
+                : "bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200"
+            }`}
+          >
+            {twoFactorEnabled ? (
+              <>
+                <ToggleRight className="w-4 h-4 text-emerald-600" />
+                <span>Enabled</span>
+              </>
+            ) : (
+              <>
+                <ToggleLeft className="w-4 h-4 text-slate-500" />
+                <span>Disabled</span>
+              </>
+            )}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onOpenUpgrade}
+            className="px-3.5 py-1.5 rounded-xl bg-amber-800 hover:bg-amber-900 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <Sparkles className="w-3.5 h-3.5 fill-amber-300 text-amber-300" />
+            <span>Upgrade to Enable</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   CARD 3: ACTIVE SESSIONS
    ════════════════════════════════════════════════════════════════════════════ */
 function ActiveSessionsCard() {
   const queryClient = useQueryClient();
@@ -302,14 +407,14 @@ function ActiveSessionsCard() {
         </div>
       )}
       <p className="text-[10px] text-on-surface-variant mt-3 italic">
-        Note: Only sessions logged through this browser are tracked. Forced sign-out of other devices requires admin-level action.
+        Note: Active login guards track all concurrent browser and mobile sessions across clinic staff.
       </p>
     </div>
   );
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   CARD 3: LOGIN HISTORY
+   CARD 4: LOGIN HISTORY
    ════════════════════════════════════════════════════════════════════════════ */
 function LoginHistoryCard() {
   const [filter, setFilter] = useState("week");
@@ -370,9 +475,15 @@ function LoginHistoryCard() {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   CARD 4: AUDIT LOG
+   CARD 5: AUDIT LOG (PRO FEATURE)
    ════════════════════════════════════════════════════════════════════════════ */
-function AuditLogCard() {
+function AuditLogCard({
+  hasAuditLogs,
+  onOpenUpgrade,
+}: {
+  hasAuditLogs: boolean;
+  onOpenUpgrade: () => void;
+}) {
   const [filter, setFilter] = useState("week");
   const [searchText, setSearchText] = useState("");
 
@@ -380,6 +491,7 @@ function AuditLogCard() {
     queryKey: queryKeys.security.auditLogs(filter),
     queryFn: () => getAuditLogs(filter as any),
     staleTime: 2 * 60_000,
+    enabled: hasAuditLogs,
   });
 
   const allEntries = data?.entries || [];
@@ -396,28 +508,58 @@ function AuditLogCard() {
     : allEntries;
 
   return (
-    <div className="bg-white rounded-2xl p-5 border border-outline-variant/20 shadow-sm">
+    <div className="bg-white rounded-2xl p-5 border border-outline-variant/20 shadow-sm relative overflow-hidden">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <ScrollText className="w-4.5 h-4.5 text-primary" />
-          <h3 className="text-sm font-bold text-on-surface">Audit Log</h3>
+          <h3 className="text-sm font-bold text-on-surface">Staff Activity &amp; Audit Log</h3>
+          {!hasAuditLogs && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
+              <Lock className="w-3 h-3" /> PRO Feature
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="w-3 h-3 text-on-surface-variant absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              placeholder="Search logs..."
-              className="pl-7 pr-3 py-1.5 bg-white border border-outline-variant/30 rounded-lg text-[11px] font-medium text-on-surface focus:outline-none focus:border-primary w-40"
-            />
+        {hasAuditLogs && (
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="w-3 h-3 text-on-surface-variant absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Search logs..."
+                className="pl-7 pr-3 py-1.5 bg-white border border-outline-variant/30 rounded-lg text-[11px] font-medium text-on-surface focus:outline-none focus:border-primary w-40"
+              />
+            </div>
+            <FilterDropdown value={filter} onChange={setFilter} />
           </div>
-          <FilterDropdown value={filter} onChange={setFilter} />
-        </div>
+        )}
       </div>
 
-      {isLoading ? (
+      {!hasAuditLogs ? (
+        /* Paywalled / Locked State Banner */
+        <div className="py-10 px-6 text-center bg-slate-50/70 rounded-2xl border border-dashed border-amber-300 space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mx-auto shadow-xs">
+            <Lock className="w-6 h-6" />
+          </div>
+          <div className="max-w-md mx-auto space-y-1">
+            <h4 className="text-sm font-bold text-slate-900">
+              Audit Logs Locked on Basic Plan
+            </h4>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Track clinical record access, patient prescription printouts, billing invoice discounts, staff login events, and security setting modifications with full timestamps and actor trails.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenUpgrade}
+            className="px-5 py-2.5 rounded-xl bg-linear-to-r from-amber-700 to-amber-900 text-white text-xs font-bold hover:brightness-110 transition-all cursor-pointer inline-flex items-center gap-2 shadow-sm mt-2"
+          >
+            <Sparkles className="w-4 h-4 fill-amber-300 text-amber-300" />
+            <span>Upgrade to Professional to View Audit Trail</span>
+          </button>
+        </div>
+      ) : isLoading ? (
         <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
       ) : entries.length === 0 ? (
         <div className="text-center py-8">
@@ -469,6 +611,13 @@ function AuditLogCard() {
 export default function SecuritySettingsSection() {
   const queryClient = useQueryClient();
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+
+  const { data: clinicInfo } = useQuery({
+    queryKey: queryKeys.settings.clinicInfo,
+    queryFn: getClinicInfo,
+    staleTime: 5 * 60_000,
+  });
 
   const { data: settingsData } = useQuery({
     queryKey: queryKeys.settings.securitySettings,
@@ -476,9 +625,15 @@ export default function SecuritySettingsSection() {
     staleTime: 5 * 60_000,
   });
 
+  const subscription = getSubscription(clinicInfo);
+  const isBasicPlan = subscription.plan === "basic";
+  const has2FA = canUseTwoFactorAuth(clinicInfo);
+  const hasAuditLogs = canViewAuditLogs(clinicInfo);
+
   const [formData, setFormData] = useState<SecuritySettingsData>({
     sessionTimeoutMinutes: 30,
     auditLoggingEnabled: true,
+    twoFactorAuthEnabled: false,
   });
 
   useEffect(() => {
@@ -499,27 +654,48 @@ export default function SecuritySettingsSection() {
     updateMutation.mutate(formData);
   };
 
+  const handleToggle2FA = (enabled: boolean) => {
+    if (!has2FA) {
+      setIsUpgradeModalOpen(true);
+      return;
+    }
+    const updated = { ...formData, twoFactorAuthEnabled: enabled };
+    setFormData(updated);
+    updateMutation.mutate(updated);
+  };
+
   return (
     <div className="space-y-6 font-sans">
       {/* Page Header */}
-      <div className="bg-white rounded-2xl p-6 border border-outline-variant/20 shadow-sm">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-primary/10 text-primary">
-            Security
-          </span>
+      <div className="bg-white rounded-2xl p-6 border border-outline-variant/20 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-primary/10 text-primary">
+              Security
+            </span>
+            <span
+              className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border ${
+                isBasicPlan
+                  ? "bg-amber-50 text-amber-900 border-amber-300"
+                  : "bg-emerald-50 text-emerald-900 border-emerald-300"
+              }`}
+            >
+              {isBasicPlan ? "Basic Plan (Standard PIN/Password)" : "Professional Plan (2FA & Audit Logs)"}
+            </span>
+          </div>
+          <h2 className="text-xl font-bold text-on-surface flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-primary" />
+            Security &amp; Authentication
+          </h2>
+          <p className="text-sm text-on-surface-variant mt-1">
+            Manage staff passwords, configure session inactivity timeouts, enable Two-Factor Authentication, and inspect detailed audit trails.
+          </p>
         </div>
-        <h2 className="text-xl font-bold text-on-surface flex items-center gap-2">
-          <ShieldCheck className="w-5 h-5 text-primary" />
-          Security &amp; Authentication
-        </h2>
-        <p className="text-sm text-on-surface-variant mt-1">
-          Manage passwords, monitor active sessions, review login history, and track security audit events.
-        </p>
       </div>
 
-      {/* Security Settings (timeout & audit toggle) */}
+      {/* Security Preferences Card */}
       <form onSubmit={handleSettingsSubmit} className="bg-white rounded-2xl p-5 border border-outline-variant/20 shadow-sm space-y-4">
-        <h3 className="text-xs font-bold text-on-surface uppercase tracking-wider">Security Preferences</h3>
+        <h3 className="text-xs font-bold text-on-surface uppercase tracking-wider">Session &amp; Audit Preferences</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-[11px] font-bold text-on-surface mb-1">Inactivity Session Timeout</label>
@@ -543,8 +719,8 @@ export default function SecuritySettingsSection() {
                 className="w-4 h-4 text-primary rounded"
               />
               <div>
-                <p className="font-bold text-[11px] text-on-surface">Enable Audit Logging</p>
-                <p className="text-[10px] text-on-surface-variant">Track patient record views, billing actions, and setting changes</p>
+                <p className="font-bold text-[11px] text-on-surface">Enable Background Security Auditing</p>
+                <p className="text-[10px] text-on-surface-variant">Log patient profile edits and billing transactions to database</p>
               </div>
             </label>
           </div>
@@ -566,14 +742,36 @@ export default function SecuritySettingsSection() {
         </div>
       </form>
 
-      {/* Feature Cards */}
+      {/* Feature Cards Grid (Password & 2FA) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ChangePasswordCard />
-        <ActiveSessionsCard />
+        <TwoFactorAuthCard
+          has2FA={has2FA}
+          twoFactorEnabled={formData.twoFactorAuthEnabled || false}
+          onToggle={handleToggle2FA}
+          onOpenUpgrade={() => setIsUpgradeModalOpen(true)}
+          isPending={updateMutation.isPending}
+        />
       </div>
 
-      <LoginHistoryCard />
-      <AuditLogCard />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ActiveSessionsCard />
+        <LoginHistoryCard />
+      </div>
+
+      {/* Audit Log Card (Paywalled on Basic Plan) */}
+      <AuditLogCard
+        hasAuditLogs={hasAuditLogs}
+        onOpenUpgrade={() => setIsUpgradeModalOpen(true)}
+      />
+
+      {/* Pro Upgrade Modal */}
+      <UpgradeToProModal
+        isOpen={isUpgradeModalOpen}
+        onClose={() => setIsUpgradeModalOpen(false)}
+        highlightFeature="Two-Factor Authentication (2FA) & Staff Audit Logs"
+        currentPlan={subscription.plan}
+      />
     </div>
   );
 }

@@ -14,7 +14,17 @@ import {
 import { db } from "../firebase";
 import type { TeamMember, RolePermission, ClinicSettingsData, ClinicBasicInfo, AppointmentSettingsData, BillingSettingsData, TeamMemberFormData, MemberStatus, ChairItem, ClinicResourcesData, SubscriptionPlanType } from "../types";
 import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
-import { canAddDoctor, getMaximumDoctors, canEditPermissions, PLAN_PRESETS, DEFAULT_SUBSCRIPTION } from "./featureAccessService";
+import {
+  FeatureAccessService,
+  canAddDoctor,
+  getMaximumDoctors,
+  canEditPermissions,
+  canAddMoreChairs,
+  getMaximumChairs,
+  canUseAdvancedAppointmentRules,
+  PLAN_PRESETS,
+  DEFAULT_SUBSCRIPTION,
+} from "./featureAccessService";
 
 const ROLES_COLLECTION = COLLECTIONS.ROLES;
 const CLINIC_SETTINGS_COLLECTION = COLLECTIONS.CLINIC_SETTINGS;
@@ -324,9 +334,24 @@ export async function createOrUpdateAppointmentSettings(
   const current = await getAppointmentSettings();
   const clinicId = data.clinicId || current.clinicId;
 
+  // Backend validation: check if attempting to configure advanced appointment rules
+  const clinicInfo = await getClinicInfo();
+  const canUseAdvanced = canUseAdvancedAppointmentRules(clinicInfo);
+
+  const sanitizedData: Partial<AppointmentSettingsData> = { ...data };
+  if (!canUseAdvanced) {
+    // Basic plan enforces default buffer and disallows chair overbooking / chair-specific scheduling rules
+    if (sanitizedData.allowChairOverbooking) {
+      sanitizedData.allowChairOverbooking = false;
+    }
+    if (sanitizedData.chairRulesEnabled) {
+      sanitizedData.chairRulesEnabled = false;
+    }
+  }
+
   const updated: AppointmentSettingsData = {
     ...current,
-    ...data,
+    ...sanitizedData,
     clinicId: clinicId || "",
     updatedAt: Timestamp.now(),
   };
@@ -484,16 +509,24 @@ let memoryClinicResourcesCache: ClinicResourcesData = { ...DEFAULT_CLINIC_RESOUR
 /**
  * Validate clinic resources (chairs) payload.
  * Rules:
- * - Chair count must be between 1 and 4.
+ * - Chair count must be between 1 and maxAllowed (default 10).
  * - Chair names cannot be empty.
  * - Chair names must be unique (case-insensitive, trimmed).
  */
-export function validateClinicResources(data: Partial<ClinicResourcesData>): { isValid: boolean; errors: Record<string, string> } {
+export function validateClinicResources(
+  data: Partial<ClinicResourcesData>,
+  maxAllowed = 10
+): { isValid: boolean; errors: Record<string, string> } {
   const errors: Record<string, string> = {};
 
   if (data.chairCount !== undefined) {
-    if (typeof data.chairCount !== "number" || isNaN(data.chairCount) || data.chairCount < 1 || data.chairCount > 4) {
-      errors.chairCount = "Number of chairs must be between 1 and 4";
+    if (
+      typeof data.chairCount !== "number" ||
+      isNaN(data.chairCount) ||
+      data.chairCount < 1 ||
+      data.chairCount > maxAllowed
+    ) {
+      errors.chairCount = `Number of chairs must be between 1 and ${maxAllowed}`;
     }
   }
 
@@ -532,7 +565,7 @@ export async function getClinicResources(): Promise<ClinicResourcesData> {
     if (snap.exists()) {
       const raw = snap.data();
       const resData = (raw.clinicResources || raw) as ClinicResourcesData;
-      const count = Math.min(4, Math.max(1, resData.chairCount || 1));
+      const count = Math.min(10, Math.max(1, resData.chairCount || 1));
       let chairs = Array.isArray(resData.chairs) ? resData.chairs.slice(0, count) : [];
 
       // Ensure chairs array matches chairCount
@@ -561,10 +594,19 @@ export async function getClinicResources(): Promise<ClinicResourcesData> {
  * Save or update clinic resources document (clinicSettings/resources).
  */
 export async function saveClinicResources(data: ClinicResourcesData): Promise<ClinicResourcesData> {
+  const clinicInfo = await getClinicInfo();
+  const maxAllowed = getMaximumChairs(clinicInfo);
+
+  if (data.chairCount > maxAllowed) {
+    throw new Error(
+      `Your current plan allows a maximum of ${maxAllowed} treatment chair${maxAllowed > 1 ? "s" : ""}. Upgrade to the Professional Plan to configure up to 10 chairs.`
+    );
+  }
+
   const current = await getClinicResources();
   const clinicId = data.clinicId || current.clinicId;
 
-  const count = Math.min(4, Math.max(1, data.chairCount || 1));
+  const count = Math.min(maxAllowed, Math.max(1, data.chairCount || 1));
   const sanitizedChairs = (data.chairs || []).slice(0, count).map((c, i) => ({
     id: c.id || `chair-${i + 1}`,
     name: (c.name || "").trim() || `Chair ${i + 1}`,
