@@ -93,22 +93,25 @@ export function NewAppointmentModal({
     patientEmail: "",
   });
 
+  const defaultDoctor = doctors[0];
+  const defaultDoctorId = defaultDoctor?.id || "doc-1";
+  const defaultDoctorName = defaultDoctor?.fullName || "Dr. Rajesh Sharma";
+
   /* Sync defaults when modal opens */
   useEffect(() => {
     if (isOpen) {
-      const defaultDoc = doctors[0];
       setForm((f) => ({
         ...f,
         date: defaultDate,
         time: defaultTime,
         chairId: "",
-        doctorId: defaultDoc?.id || "doc-1",
-        doctorName: defaultDoc?.fullName || "Dr. Rajesh Sharma",
+        doctorId: defaultDoctorId,
+        doctorName: defaultDoctorName,
       }));
       setSelectedPatient(null);
       setPatientSearch("");
     }
-  }, [isOpen, defaultDate, defaultTime, doctors]);
+  }, [isOpen, defaultDate, defaultTime, defaultDoctorId, defaultDoctorName]);
 
   /* ── Mutation ── */
   const mutation = useMutation({

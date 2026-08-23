@@ -35,9 +35,6 @@ import {
   Mail,
   RefreshCw,
 } from "lucide-react";
-import { collection, getDocs, query, where, doc, updateDoc } from "firebase/firestore";
-import { db } from "../../../lib/firebase";
-import { COLLECTIONS } from "../../../lib/services/firestoreConfig";
 import { AdminAuthGuard } from "../../../components/auth/AdminAuthGuard";
 import { useAuth } from "../../../lib/context/AuthContext";
 import { getPatientByPhone, getPatients } from "../../../lib/services/patientService";

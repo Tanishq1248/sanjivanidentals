@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore";
-import { db } from "../../../../../lib/firebase";
+import { adminDb } from "../../../../../lib/server/firebaseAdmin";
+import { FieldValue } from "firebase-admin/firestore";
 import { COLLECTIONS } from "../../../../../lib/services/firestoreConfig";
 import { DocumentStorageService } from "../../../../../lib/services/documentStorageService";
 import { getClinicSettings } from "../../../../../lib/services/clinicSettingsService";
@@ -25,10 +25,10 @@ export async function POST(
       return NextResponse.json({ error: "Invoice ID parameter is required." }, { status: 400 });
     }
 
-    // 1. Fetch Invoice from Firestore
-    const invRef = doc(db, COLLECTIONS.INVOICES, id);
-    const invSnap = await getDoc(invRef);
-    if (!invSnap.exists()) {
+    // 1. Fetch Invoice from Firestore via Admin SDK
+    const invRef = adminDb.collection(COLLECTIONS.INVOICES).doc(id);
+    const invSnap = await invRef.get();
+    if (!invSnap.exists) {
       return NextResponse.json({ error: "Invoice record not found." }, { status: 404 });
     }
 
@@ -84,10 +84,10 @@ export async function POST(
       );
     }
 
-    // Update Firestore invoice document
-    await updateDoc(invRef, {
+    // Update Firestore invoice document via Admin SDK
+    await invRef.update({
       emailSent: true,
-      emailSentAt: Timestamp.now(),
+      emailSentAt: FieldValue.serverTimestamp(),
     });
 
     return NextResponse.json({

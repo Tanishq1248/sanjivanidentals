@@ -168,31 +168,19 @@ export async function getActiveDoctors(): Promise<TeamMember[]> {
   );
 }
 
+import {
+  addTeamMemberAction,
+  updateTeamMemberAction,
+  deleteTeamMemberAction,
+} from "../../server/actions/settingsActions";
+
 /**
- * Add a new team member to Firestore teamMembers collection.
+ * Add a new team member to Firestore teamMembers collection securely via Server Action.
  */
 export async function addTeamMember(
   formData: TeamMemberFormData
 ): Promise<TeamMember> {
   const clinicId = (formData as any).clinicId;
-
-  // Backend validation: Check Doctor quota for current subscription plan
-  const isDoctorRole =
-    formData.role?.toLowerCase() === "doctor" || formData.roleId === "role-doctor";
-  if (isDoctorRole) {
-    const members = await getTeamMembers();
-    const doctorCount = members.filter(
-      (m) => m.role?.toLowerCase() === "doctor" || m.roleId === "role-doctor"
-    ).length;
-    const clinicInfo = await getClinicInfo();
-
-    if (!canAddDoctor(doctorCount, clinicInfo)) {
-      const maxDocs = getMaximumDoctors(clinicInfo);
-      throw new Error(
-        `You have reached the maximum number of doctors allowed in the Basic Plan (${maxDocs} Doctors). Upgrade to Professional for up to 4 doctors.`
-      );
-    }
-  }
 
   const avatarColors = [
     "bg-teal-500",
@@ -205,44 +193,32 @@ export async function addTeamMember(
   const randomColor =
     avatarColors[Math.floor(Math.random() * avatarColors.length)];
 
+  const res = await addTeamMemberAction(formData, clinicId);
+  if (!res.success || !res.data) {
+    throw new Error(res.error || "Failed to add team member on server.");
+  }
+
   const newMember: TeamMember = {
-    id: `tm-${Date.now()}`,
+    id: res.data.id,
     ...formData,
     avatarColor: randomColor,
     lastLogin: formData.status === "Invited" ? "Invitation Sent" : "Never",
   };
-
-  try {
-    const docRef = await addDoc(collection(db, MEMBERS_COLLECTION), {
-      ...formData,
-      avatarColor: randomColor,
-      lastLogin: newMember.lastLogin,
-      clinicId: clinicId || "",
-      createdAt: Timestamp.now(),
-    });
-    newMember.id = docRef.id;
-  } catch (error) {
-    console.warn("Firestore write error for team member, using in-memory update:", error);
-  }
 
   memoryMembersCache = [newMember, ...memoryMembersCache];
   return newMember;
 }
 
 /**
- * Update an existing team member in Firestore teamMembers collection.
+ * Update an existing team member in Firestore teamMembers collection via Server Action.
  */
 export async function updateTeamMember(
   id: string,
   updates: Partial<TeamMember>
 ): Promise<void> {
-  try {
-    await updateDoc(doc(db, MEMBERS_COLLECTION, id), {
-      ...updates,
-      updatedAt: Timestamp.now(),
-    });
-  } catch (error) {
-    console.warn("Firestore update error for team member:", error);
+  const res = await updateTeamMemberAction(id, updates);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to update team member on server.");
   }
 
   memoryMembersCache = memoryMembersCache.map((m) =>
@@ -251,31 +227,34 @@ export async function updateTeamMember(
 }
 
 /**
- * Toggle active/inactive status of a team member.
+ * Toggle team member active / inactive status.
  */
 export async function toggleTeamMemberStatus(
   id: string,
-  status: MemberStatus
-): Promise<void> {
-  await updateTeamMember(id, { status });
+  currentStatus: MemberStatus
+): Promise<MemberStatus> {
+  const newStatus: MemberStatus =
+    currentStatus === "Active" ? "Inactive" : "Active";
+  await updateTeamMember(id, { status: newStatus });
+  return newStatus;
 }
 
 /**
- * Delete a team member from Firestore teamMembers collection.
+ * Delete a team member document from Firestore via Server Action.
  */
 export async function deleteTeamMember(id: string): Promise<void> {
-  try {
-    await deleteDoc(doc(db, MEMBERS_COLLECTION, id));
-  } catch (error) {
-    console.warn("Firestore delete error for team member:", error);
+  const res = await deleteTeamMemberAction(id);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to delete team member on server.");
   }
 
   memoryMembersCache = memoryMembersCache.filter((m) => m.id !== id);
 }
 
 /**
- * Reset member password simulation.
+ * Trigger simulated password reset / credential recovery email.
  */
-export async function resetMemberPassword(id: string): Promise<void> {
-  await new Promise((res) => setTimeout(res, 300));
+export async function resetMemberPassword(email: string): Promise<boolean> {
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  return true;
 }

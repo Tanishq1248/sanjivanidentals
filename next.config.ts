@@ -15,6 +15,12 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  productionBrowserSourceMaps: false,
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "10mb",
+    },
+  },
 };
 
 export default withSentryConfig(nextConfig, {
@@ -28,3 +34,5 @@ export default withSentryConfig(nextConfig, {
     },
   },
 });
+
+

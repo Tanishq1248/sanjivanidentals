@@ -44,6 +44,7 @@ import {
   formatClinicAddress,
   getDoctorCredentials,
 } from "../../../../lib/services/clinicSettingsService";
+import { signAndCompleteCasePaper } from "../../../../server/actions/clinicalActions";
 import dynamic from "next/dynamic";
 import {
   DynamicDentalChart,
@@ -341,8 +342,23 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
     setIsUpdatingStatus(true);
     setCurrentStatus(newStatus);
     try {
-      await onUpdateEncounter(encounter.id, { status: newStatus });
-      setNotesToast(`Status updated to ${newStatus}`);
+      if (newStatus === "Completed") {
+        const res = await signAndCompleteCasePaper({
+          encounterId: encounter.id,
+          doctorName: encounter.doctorName || "Dr. Rajesh Sharma",
+          notes: sessionNotes,
+          chiefComplaints,
+        });
+        if (res.success) {
+          setNotesToast(`Case paper locked & cryptographically signed`);
+        } else {
+          await onUpdateEncounter(encounter.id, { status: newStatus });
+          setNotesToast(`Status updated to ${newStatus}`);
+        }
+      } else {
+        await onUpdateEncounter(encounter.id, { status: newStatus });
+        setNotesToast(`Status updated to ${newStatus}`);
+      }
       setTimeout(() => setNotesToast(null), 3000);
     } catch (err) {
       console.error("Error updating status:", err);
@@ -1685,6 +1701,11 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
             {creds.doctorName}
           </div>
           <p className="text-xs font-bold text-slate-900 mt-1">Authorized Dentist Signature</p>
+          {(encounter as any).signatureHash && (
+            <p className="text-[8px] font-mono text-slate-400 mt-0.5">
+              Digital Signature Hash: {(encounter as any).signatureHash.slice(0, 16)}...
+            </p>
+          )}
           <p className="text-[10px] text-slate-400 font-medium">{clinicName}</p>
         </div>
       </div>

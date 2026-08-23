@@ -26,6 +26,12 @@ import type {
 } from "../types";
 import { COLLECTIONS, getCollectionRef, DEFAULT_CLINIC_ID } from "./firestoreConfig";
 import { getAppointmentSettings, getClinicResources } from "./settingsService";
+import {
+  createAppointmentAction,
+  updateAppointmentStatusAction,
+  updateAppointmentAction,
+  deleteAppointmentAction,
+} from "../../server/actions/appointmentActions";
 
 /** Extended creation payload including calendar-specific fields. */
 export type AppointmentAdminPayload = AppointmentFormData &
@@ -305,7 +311,7 @@ export async function createAppointment(
 
   const clinicId = (data as any).clinicId;
 
-  const docRef = await addDoc(appointmentsRef, {
+  const res = await createAppointmentAction({
     ...data,
     patientId: "",
     status: initialStatus as AppointmentStatus,
@@ -314,10 +320,12 @@ export async function createAppointment(
     clinicId: clinicId || "",
     ...(resolvedChairId ? { chairId: resolvedChairId } : {}),
     ...(resolvedChairName ? { chair: resolvedChairName } : {}),
-    createdAt: now,
-    updatedAt: now,
   });
-  return docRef.id;
+
+  if (!res.success || !res.data) {
+    throw new Error(res.error || "Failed to create appointment on server.");
+  }
+  return res.data.id;
 }
 
 /**
@@ -342,7 +350,7 @@ export async function createAppointmentByAdmin(
 
   const adminClinicId = (data as any).clinicId;
 
-  const docRef = await addDoc(appointmentsRef, {
+  const res = await createAppointmentAction({
     ...rest,
     patientId: patientId || "",
     status: status || ("Confirmed" as AppointmentStatus),
@@ -353,10 +361,12 @@ export async function createAppointmentByAdmin(
     ...(resolvedChairName ? { chair: resolvedChairName } : {}),
     ...(doctorId ? { doctorId } : {}),
     ...(doctorName ? { doctorName } : {}),
-    createdAt: now,
-    updatedAt: now,
   });
-  return docRef.id;
+
+  if (!res.success || !res.data) {
+    throw new Error(res.error || "Failed to create appointment on server.");
+  }
+  return res.data.id;
 }
 
 /** Update the status of an appointment. */
@@ -364,8 +374,10 @@ export async function updateAppointmentStatus(
   id: string,
   status: AppointmentStatus
 ): Promise<void> {
-  const ref = doc(db, COLLECTION, id);
-  await updateDoc(ref, { status, updatedAt: Timestamp.now() });
+  const res = await updateAppointmentStatusAction(id, status);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to update appointment status on server.");
+  }
 }
 
 /** Update any appointment fields. */
@@ -373,7 +385,6 @@ export async function updateAppointment(
   id: string,
   data: Partial<Appointment>
 ): Promise<void> {
-  const ref = doc(db, COLLECTION, id);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { id: _id, ...rest } = data;
 
@@ -400,12 +411,18 @@ export async function updateAppointment(
     }
   }
 
-  await updateDoc(ref, { ...rest, updatedAt: Timestamp.now() });
+  const res = await updateAppointmentAction(id, rest);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to update appointment on server.");
+  }
 }
 
 /** Delete an appointment. */
 export async function deleteAppointment(id: string): Promise<void> {
-  await deleteDoc(doc(db, COLLECTION, id));
+  const res = await deleteAppointmentAction(id);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to delete appointment on server.");
+  }
 }
 
 /** Get the count of appointments matching a filter from the server. */

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../../../../lib/firebase";
+import { adminDb } from "../../../../lib/server/firebaseAdmin";
 import { COLLECTIONS } from "../../../../lib/services/firestoreConfig";
 import { generatePrescriptionPdfBuffer } from "../../../../lib/services/pdfServerService";
 import { DocumentStorageService } from "../../../../lib/services/documentStorageService";
@@ -17,11 +16,11 @@ export async function GET(req: Request) {
       return createErrorResponse("PATIENT_NOT_FOUND", "Missing prescription ID parameter.");
     }
 
-    // 1. Fetch latest Prescription from Firestore
-    const rxRef = doc(db, COLLECTIONS.PRESCRIPTIONS, id);
-    const rxSnap = await getDoc(rxRef);
+    // 1. Fetch latest Prescription from Firestore via Admin SDK
+    const rxRef = adminDb.collection(COLLECTIONS.PRESCRIPTIONS).doc(id);
+    const rxSnap = await rxRef.get();
 
-    if (!rxSnap.exists()) {
+    if (!rxSnap.exists) {
       return createErrorResponse("PATIENT_NOT_FOUND", "Prescription record not found.");
     }
 

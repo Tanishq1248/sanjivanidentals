@@ -25,6 +25,10 @@ import {
   PLAN_PRESETS,
   DEFAULT_SUBSCRIPTION,
 } from "./featureAccessService";
+import {
+  saveClinicResourcesAction,
+  saveAppointmentSettingsAction,
+} from "../../server/actions/settingsActions";
 
 const ROLES_COLLECTION = COLLECTIONS.ROLES;
 const CLINIC_SETTINGS_COLLECTION = COLLECTIONS.CLINIC_SETTINGS;
@@ -362,11 +366,9 @@ export async function createOrUpdateAppointmentSettings(
 
   memoryAppointmentSettingsCache = updated;
 
-  try {
-    const docRef = doc(db, COLLECTIONS.APPOINTMENT_SETTINGS, "info");
-    await setDoc(docRef, updated, { merge: true });
-  } catch (error) {
-    console.warn("Firestore setDoc error for appointment settings:", error);
+  const res = await saveAppointmentSettingsAction(updated, clinicId);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to save appointment settings on server.");
   }
 
   return updated;
@@ -628,11 +630,9 @@ export async function saveClinicResources(data: ClinicResourcesData): Promise<Cl
 
   memoryClinicResourcesCache = updated;
 
-  try {
-    const docRef = doc(db, CLINIC_SETTINGS_COLLECTION, "resources");
-    await setDoc(docRef, { clinicResources: updated, ...updated }, { merge: true });
-  } catch (error) {
-    console.warn("Firestore setDoc error for clinic resources:", error);
+  const res = await saveClinicResourcesAction(updated, clinicId);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to save clinic resources on server.");
   }
 
   return updated;

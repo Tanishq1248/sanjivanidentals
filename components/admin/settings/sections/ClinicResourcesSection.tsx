@@ -16,10 +16,10 @@ import {
 import { queryKeys, CACHE_POLICIES } from "../../../../lib/query/queryKeys";
 import {
   getClinicResources,
-  saveClinicResources,
   validateClinicResources,
   getClinicInfo,
 } from "../../../../lib/services/settingsService";
+import { saveClinicResourcesAction } from "../../../../server/actions/settingsActions";
 import {
   getSubscription,
   getMaximumChairs,
@@ -62,7 +62,16 @@ export default function ClinicResourcesSection() {
   }, [resourcesData]);
 
   const updateMutation = useMutation({
-    mutationFn: (data: ClinicResourcesData) => saveClinicResources(data),
+    mutationFn: async (data: ClinicResourcesData) => {
+      const res = await saveClinicResourcesAction(data);
+      if (!res.success) {
+        if (res.code === "PLAN_LIMIT_EXCEEDED") {
+          setIsUpgradeModalOpen(true);
+        }
+        throw new Error(res.error || "Failed to save resources on server.");
+      }
+      return res.data!;
+    },
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.settings.clinicResources });
       setFormData(updated);

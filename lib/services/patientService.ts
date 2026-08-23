@@ -22,6 +22,22 @@ import {
 import { db } from "../firebase";
 import type { Patient, PatientFormData, PaginatedResult, PatientMedicalProfile, PatientEncounter, SurfaceType, ToothTreatmentEntry } from "../types";
 import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
+import {
+  createPatientAction,
+  updatePatientAction,
+  deletePatientAction,
+  getPatientByIdAction,
+  getPatientsAction,
+  getPaginatedPatientsServerAction,
+  getPatientsCountServerAction,
+  savePatientMedicalProfileAction,
+  getPatientMedicalProfileAction,
+  addPatientEncounterAction,
+  updatePatientEncounterAction,
+  deletePatientEncounterAction,
+  getPatientEncountersAction,
+  logToothTreatmentAction,
+} from "../../server/actions/patientActions";
 
 const COLLECTION = COLLECTIONS.PATIENTS;
 const patientsRef = collection(db, COLLECTION);
@@ -47,9 +63,23 @@ function randomAvatarColor(): string {
 
 /** Fetch all patients, ordered by creation date (newest first). */
 export async function getPatients(): Promise<Patient[]> {
-  const q = query(patientsRef, orderBy("createdAt", "desc"));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Patient);
+  try {
+    const res = await getPatientsAction();
+    if (res.success && res.data) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn("[patientService] Error fetching patients via server action:", err);
+  }
+
+  try {
+    const q = query(patientsRef, orderBy("createdAt", "desc"));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Patient);
+  } catch (err) {
+    console.error("[patientService] Error fetching patients via client:", err);
+    return [];
+  }
 }
 
 export interface PaginatedPatientOptions {
@@ -59,95 +89,45 @@ export interface PaginatedPatientOptions {
 }
 
 /**
- * Fetch a paginated chunk of patients ordered by creation date or filtered by indexed search terms.
- * Avoids full-collection client scans and enforces strict limit bounds.
+ * Fetch a paginated chunk of patients ordered by creation date or filtered by search terms.
+ * Routes directly to Server Action for guaranteed administrative access.
  */
 export async function getPaginatedPatients({
   pageSize = PAGE_SIZE,
   startAfterDoc = null,
   searchTerm = "",
 }: PaginatedPatientOptions = {}): Promise<PaginatedResult<Patient>> {
-  const cleanSearch = searchTerm.trim();
-
-  let q;
-  if (cleanSearch) {
-    const isDigits = /^[\d+ -]+$/.test(cleanSearch);
-    if (isDigits) {
-      // Prefix search on indexed phone field
-      const cleanPhone = cleanSearch.replace(/\s+/g, "");
-      q = query(
-        patientsRef,
-        orderBy("phone"),
-        startAt(cleanPhone),
-        endAt(cleanPhone + "\uf8ff"),
-        limit(pageSize + 1)
-      );
-    } else {
-      // Prefix search on indexed name field
-      q = query(
-        patientsRef,
-        orderBy("name"),
-        startAt(cleanSearch),
-        endAt(cleanSearch + "\uf8ff"),
-        limit(pageSize + 1)
-      );
-    }
-  } else if (startAfterDoc) {
-    q = query(
-      patientsRef,
-      orderBy("createdAt", "desc"),
-      startAfter(startAfterDoc),
-      limit(pageSize + 1)
-    );
-  } else {
-    q = query(
-      patientsRef,
-      orderBy("createdAt", "desc"),
-      limit(pageSize + 1)
-    );
-  }
-
-  let snapshot;
   try {
-    snapshot = await getDocs(q);
-  } catch (err) {
-    // Graceful fallback if composite indexes or field types differ
-    if (cleanSearch) {
-      const fallbackQuery = query(
-        patientsRef,
-        orderBy("createdAt", "desc"),
-        limit(50)
-      );
-      snapshot = await getDocs(fallbackQuery);
-      const searchLower = cleanSearch.toLowerCase();
-      const filtered = snapshot.docs
-        .map((d) => ({ id: d.id, ...d.data() }) as Patient)
-        .filter(
-          (p) =>
-            p.name?.toLowerCase().includes(searchLower) ||
-            p.phone?.includes(cleanSearch)
-        )
-        .slice(0, pageSize);
+    const res = await getPaginatedPatientsServerAction({
+      pageSize,
+      searchTerm,
+    });
+    if (res.success && res.data) {
       return {
-        data: filtered,
+        data: res.data.data,
         lastVisible: null,
-        hasNext: false,
+        hasNext: res.data.hasNext,
       };
     }
-    throw err;
+  } catch (serverErr) {
+    console.warn("[patientService] Server action fetch error, trying client query:", serverErr);
   }
 
-  const hasNext = snapshot.docs.length > pageSize;
-  const docs = hasNext ? snapshot.docs.slice(0, pageSize) : snapshot.docs;
-
-  const data = docs.map((d) => ({ id: d.id, ...d.data() }) as Patient);
-  const lastVisible = docs.length > 0 ? (docs[docs.length - 1] as QueryDocumentSnapshot<DocumentData>) : null;
-
-  return {
-    data,
-    lastVisible,
-    hasNext,
-  };
+  const cleanSearch = searchTerm.trim();
+  let q = query(patientsRef, orderBy("createdAt", "desc"), limit(pageSize + 1));
+  try {
+    const snapshot = await getDocs(q);
+    const hasNext = snapshot.docs.length > pageSize;
+    const docs = hasNext ? snapshot.docs.slice(0, pageSize) : snapshot.docs;
+    return {
+      data: docs.map((d) => ({ id: d.id, ...d.data() }) as Patient),
+      lastVisible: null,
+      hasNext,
+    };
+  } catch (clientErr) {
+    console.error("[patientService] Error fetching patients:", clientErr);
+    return { data: [], lastVisible: null, hasNext: false };
+  }
 }
 
 /**
@@ -167,9 +147,23 @@ export async function getPatientsPaginated(
 
 /** Fetch a single patient by document ID. */
 export async function getPatientById(id: string): Promise<Patient | null> {
-  const snap = await getDoc(doc(db, COLLECTION, id));
-  if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() } as Patient;
+  try {
+    const res = await getPatientByIdAction(id);
+    if (res.success && res.data !== undefined) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn("[patientService] Error getting patient by ID via server:", err);
+  }
+
+  try {
+    const snap = await getDoc(doc(db, COLLECTION, id));
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() } as Patient;
+  } catch (err) {
+    console.error("[patientService] Error getting patient by ID via client:", err);
+    return null;
+  }
 }
 
 /**
@@ -186,20 +180,11 @@ export async function getPatientByPhone(phone: string): Promise<Patient | null> 
 
 /** Create a new patient. Returns the generated document ID. */
 export async function addPatient(data: PatientFormData): Promise<string> {
-  const clinicId = (data as any).clinicId;
-
-  const now = Timestamp.now();
-  const nameTrimmed = (data.name || "").trim();
-  const docRef = await addDoc(patientsRef, {
-    ...data,
-    name: nameTrimmed,
-    nameLowercase: nameTrimmed.toLowerCase(),
-    clinicId: clinicId || "",
-    avatarColor: randomAvatarColor(),
-    createdAt: now,
-    updatedAt: now,
-  });
-  return docRef.id;
+  const res = await createPatientAction(data);
+  if (!res.success || !res.data) {
+    throw new Error(res.error || "Failed to create patient on server.");
+  }
+  return res.data.id;
 }
 
 /** Update an existing patient's fields. */
@@ -207,35 +192,59 @@ export async function updatePatient(
   id: string,
   data: Partial<PatientFormData>
 ): Promise<void> {
-  const ref = doc(db, COLLECTION, id);
-  const updatePayload: Record<string, any> = {
-    ...data,
-    updatedAt: Timestamp.now(),
-  };
-  if (data.name) {
-    updatePayload.name = data.name.trim();
-    updatePayload.nameLowercase = data.name.trim().toLowerCase();
+  const res = await updatePatientAction(id, data);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to update patient on server.");
   }
-  await updateDoc(ref, updatePayload);
 }
 
 /** Delete a patient document. */
 export async function deletePatient(id: string): Promise<void> {
-  await deleteDoc(doc(db, COLLECTION, id));
+  const res = await deletePatientAction(id);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to delete patient on server.");
+  }
 }
 
 /** Get the total count of patients in the database. */
 export async function getPatientsCount(): Promise<number> {
-  const snapshot = await getCountFromServer(patientsRef);
-  return snapshot.data().count;
+  try {
+    const res = await getPatientsCountServerAction();
+    if (res.success && typeof res.data === "number") {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn("[patientService] Error getting patient count via server:", err);
+  }
+
+  try {
+    const snapshot = await getCountFromServer(patientsRef);
+    return snapshot.data().count;
+  } catch (err) {
+    console.warn("[patientService] Error getting patient count via client SDK:", err);
+    return 0;
+  }
 }
 
 /** Get patient medical profile from patientMedicalProfiles collection. */
 export async function getPatientMedicalProfile(patientId: string): Promise<PatientMedicalProfile | null> {
-  const docRef = doc(db, COLLECTIONS.PATIENT_MEDICAL_PROFILES, patientId);
-  const snap = await getDoc(docRef);
-  if (!snap.exists()) return null;
-  return snap.data() as PatientMedicalProfile;
+  try {
+    const res = await getPatientMedicalProfileAction(patientId);
+    if (res.success && res.data !== undefined) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn("[patientService] Error getting medical profile via server:", err);
+  }
+
+  try {
+    const docRef = doc(db, COLLECTIONS.PATIENT_MEDICAL_PROFILES, patientId);
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return null;
+    return snap.data() as PatientMedicalProfile;
+  } catch (err) {
+    return null;
+  }
 }
 
 /** Create or update patient medical profile document. */
@@ -243,42 +252,34 @@ export async function savePatientMedicalProfile(
   patientId: string,
   profileData: Partial<PatientMedicalProfile>
 ): Promise<void> {
-  const clinicId = profileData.clinicId;
-
-  const docRef = doc(db, COLLECTIONS.PATIENT_MEDICAL_PROFILES, patientId);
-  const now = Timestamp.now();
-  await setDoc(
-    docRef,
-    {
-      ...profileData,
-      patientId,
-      clinicId: clinicId || "",
-      updatedAt: now,
-    },
-    { merge: true }
-  );
+  const res = await savePatientMedicalProfileAction(patientId, profileData);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to save patient medical profile.");
+  }
 }
 
 /** Fetch patient encounters timeline ordered by visitDate descending. */
 export async function getPatientEncounters(patientId: string): Promise<PatientEncounter[]> {
-  const encountersRef = collection(db, COLLECTIONS.PATIENT_ENCOUNTERS);
-  const q = query(
-    encountersRef,
-    where("patientId", "==", patientId)
-  );
-  console.log(`[getPatientEncounters] Fetching encounters for patient: ${patientId}`);
-  const snapshot = await getDocs(q);
-  const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as PatientEncounter);
-  // Sort client-side by visitDate descending
-  data.sort((a, b) => b.visitDate.localeCompare(a.visitDate));
-  console.log(`[getPatientEncounters] Fetched ${data.length} encounters. Details:`, data.map(e => ({
-    id: e.id,
-    visitDate: e.visitDate,
-    treatments: e.treatments,
-    toothTreatmentsCount: e.toothTreatments?.length || 0,
-    toothTreatments: e.toothTreatments
-  })));
-  return data;
+  try {
+    const res = await getPatientEncountersAction(patientId);
+    if (res.success && res.data) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn("[patientService] Error getting encounters via server:", err);
+  }
+
+  try {
+    const encountersRef = collection(db, COLLECTIONS.PATIENT_ENCOUNTERS);
+    const q = query(encountersRef, where("patientId", "==", patientId));
+    const snapshot = await getDocs(q);
+    const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as PatientEncounter);
+    data.sort((a, b) => (b.visitDate || "").localeCompare(a.visitDate || ""));
+    return data;
+  } catch (err) {
+    console.error("[patientService] Error getting encounters via client:", err);
+    return [];
+  }
 }
 
 /** Fetch a single patient encounter by document ID. */
@@ -293,17 +294,11 @@ export async function getPatientEncounterById(encounterId: string): Promise<Pati
 export async function addPatientEncounter(
   encounter: Omit<PatientEncounter, "id" | "createdAt" | "updatedAt">
 ): Promise<string> {
-  const clinicId = (encounter as any).clinicId;
-
-  const encountersRef = collection(db, COLLECTIONS.PATIENT_ENCOUNTERS);
-  const now = Timestamp.now();
-  const docRef = await addDoc(encountersRef, {
-    ...encounter,
-    clinicId: clinicId || "",
-    createdAt: now,
-    updatedAt: now,
-  });
-  return docRef.id;
+  const res = await addPatientEncounterAction(encounter);
+  if (!res.success || !res.data) {
+    throw new Error(res.error || "Failed to create patient encounter on server.");
+  }
+  return res.data.id;
 }
 
 /** Update an existing patient encounter document. */
@@ -311,17 +306,18 @@ export async function updatePatientEncounter(
   encounterId: string,
   data: Partial<PatientEncounter>
 ): Promise<void> {
-  const docRef = doc(db, COLLECTIONS.PATIENT_ENCOUNTERS, encounterId);
-  await updateDoc(docRef, {
-    ...data,
-    updatedAt: Timestamp.now(),
-  });
+  const res = await updatePatientEncounterAction(encounterId, data);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to update patient encounter.");
+  }
 }
 
 /** Delete a patient encounter document. */
 export async function deletePatientEncounter(encounterId: string): Promise<void> {
-  const docRef = doc(db, COLLECTIONS.PATIENT_ENCOUNTERS, encounterId);
-  await deleteDoc(docRef);
+  const res = await deletePatientEncounterAction(encounterId);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to delete patient encounter.");
+  }
 }
 
 /**
@@ -363,7 +359,7 @@ export async function getFollowUpsDueThisWeek(): Promise<PatientEncounter[]> {
 }
 
 
-/** Logs a tooth-specific treatment by checking for a target encounter or today's encounter, creating or updating it automatically. */
+/** Logs a tooth-specific treatment by checking for a target encounter or today's encounter, creating or updating it automatically via Server Action. */
 export async function logToothTreatment(
   patientId: string,
   toothNumber: number,
@@ -373,132 +369,27 @@ export async function logToothTreatment(
     fee: number;
     notes?: string;
     surfaces?: SurfaceType[];
+    diagnosis?: string;
+    clinicId?: string;
   },
-  doctorId: string,
-  doctorName: string,
+  doctorId: string = "doc-1",
+  doctorName: string = "Dr. Rajesh Sharma",
   targetEncounterId?: string
 ): Promise<string> {
-  const encountersRef = collection(db, COLLECTIONS.PATIENT_ENCOUNTERS);
-  
-  // 1. Get today's local date (YYYY-MM-DD)
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  const todayStr = `${year}-${month}-${day}`;
-  
-  // 2. Format display date (DD/MM/YYYY)
-  const displayDateStr = `${day}/${month}/${year}`;
-
-  console.log(`[logToothTreatment] Starting log process for patient: ${patientId}, tooth: ${toothNumber}, treatment: ${treatmentData.treatmentName}, encounterId: ${targetEncounterId || 'auto'}`);
-
-  const treatmentEntryId = `tt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  const nowTimestamp = Timestamp.now();
-
-  const newToothTreatment: ToothTreatmentEntry = {
-    id: treatmentEntryId,
+  const res = await logToothTreatmentAction({
+    patientId,
     toothNumber,
-    surfaces: treatmentData.surfaces && treatmentData.surfaces.length > 0 ? treatmentData.surfaces : undefined,
-    treatmentName: treatmentData.treatmentName,
-    status: treatmentData.status,
-    treatmentStatus: (treatmentData.status as any) || "Completed",
-    billingStatus: "Unbilled" as const,
-    invoiceId: null,
-    fee: treatmentData.fee,
-    notes: treatmentData.notes || "",
-    date: displayDateStr,
-    timestamp: now.toISOString(),
-  };
+    treatmentData,
+    doctorId,
+    doctorName,
+    targetEncounterId,
+  });
 
-  // If a specific target encounter ID was provided, update that document directly
-  if (targetEncounterId) {
-    const targetDocRef = doc(db, COLLECTIONS.PATIENT_ENCOUNTERS, targetEncounterId);
-    const snap = await getDoc(targetDocRef);
-    if (snap.exists()) {
-      const encounterData = snap.data();
-      const existingToothTreatments = encounterData.toothTreatments || [];
-      const updatedToothTreatments = [...existingToothTreatments, newToothTreatment];
-
-      const existingTreatments = encounterData.treatments || [];
-      const updatedTreatments = existingTreatments.includes(treatmentData.treatmentName)
-        ? existingTreatments
-        : [...existingTreatments, treatmentData.treatmentName];
-
-      await updateDoc(targetDocRef, {
-        toothTreatments: updatedToothTreatments,
-        treatments: updatedTreatments,
-        updatedAt: nowTimestamp,
-        status: treatmentData.status === "Planned" ? encounterData.status : "Completed",
-      });
-
-      console.log(`[logToothTreatment] Successfully appended tooth treatment to target encounter ${targetEncounterId}`);
-      return targetEncounterId;
-    }
+  if (!res.success || !res.data) {
+    throw new Error(res.error || "Failed to log tooth treatment on server.");
   }
 
-  // 3. Query for today's encounter if no target encounter was specified
-  const q = query(
-    encountersRef,
-    where("patientId", "==", patientId),
-    where("visitDate", "==", todayStr),
-    limit(1)
-  );
-  
-  const querySnapshot = await getDocs(q);
-
-  if (!querySnapshot.empty) {
-    // Encounter exists -> update it
-    const docSnap = querySnapshot.docs[0];
-    const encounterId = docSnap.id;
-    const encounterData = docSnap.data();
-
-    console.log(`[logToothTreatment] Today's encounter found. Updating encounter ID: ${encounterId}`);
-
-    const existingToothTreatments = encounterData.toothTreatments || [];
-    const updatedToothTreatments = [...existingToothTreatments, newToothTreatment];
-
-    const existingTreatments = encounterData.treatments || [];
-    const updatedTreatments = existingTreatments.includes(treatmentData.treatmentName)
-      ? existingTreatments
-      : [...existingTreatments, treatmentData.treatmentName];
-
-    await updateDoc(doc(db, COLLECTIONS.PATIENT_ENCOUNTERS, encounterId), {
-      toothTreatments: updatedToothTreatments,
-      treatments: updatedTreatments,
-      updatedAt: nowTimestamp,
-      status: treatmentData.status === "Planned" ? encounterData.status : "Completed",
-    });
-
-    console.log(`[logToothTreatment] Successfully updated encounter document.`);
-    return encounterId;
-  } else {
-    // Encounter does not exist -> create it
-    console.log(`[logToothTreatment] Today's encounter not found. Creating a new encounter doc.`);
-    
-    const clinicId = (treatmentData as any).clinicId;
-
-    const newEncounter = {
-      patientId,
-      doctorId,
-      doctorName,
-      visitDate: todayStr,
-      chiefComplaint: "Dental Treatment Session",
-      diagnosis: "Logged via Dental Chart",
-      treatments: [treatmentData.treatmentName],
-      toothTreatments: [newToothTreatment],
-      prescriptionId: "",
-      followUpDate: "",
-      status: treatmentData.status === "Planned" ? "Pending" : "Completed",
-      notes: "Logged via Dental Chart",
-      clinicId: clinicId || "",
-      createdAt: nowTimestamp,
-      updatedAt: nowTimestamp,
-    };
-
-    const docRef = await addDoc(encountersRef, newEncounter);
-    console.log(`[logToothTreatment] Successfully created new encounter document with ID: ${docRef.id}`);
-    return docRef.id;
-  }
+  return res.data.encounterId;
 }
 
 /* ─────────────────────────────────────────────────────────

@@ -2,7 +2,6 @@
 
 import React, { useState, use, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { Timestamp } from "firebase/firestore";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
@@ -39,11 +38,12 @@ import {
   getPatientsByReferrer,
 } from "../../../../lib/services/patientService";
 import { useActiveDoctors } from "../../../../lib/hooks/useDoctors";
-import { addInvoice, getInvoicesByPatientId } from "../../../../lib/services/invoiceService";
+import { getInvoicesByPatientId } from "../../../../lib/services/invoiceService";
+import { calculateAndCreateInvoice } from "../../../../server/actions/billingActions";
+import { calculateSubtotal, calculateTax, calculateGrandTotal } from "../../../../lib/services/billingService";
 import { getAppointmentsByPhone } from "../../../../lib/services/appointmentService";
 import { queryKeys } from "../../../../lib/query/queryKeys";
 import type { jsPDF } from "jspdf";
-import { calculateSubtotal, calculateTax, calculateGrandTotal } from "../../../../lib/services/billingService";
 import { sendInvoiceEmail } from "../../../../lib/services/emailService";
 import { PatientDetailsModalSkeleton } from "../../../../components/ui/Skeletons";
 import { getTreatmentStatus, type PatientMedicalProfile, type PatientEncounter, type EncounterStatus, type Invoice, type Appointment, type SurfaceType } from "../../../../lib/types";
@@ -220,10 +220,9 @@ export default function PatientProfilePage({ params }: PageProps) {
     encounters.forEach((enc) => {
       if (enc.toothTreatments && enc.toothTreatments.length > 0) {
         enc.toothTreatments.forEach((tt) => {
-          const isCompleted = getTreatmentStatus(tt, enc.status) === "Completed";
           const isUnbilled = tt.billingStatus !== "Billed" && !tt.invoiceId;
 
-          if (isCompleted && isUnbilled) {
+          if (isUnbilled) {
             list.push({
               id: tt.id,
               encounterId: enc.id,
@@ -234,7 +233,7 @@ export default function PatientProfilePage({ params }: PageProps) {
             });
           }
         });
-      } else if (enc.treatments && enc.treatments.length > 0 && enc.status === "Completed") {
+      } else if (enc.treatments && enc.treatments.length > 0) {
         list.push({
           id: `fallback-${enc.id}`,
           encounterId: enc.id,
@@ -251,10 +250,7 @@ export default function PatientProfilePage({ params }: PageProps) {
   const isEncounterAllBillingSelected = (encounter: PatientEncounter) => {
     if (encounter.toothTreatments && encounter.toothTreatments.length > 0) {
       const eligibleTTs = encounter.toothTreatments.filter(
-        (tt) =>
-          getTreatmentStatus(tt, encounter.status) === "Completed" &&
-          tt.billingStatus !== "Billed" &&
-          !tt.invoiceId
+        (tt) => tt.billingStatus !== "Billed" && !tt.invoiceId
       );
       if (eligibleTTs.length === 0) return false;
       return eligibleTTs.every((tt) => !!selectedBillingItems[`tt-${tt.id}`]);
@@ -270,10 +266,7 @@ export default function PatientProfilePage({ params }: PageProps) {
 
     if (encounter.toothTreatments && encounter.toothTreatments.length > 0) {
       const eligibleTTs = encounter.toothTreatments.filter(
-        (tt) =>
-          getTreatmentStatus(tt, encounter.status) === "Completed" &&
-          tt.billingStatus !== "Billed" &&
-          !tt.invoiceId
+        (tt) => tt.billingStatus !== "Billed" && !tt.invoiceId
       );
       eligibleTTs.forEach((tt) => {
         if (allSelected) {
@@ -481,72 +474,28 @@ export default function PatientProfilePage({ params }: PageProps) {
     setIsGeneratingInvoice(true);
 
     try {
-      const subtotal = calculateSubtotal(selectedTreatments);
-      const tax = calculateTax(subtotal);
-      const discount = discountPercentage;
-      const total = calculateGrandTotal(subtotal, tax, discount);
-
-      const invoiceDateStr = new Date().toISOString().split("T")[0];
-      const invoiceData = {
+      // 1. Invoke Secure Server Action for Invoice Generation & Atomic Mutation
+      const actionRes = await calculateAndCreateInvoice({
         patientId: patient.id,
         patientName: patient.name,
         encounterId: billingEncounter.id,
         encounterIds: [billingEncounter.id],
         visitDate: billingEncounter.visitDate,
-        subtotal,
-        tax,
-        discount,
-        total,
-        amount: total,
-        status: "UNPAID" as const,
-        paymentStatus: "UNPAID" as const,
-        paymentMethod: "None" as const,
-        invoiceDate: invoiceDateStr,
-        treatments: selectedTreatments.map((t) => t.treatmentName),
-        items: selectedTreatments,
-        createdAt: Timestamp.now(),
-        emailSent: false,
-        grossAmount: subtotal,
-        netAmount: total,
-        paidAmount: 0,
-        remainingAmount: total,
-        dueDate: invoiceDateStr,
-        paymentHistory: [],
-        installmentPlan: null,
-        updatedAt: Timestamp.now(),
-        invoiceGenerated: true,
-      };
+        rawLineItems: selectedTreatments,
+        discountPercentage: discountPercentage,
+      });
 
-      const invoiceId = await addInvoice(invoiceData);
+      if (!actionRes.success || !actionRes.data) {
+        throw new Error(actionRes.error || "Failed to generate invoice on server.");
+      }
+
+      const { invoiceId, invoice: calculatedInvoice } = actionRes.data;
       setGeneratedInvoiceId(invoiceId);
 
-      // Update billingStatus & invoiceId on selected toothTreatments across all encounter documents in Firestore
-      const selectedItemIds = new Set(selectedTreatments.map((st) => st.id));
-
-      await Promise.all(
-        encounters.map(async (enc) => {
-          if (!enc.toothTreatments || enc.toothTreatments.length === 0) return;
-
-          let hasChanges = false;
-          const updatedToothTreatments = enc.toothTreatments.map((tt) => {
-            if (selectedItemIds.has(tt.id) || selectedItemIds.has(`tt-${tt.id}`)) {
-              hasChanges = true;
-              return {
-                ...tt,
-                billingStatus: "Billed" as const,
-                invoiceId: invoiceId,
-              };
-            }
-            return tt;
-          });
-
-          if (hasChanges) {
-            await updatePatientEncounter(enc.id, {
-              toothTreatments: updatedToothTreatments,
-            });
-          }
-        })
-      );
+      const subtotal = calculatedInvoice.subtotal;
+      const tax = calculatedInvoice.tax;
+      const discount = calculatedInvoice.discount;
+      const total = calculatedInvoice.total;
 
       // Clean up selected state for billed items
       setSelectedBillingItems((prev) => {

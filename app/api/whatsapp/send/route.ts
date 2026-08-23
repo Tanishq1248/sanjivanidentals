@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import twilio from "twilio";
-import { doc, getDoc, collection, query, where, getDocs, Timestamp } from "firebase/firestore";
-import { db } from "../../../../lib/firebase";
+import { adminDb } from "../../../../lib/server/firebaseAdmin";
+import { Timestamp } from "firebase-admin/firestore";
 import { COLLECTIONS } from "../../../../lib/services/firestoreConfig";
 import {
   formatE164,
@@ -234,8 +234,8 @@ export async function POST(req: Request) {
       // 1. Primary Lookup: Try finding prescription document by prescriptionId
       if (payload.prescriptionId && !payload.prescriptionId.startsWith("temp")) {
         try {
-          const rxSnap = await getDoc(doc(db, COLLECTIONS.PRESCRIPTIONS, payload.prescriptionId));
-          if (rxSnap.exists()) {
+          const rxSnap = await adminDb.collection(COLLECTIONS.PRESCRIPTIONS).doc(payload.prescriptionId).get();
+          if (rxSnap.exists) {
             rxData = { prescriptionId: rxSnap.id, ...rxSnap.data() } as Prescription;
             rxDocId = rxSnap.id;
           }
@@ -247,11 +247,10 @@ export async function POST(req: Request) {
       // 2. Secondary Lookup: Fallback to finding prescription document by encounterId
       if (!rxData && payload.encounterId) {
         try {
-          const rxQuery = query(
-            collection(db, COLLECTIONS.PRESCRIPTIONS),
-            where("encounterId", "==", payload.encounterId)
-          );
-          const rxSnap = await getDocs(rxQuery);
+          const rxSnap = await adminDb
+            .collection(COLLECTIONS.PRESCRIPTIONS)
+            .where("encounterId", "==", payload.encounterId)
+            .get();
           if (!rxSnap.empty) {
             const docSnap = rxSnap.docs[0];
             rxData = { prescriptionId: docSnap.id, ...docSnap.data() } as Prescription;
@@ -291,8 +290,8 @@ export async function POST(req: Request) {
       let storagePath = rxData.storagePath;
       if (!storagePath) {
         try {
-          const docMetaSnap = await getDoc(doc(db, COLLECTIONS.DOCUMENTS, rxDocId));
-          if (docMetaSnap.exists()) {
+          const docMetaSnap = await adminDb.collection(COLLECTIONS.DOCUMENTS).doc(rxDocId).get();
+          if (docMetaSnap.exists) {
             const docMeta = docMetaSnap.data() as DocumentMetadataRecord;
             if (docMeta.storagePath && docMeta.status !== "deleted") {
               storagePath = docMeta.storagePath;
@@ -371,8 +370,8 @@ export async function POST(req: Request) {
 
       if (invDocId) {
         try {
-          const invSnap = await getDoc(doc(db, COLLECTIONS.INVOICES, invDocId));
-          if (invSnap.exists()) {
+          const invSnap = await adminDb.collection(COLLECTIONS.INVOICES).doc(invDocId).get();
+          if (invSnap.exists) {
             invData = { id: invSnap.id, ...invSnap.data() } as Invoice;
           }
         } catch (err: any) {
@@ -440,8 +439,8 @@ export async function POST(req: Request) {
         );
       }
     } else if (payload.messageType === "appointment_reminder" && payload.appointmentId) {
-      const aptSnap = await getDoc(doc(db, COLLECTIONS.APPOINTMENTS, payload.appointmentId));
-      if (aptSnap.exists()) {
+      const aptSnap = await adminDb.collection(COLLECTIONS.APPOINTMENTS).doc(payload.appointmentId).get();
+      if (aptSnap.exists) {
         const aptData = aptSnap.data() as Appointment;
         patientId = patientId || aptData.patientId || "";
         patientName = patientName || aptData.patientName || "Patient";
@@ -638,7 +637,7 @@ export async function POST(req: Request) {
       // ── SUCCESSFUL SEND ──
       await incrementQuotaCounter(quota.monthKey);
 
-      const sentTime = Timestamp.now();
+      const sentTime = Timestamp.now() as any;
       if (initialLogId) {
         await updateWhatsAppLog(initialLogId, {
           status: "sent",
@@ -667,7 +666,7 @@ export async function POST(req: Request) {
       return createSuccessResponse("WhatsApp message delivered successfully!", undefined, twilioResponse.sid);
     } else {
       // ── FAILED SEND AFTER RETRIES ──
-      const failTime = Timestamp.now();
+      const failTime = Timestamp.now() as any;
       if (initialLogId) {
         await updateWhatsAppLog(initialLogId, {
           status: "failed",

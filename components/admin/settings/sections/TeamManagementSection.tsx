@@ -6,7 +6,6 @@ import { Users, ShieldCheck, ArrowRight, Sparkles } from "lucide-react";
 import { queryKeys, CACHE_POLICIES } from "../../../../lib/query/queryKeys";
 import {
   getTeamMembers,
-  addTeamMember,
   updateTeamMember,
   deleteTeamMember,
   resetMemberPassword,
@@ -16,6 +15,7 @@ import {
   deleteRole,
   getClinicInfo,
 } from "../../../../lib/services/settingsService";
+import { addTeamMemberAction } from "../../../../server/actions/settingsActions";
 import type { TeamMember, RolePermission, TeamMemberFormData } from "../../../../lib/types";
 import { getSubscription, canManageRoles, getMaximumDoctors } from "../../../../lib/services/featureAccessService";
 import { TeamMembersTable } from "../team/TeamMembersTable";
@@ -70,7 +70,13 @@ export default function TeamManagementSection() {
 
   // Mutations
   const inviteMutation = useMutation({
-    mutationFn: addTeamMember,
+    mutationFn: async (data: TeamMemberFormData) => {
+      const res = await addTeamMemberAction(data);
+      if (!res.success) {
+        throw new Error(res.error || "Failed to add team member on server.");
+      }
+      return res.data!.id;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.settings.teamMembers });
       queryClient.invalidateQueries({ queryKey: ["teamMembers", "active-doctors"] });

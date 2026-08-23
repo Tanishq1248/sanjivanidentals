@@ -1,6 +1,6 @@
 import { doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
 import { db } from "../firebase";
-import { COLLECTIONS } from "./firestoreConfig";
+import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
 import type {
   ClinicBasicInfo,
   ClinicSettingsData,
@@ -288,13 +288,24 @@ export function validateClinicSettings(
 
 export const validateClinicInfo = validateClinicSettings;
 
+import { saveClinicInfoAction } from "../../server/actions/settingsActions";
+
 /**
- * Fetch singleton clinic basic info document (clinicSettings/info).
- * Checks primary `clinicSettings/info` doc, with automatic migration & fallback
- * to legacy `clinicSettings/general` and `clinicSettings/config`.
+ * Fetch singleton clinic basic info document (clinicSettings/basicInfo or info).
+ * Checks primary `clinicSettings/basicInfo` & `clinicSettings/info` doc, with automatic migration & fallback
+ * to legacy `clinicSettings/default`, `clinicSettings/general`, and `clinicSettings/config`.
  */
 export async function getClinicSettings(): Promise<ClinicSettingsData> {
   try {
+    // Primary: check basicInfo
+    const basicSnap = await getDoc(doc(db, CLINIC_SETTINGS_COLLECTION, "basicInfo"));
+    if (basicSnap.exists()) {
+      const normalized = normalizeClinicSettings(basicSnap.data());
+      memoryClinicSettingsCache = normalized;
+      return normalized;
+    }
+
+    // Secondary: check info
     const docRef = doc(db, CLINIC_SETTINGS_COLLECTION, "info");
     const snap = await getDoc(docRef);
     if (snap.exists()) {
@@ -303,7 +314,15 @@ export async function getClinicSettings(): Promise<ClinicSettingsData> {
       return normalized;
     }
 
-    // Fallback 1: check legacy "general" doc
+    // Fallback 1: check default
+    const defaultSnap = await getDoc(doc(db, CLINIC_SETTINGS_COLLECTION, "default"));
+    if (defaultSnap.exists()) {
+      const normalized = normalizeClinicSettings(defaultSnap.data());
+      memoryClinicSettingsCache = normalized;
+      return normalized;
+    }
+
+    // Fallback 2: check legacy "general" doc
     const generalSnap = await getDoc(doc(db, CLINIC_SETTINGS_COLLECTION, "general"));
     if (generalSnap.exists()) {
       const normalized = normalizeClinicSettings(generalSnap.data());
@@ -311,7 +330,7 @@ export async function getClinicSettings(): Promise<ClinicSettingsData> {
       return normalized;
     }
 
-    // Fallback 2: check legacy "config" doc
+    // Fallback 3: check legacy "config" doc
     const configSnap = await getDoc(doc(db, CLINIC_SETTINGS_COLLECTION, "config"));
     if (configSnap.exists()) {
       const normalized = normalizeClinicSettings(configSnap.data());
@@ -328,14 +347,13 @@ export async function getClinicSettings(): Promise<ClinicSettingsData> {
 export const getClinicInfo = getClinicSettings;
 
 /**
- * Create or update singleton clinic settings document (clinicSettings/info).
- * Also keeps legacy `clinicSettings/general` synced for backward compatibility.
+ * Create or update singleton clinic settings document securely on the server via Server Action.
  */
 export async function updateClinicSettings(
   data: Partial<ClinicSettingsData | ClinicBasicInfo>
 ): Promise<ClinicSettingsData> {
   const current = await getClinicSettings();
-  const clinicId = data.clinicId || current.clinicId || "clinic-1";
+  const clinicId = data.clinicId || current.clinicId || DEFAULT_CLINIC_ID;
 
   const updated: ClinicSettingsData = normalizeClinicSettings({
     ...current,
@@ -347,29 +365,13 @@ export async function updateClinicSettings(
 
   memoryClinicSettingsCache = updated;
 
-  try {
-    // 1. Primary document
-    const docRef = doc(db, CLINIC_SETTINGS_COLLECTION, "info");
-    await setDoc(docRef, updated, { merge: true });
-
-    // 2. Legacy "general" document sync
-    const legacyRef = doc(db, CLINIC_SETTINGS_COLLECTION, "general");
-    await setDoc(
-      legacyRef,
-      {
-        ...updated,
-        doctorTitle: updated.doctorTitle || updated.leadDoctorName,
-        address: formatClinicAddress(updated),
-        gstin: updated.gstin,
-      },
-      { merge: true }
-    );
-  } catch (error) {
-    console.error("[ClinicSettingsService] Failed to persist clinic settings to Firestore:", error);
-    throw error;
+  const res = await saveClinicInfoAction(updated, clinicId);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to persist clinic settings to Firestore.");
   }
 
   return updated;
 }
 
 export const createOrUpdateClinicInfo = updateClinicSettings;
+

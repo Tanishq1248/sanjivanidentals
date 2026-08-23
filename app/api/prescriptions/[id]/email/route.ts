@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore";
-import { db } from "../../../../../lib/firebase";
+import { adminDb } from "../../../../../lib/server/firebaseAdmin";
+import { FieldValue } from "firebase-admin/firestore";
 import { COLLECTIONS } from "../../../../../lib/services/firestoreConfig";
 import { DocumentStorageService } from "../../../../../lib/services/documentStorageService";
 import { getClinicSettings } from "../../../../../lib/services/clinicSettingsService";
@@ -17,11 +17,11 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     let { patientEmail, patientName, clinicName } = body;
 
-    // 1. Fetch Prescription from Firestore
-    const rxRef = doc(db, COLLECTIONS.PRESCRIPTIONS, id);
-    const rxSnap = await getDoc(rxRef);
+    // 1. Fetch Prescription from Firestore via Admin SDK
+    const rxRef = adminDb.collection(COLLECTIONS.PRESCRIPTIONS).doc(id);
+    const rxSnap = await rxRef.get();
 
-    if (!rxSnap.exists()) {
+    if (!rxSnap.exists) {
       return NextResponse.json({ error: "Prescription not found" }, { status: 404 });
     }
 
@@ -80,10 +80,10 @@ export async function POST(
       );
     }
 
-    // Update Firestore prescription document
-    await updateDoc(rxRef, {
+    // Update Firestore prescription document via Admin SDK
+    await rxRef.update({
       emailSent: true,
-      emailSentAt: Timestamp.now(),
+      emailSentAt: FieldValue.serverTimestamp(),
     });
 
     return NextResponse.json({

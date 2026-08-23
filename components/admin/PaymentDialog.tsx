@@ -2,9 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { doc, updateDoc, Timestamp } from "firebase/firestore";
-import { db } from "../../lib/firebase";
-import { COLLECTIONS } from "../../lib/services/firestoreConfig";
+import { updateInvoicePaymentDetailsAction } from "../../server/actions/billingActions";
 import { X, Loader2 } from "lucide-react";
 import type { Invoice, PaymentMethod, PaymentHistoryEntry, InstallmentPlan } from "../../lib/types";
 
@@ -67,13 +65,20 @@ export function PaymentDialog({ invoice, isOpen, onClose, onSuccess }: PaymentDi
   }, [paymentType, remaining]);
 
   const updateInvoiceMutation = useMutation({
-    mutationFn: async (updatedData: Partial<Invoice>) => {
-      if (!invoice) return;
-      const ref = doc(db, COLLECTIONS.INVOICES, invoice.id);
-      await updateDoc(ref, {
-        ...updatedData,
-        updatedAt: Timestamp.now(),
-      });
+    mutationFn: async (payload: {
+      invoiceId: string;
+      paymentType: "PAID" | "PARTIAL" | "PENDING";
+      paymentMethod: string;
+      amountReceived: number;
+      discountApplied?: number;
+      dueDate?: string;
+      notes?: string;
+    }) => {
+      const res = await updateInvoicePaymentDetailsAction(payload);
+      if (!res.success) {
+        throw new Error(res.error || "Failed to update payment on server.");
+      }
+      return res.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
@@ -89,71 +94,23 @@ export function PaymentDialog({ invoice, isOpen, onClose, onSuccess }: PaymentDi
   if (!isOpen || !invoice) return null;
 
   const handleSave = () => {
-    const received = paymentType === "PAID" ? remaining : (paymentType === "PENDING" ? 0 : (parseFloat(amountReceived) || 0));
+    const received =
+      paymentType === "PAID"
+        ? remaining
+        : paymentType === "PENDING"
+        ? 0
+        : parseFloat(amountReceived) || 0;
     const addedDiscount = parseFloat(discountApplied) || 0;
 
-    // 1. Calculate updated discount & totals
-    const finalDiscount = (invoice.discount || invoice.discountAmount || 0) + addedDiscount;
-    const finalTotal = Math.max(0, total - addedDiscount);
-    const finalAmount = finalTotal;
-
-    // 2. Calculate updated paid/remaining amounts
-    const finalPaid = Math.min(finalTotal, paid + received);
-    const finalRemaining = Math.max(0, finalTotal - finalPaid);
-
-    // 3. Status determination
-    let finalStatus: "PAID" | "PARTIAL" | "PENDING";
-    if (finalRemaining <= 0) {
-      finalStatus = "PAID";
-    } else {
-      finalStatus = paymentType === "PENDING" ? "PENDING" : "PARTIAL";
-    }
-
-    // 4. Payment method determination
-    const finalMethod = finalStatus === "PAID" ? paymentMethod : (received > 0 ? paymentMethod : "None");
-
-    // 5. Build payment timeline history entry
-    const historyEntry: PaymentHistoryEntry = {
-      paymentDate: new Date().toISOString().split("T")[0],
-      paymentMethod: finalMethod,
+    updateInvoiceMutation.mutate({
+      invoiceId: invoice.id,
+      paymentType,
+      paymentMethod,
       amountReceived: received,
-      paymentType: finalStatus as any,
-      notes: notes || undefined,
-    };
-
-    const newHistory = [...(invoice.paymentHistory || [])];
-    // Add initialization event if missing
-    if (newHistory.length === 0) {
-      newHistory.push({
-        paymentDate: invoice.invoiceDate,
-        paymentMethod: "None",
-        amountReceived: 0,
-        paymentType: "Generated",
-        notes: "Invoice Generated",
-      });
-    }
-
-    // Append the new payment entry
-    newHistory.push(historyEntry);
-
-    // 7. Update Firestore document
-    const updatedFields: Partial<Invoice> = {
-      discount: finalDiscount,
-      discountAmount: finalDiscount,
-      total: finalTotal,
-      amount: finalAmount,
-      netAmount: finalTotal,
-      paidAmount: finalPaid,
-      remainingAmount: finalRemaining,
-      dueDate: finalRemaining > 0 ? dueDate : "",
-      paymentStatus: finalStatus,
-      status: finalStatus,
-      paymentMethod: finalMethod as any,
-      paymentHistory: newHistory,
-      installmentPlan: null,
-    };
-
-    updateInvoiceMutation.mutate(updatedFields);
+      discountApplied: addedDiscount,
+      dueDate,
+      notes,
+    });
   };
 
   const isSaving = updateInvoiceMutation.isPending;

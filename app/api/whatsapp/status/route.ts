@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { Timestamp } from "firebase/firestore";
+import { Timestamp } from "firebase-admin/firestore";
 import { updateWhatsAppLogBySid } from "../../../../lib/services/whatsappService";
 import { createErrorResponse, logServerError } from "../../../../lib/errors/messagingErrors";
 import type { WhatsAppDeliveryStatus } from "../../../../lib/types";

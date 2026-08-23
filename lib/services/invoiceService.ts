@@ -3,56 +3,102 @@ import {
   doc,
   getDocs,
   getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
   query,
   orderBy,
   where,
-  Timestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import type { Invoice } from "../types";
-import { COLLECTIONS, DEFAULT_CLINIC_ID } from "./firestoreConfig";
+import { COLLECTIONS } from "./firestoreConfig";
+import {
+  getInvoicesAction,
+  getInvoicesByPatientIdAction,
+  getInvoiceByIdAction,
+  addInvoiceAction,
+  updateInvoiceAction,
+  deleteInvoiceAction,
+} from "../../server/actions/billingActions";
 
 const COLLECTION = COLLECTIONS.INVOICES;
 const invoicesRef = collection(db, COLLECTION);
 
 /** Fetch all invoices, ordered by creation date descending. */
 export async function getInvoices(): Promise<Invoice[]> {
-  const q = query(invoicesRef, orderBy("createdAt", "desc"));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Invoice);
+  try {
+    const res = await getInvoicesAction();
+    if (res.success && res.data) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn("[invoiceService] Server getInvoices error, falling back to client:", err);
+  }
+
+  try {
+    const q = query(invoicesRef, orderBy("createdAt", "desc"));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Invoice);
+  } catch (err) {
+    console.error("[invoiceService] Client getInvoices error:", err);
+    return [];
+  }
 }
 
 /** Fetch invoices belonging to a specific patient. Ordered client-side or using YYYY-MM-DD. */
 export async function getInvoicesByPatientId(patientId: string): Promise<Invoice[]> {
-  const q = query(invoicesRef, where("patientId", "==", patientId));
-  const snapshot = await getDocs(q);
-  const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Invoice);
-  return list.sort((a, b) => b.invoiceDate.localeCompare(a.invoiceDate));
+  if (!patientId) return [];
+
+  try {
+    const res = await getInvoicesByPatientIdAction(patientId);
+    if (res.success && res.data) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn("[invoiceService] Server getInvoicesByPatientId error:", err);
+  }
+
+  try {
+    const q = query(invoicesRef, where("patientId", "==", patientId));
+    const snapshot = await getDocs(q);
+    const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Invoice);
+    return list.sort((a, b) => (b.invoiceDate || "").localeCompare(a.invoiceDate || ""));
+  } catch (err) {
+    console.error("[invoiceService] Client getInvoicesByPatientId error:", err);
+    return [];
+  }
 }
 
 /** Fetch a single invoice by document ID. */
 export async function getInvoiceById(id: string): Promise<Invoice | null> {
-  const snap = await getDoc(doc(db, COLLECTION, id));
-  if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() } as Invoice;
+  if (!id) return null;
+
+  try {
+    const res = await getInvoiceByIdAction(id);
+    if (res.success && res.data !== undefined) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn("[invoiceService] Server getInvoiceById error:", err);
+  }
+
+  try {
+    const snap = await getDoc(doc(db, COLLECTION, id));
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() } as Invoice;
+  } catch (err) {
+    console.error("[invoiceService] Client getInvoiceById error:", err);
+    return null;
+  }
 }
 
 /** Create a new invoice document. Returns the generated document ID. */
 export async function addInvoice(
   data: Omit<Invoice, "id" | "createdAt">
 ): Promise<string> {
-  const clinicId = data.clinicId;
-
-  const now = Timestamp.now();
-  const docRef = await addDoc(invoicesRef, {
-    ...data,
-    clinicId: clinicId || "",
-    createdAt: now,
-  });
-  return docRef.id;
+  const res = await addInvoiceAction(data);
+  if (!res.success || !res.data) {
+    throw new Error(res.error || "Failed to create invoice on server.");
+  }
+  return res.data.id;
 }
 
 /** Update fields on an existing invoice. */
@@ -60,15 +106,18 @@ export async function updateInvoice(
   id: string,
   data: Partial<Omit<Invoice, "id" | "createdAt">>
 ): Promise<void> {
-  const ref = doc(db, COLLECTION, id);
-  await updateDoc(ref, {
-    ...data,
-  });
+  const res = await updateInvoiceAction(id, data);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to update invoice on server.");
+  }
 }
 
 /** Delete an invoice document. */
 export async function deleteInvoice(id: string): Promise<void> {
-  await deleteDoc(doc(db, COLLECTION, id));
+  const res = await deleteInvoiceAction(id);
+  if (!res.success) {
+    throw new Error(res.error || "Failed to delete invoice on server.");
+  }
 }
 
 /** Calculate real-time payment status and UI styles dynamically */

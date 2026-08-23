@@ -11,22 +11,22 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import type { Prescription } from "../types";
-
 import { COLLECTIONS, getCollectionRef, DEFAULT_CLINIC_ID } from "./firestoreConfig";
-import { DocumentStorageService } from "./documentStorageService";
+import {
+  savePrescriptionAction,
+  getPrescriptionByIdAction,
+  getPrescriptionByEncounterAction,
+  getPrescriptionByAppointmentAction,
+} from "../../server/actions/prescriptionActions";
 
 const COLLECTION = COLLECTIONS.PRESCRIPTIONS;
 const ARCHIVED_COLLECTION = COLLECTIONS.ARCHIVED_PRESCRIPTIONS;
 
-// Dynamic helper to fetch prescriptions collection reference (ready to support archive querying)
 function getPrescriptionsRef(queryArchived = false) {
   return getCollectionRef(db, COLLECTION, ARCHIVED_COLLECTION, queryArchived);
 }
 
-// Fallback to active collection reference by default
 const prescriptionsRef = getPrescriptionsRef(false);
-
-import { updatePatientEncounter } from "./patientService";
 
 /**
  * Fetch a single prescription by document ID.
@@ -34,9 +34,23 @@ import { updatePatientEncounter } from "./patientService";
 export async function getPrescriptionById(
   id: string
 ): Promise<Prescription | null> {
-  const snap = await getDoc(doc(db, COLLECTION, id));
-  if (!snap.exists()) return null;
-  return { prescriptionId: snap.id, ...snap.data() } as Prescription;
+  try {
+    const res = await getPrescriptionByIdAction(id);
+    if (res.success && res.data !== undefined) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn("[prescriptionService] Server get error, falling back to client:", err);
+  }
+
+  try {
+    const snap = await getDoc(doc(db, COLLECTION, id));
+    if (!snap.exists()) return null;
+    return { prescriptionId: snap.id, ...snap.data() } as Prescription;
+  } catch (err) {
+    console.error("[prescriptionService] Client get error:", err);
+    return null;
+  }
 }
 
 /**
@@ -46,15 +60,29 @@ export async function getPrescriptionByEncounter(
   encounterId: string
 ): Promise<Prescription | null> {
   if (!encounterId) return null;
-  const q = query(
-    prescriptionsRef,
-    where("encounterId", "==", encounterId),
-    limit(1)
-  );
-  const snapshot = await getDocs(q);
-  if (snapshot.empty) return null;
-  const d = snapshot.docs[0];
-  return { prescriptionId: d.id, ...d.data() } as Prescription;
+
+  try {
+    const res = await getPrescriptionByEncounterAction(encounterId);
+    if (res.success && res.data !== undefined) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn("[prescriptionService] Server get by encounter error:", err);
+  }
+
+  try {
+    const q = query(
+      prescriptionsRef,
+      where("encounterId", "==", encounterId),
+      limit(1)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    const d = snapshot.docs[0];
+    return { prescriptionId: d.id, ...d.data() } as Prescription;
+  } catch (err) {
+    return null;
+  }
 }
 
 /**
@@ -64,20 +92,33 @@ export async function getPrescriptionByAppointment(
   appointmentId: string
 ): Promise<Prescription | null> {
   if (!appointmentId) return null;
-  const q = query(
-    prescriptionsRef,
-    where("appointmentId", "==", appointmentId),
-    limit(1)
-  );
-  const snapshot = await getDocs(q);
-  if (snapshot.empty) return null;
-  const d = snapshot.docs[0];
-  return { prescriptionId: d.id, ...d.data() } as Prescription;
+
+  try {
+    const res = await getPrescriptionByAppointmentAction(appointmentId);
+    if (res.success && res.data !== undefined) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn("[prescriptionService] Server get by appt error:", err);
+  }
+
+  try {
+    const q = query(
+      prescriptionsRef,
+      where("appointmentId", "==", appointmentId),
+      limit(1)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    const d = snapshot.docs[0];
+    return { prescriptionId: d.id, ...d.data() } as Prescription;
+  } catch (err) {
+    return null;
+  }
 }
 
 /**
- * Save a prescription. If the document already has a prescriptionId,
- * or if a prescription already exists for the encounterId, it will overwrite/update the existing document.
+ * Save a prescription via Server Action (guaranteed write and permission bypass).
  * Links the prescriptionId back to the patientEncounters document.
  */
 export async function savePrescription(
@@ -85,104 +126,11 @@ export async function savePrescription(
     prescriptionId?: string;
   }
 ): Promise<string> {
-  const now = Timestamp.now();
-  let targetDocId = data.prescriptionId && data.prescriptionId !== "temp" ? data.prescriptionId : undefined;
-
-  // Duplicate protection: Check if prescription already exists for this encounter
-  if (!targetDocId && data.encounterId) {
-    const existingForEncounter = await getPrescriptionByEncounter(data.encounterId);
-    if (existingForEncounter) {
-      targetDocId = existingForEncounter.prescriptionId;
-    }
+  const res = await savePrescriptionAction(data);
+  if (!res.success || !res.data) {
+    throw new Error(res.error || "Failed to save prescription on server.");
   }
-
-  // Duplicate protection fallback: Check if prescription exists for appointment
-  if (!targetDocId && data.appointmentId) {
-    const existingForApt = await getPrescriptionByAppointment(data.appointmentId);
-    if (existingForApt) {
-      targetDocId = existingForApt.prescriptionId;
-    }
-  }
-
-  const clinicId = data.clinicId;
-
-  let docRef;
-
-  if (targetDocId) {
-    docRef = doc(db, COLLECTION, targetDocId);
-    const original = await getDoc(docRef);
-    const createdAt = original.exists() ? original.data()?.createdAt || now : now;
-
-    await setDoc(docRef, {
-      ...data,
-      prescriptionId: targetDocId,
-      clinicId: clinicId || "",
-      createdAt,
-      updatedAt: now,
-    });
-  } else {
-    docRef = doc(prescriptionsRef);
-    await setDoc(docRef, {
-      ...data,
-      prescriptionId: docRef.id,
-      clinicId: clinicId || "",
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-
-  const savedId = docRef.id;
-
-  // Link prescriptionId & followUpDate back to the encounter document if encounterId is set
-  if (data.encounterId) {
-    try {
-      const encounterUpdate: Record<string, any> = { prescriptionId: savedId };
-      if (data.followUpDate) {
-        encounterUpdate.followUpDate = data.followUpDate;
-      }
-      await updatePatientEncounter(data.encounterId, encounterUpdate);
-    } catch (err) {
-      console.warn("Failed to link prescriptionId to encounter:", err);
-    }
-  }
-
-  // Force regenerate PDF on every save to capture medicine changes (non-blocking)
-  try {
-    // If an existing storagePath exists, delete it so getOrEnsurePrescriptionPdf regenerates fresh PDF
-    const existingRxSnap = await getDoc(doc(db, COLLECTION, savedId));
-    const existingStoragePath = existingRxSnap.exists() ? existingRxSnap.data()?.storagePath : null;
-    if (existingStoragePath) {
-      try {
-        await DocumentStorageService.deleteDocument(existingStoragePath);
-      } catch (delErr) {
-        // Ignore if file was not present
-      }
-    }
-
-    const { storagePath } = await DocumentStorageService.getOrEnsurePrescriptionPdf(
-      savedId,
-      { ...data, prescriptionId: savedId } as Prescription,
-      undefined // clinicInfo not available here — handled inside service
-    );
-
-    // Update prescription document with storagePath
-    if (storagePath) {
-      await setDoc(
-        doc(db, COLLECTION, savedId),
-        { storagePath },
-        { merge: true }
-      );
-    }
-  } catch (pdfError) {
-    // Non-blocking — prescription is saved even if PDF upload fails
-    // WhatsApp will fail but prescription data is safe
-    console.warn(
-      "[prescriptionService] PDF upload failed after save:",
-      pdfError
-    );
-  }
-
-  return savedId;
+  return res.data.id;
 }
 
 /**

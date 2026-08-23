@@ -35,9 +35,6 @@ import {
   Layers,
   Sparkles,
 } from "lucide-react";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "../../lib/firebase";
-import { COLLECTIONS } from "../../lib/services/firestoreConfig";
 import { AdminAuthGuard } from "../../components/auth/AdminAuthGuard";
 import { useAuth } from "../../lib/context/AuthContext";
 import {

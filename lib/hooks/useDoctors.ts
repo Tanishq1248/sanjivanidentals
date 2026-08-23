@@ -22,6 +22,8 @@ export interface ActiveDoctor {
  * Single source of truth for all doctor assignment dropdowns across the application.
  * Cached globally for 15 minutes to minimize Firestore read volume.
  */
+import React, { useMemo } from "react";
+
 export function useActiveDoctors() {
   const {
     data: teamMembers = [],
@@ -37,34 +39,36 @@ export function useActiveDoctors() {
     ...CACHE_POLICIES.TEAM_MEMBERS,
   });
 
-  const doctors: ActiveDoctor[] = teamMembers
-    .filter(
-      (member) =>
-        (member.status === "Active" || !member.status) &&
-        (member.role?.toLowerCase() === "doctor" || member.roleId === "role-doctor")
-    )
-    .map((doc) => {
-      const rawName = doc.name.trim();
-      const formattedName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
-      const specialty =
-        (doc as any).qualification ||
-        (doc as any).specialty ||
-        (doc as any).specialization ||
-        "General Dentist";
+  const doctors: ActiveDoctor[] = useMemo(() => {
+    return teamMembers
+      .filter(
+        (member) =>
+          (member.status === "Active" || !member.status) &&
+          (member.role?.toLowerCase() === "doctor" || member.roleId === "role-doctor")
+      )
+      .map((doc) => {
+        const rawName = doc.name.trim();
+        const formattedName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
+        const specialty =
+          (doc as any).qualification ||
+          (doc as any).specialty ||
+          (doc as any).specialization ||
+          "General Dentist";
 
-      return {
-        id: doc.id,
-        fullName: formattedName,
-        name: formattedName,
-        specialization: specialty,
-        specialty: specialty,
-        qualification: (doc as any).qualification || specialty,
-        registrationNumber: (doc as any).registrationNumber || "",
-        email: doc.email || "",
-        phone: doc.phone || "",
-        active: doc.status === "Active" || !doc.status,
-      };
-    });
+        return {
+          id: doc.id,
+          fullName: formattedName,
+          name: formattedName,
+          specialization: specialty,
+          specialty: specialty,
+          qualification: (doc as any).qualification || specialty,
+          registrationNumber: (doc as any).registrationNumber || "",
+          email: doc.email || "",
+          phone: doc.phone || "",
+          active: doc.status === "Active" || !doc.status,
+        };
+      });
+  }, [teamMembers]);
 
   return {
     doctors,

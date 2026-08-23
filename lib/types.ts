@@ -1,4 +1,4 @@
-import { Timestamp } from "firebase/firestore";
+import type { Timestamp } from "firebase/firestore";
 
 /* ─── Referral Sources ─── */
 export const REFERRAL_SOURCES = [
@@ -427,7 +427,7 @@ export interface DocumentMetadataRecord {
 }
 
 
-import { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
+import type { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 
 export interface PaginatedResult<T> {
   data: T[];

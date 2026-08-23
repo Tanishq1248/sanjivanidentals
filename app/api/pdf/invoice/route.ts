@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../../../../lib/firebase";
+import { adminDb } from "../../../../lib/server/firebaseAdmin";
 import { COLLECTIONS } from "../../../../lib/services/firestoreConfig";
 import { DocumentStorageService } from "../../../../lib/services/documentStorageService";
 import { getClinicSettings } from "../../../../lib/services/clinicSettingsService";
@@ -16,11 +15,11 @@ export async function GET(req: Request) {
       return createErrorResponse("PATIENT_NOT_FOUND", "Missing invoice ID parameter.");
     }
 
-    // 1. Fetch latest Invoice from Firestore
-    const invRef = doc(db, COLLECTIONS.INVOICES, id);
-    const invSnap = await getDoc(invRef);
+    // 1. Fetch latest Invoice from Firestore via Admin SDK
+    const invRef = adminDb.collection(COLLECTIONS.INVOICES).doc(id);
+    const invSnap = await invRef.get();
 
-    if (!invSnap.exists()) {
+    if (!invSnap.exists) {
       return createErrorResponse("PATIENT_NOT_FOUND", "Invoice record not found.");
     }
 
