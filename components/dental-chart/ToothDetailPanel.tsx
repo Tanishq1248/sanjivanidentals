@@ -34,7 +34,7 @@ import { TreatmentHistoryTab } from "./TreatmentHistoryTab";
 import { TreatmentPlanTab } from "./TreatmentPlanTab";
 import type { SurfaceType } from "../../lib/types";
 
-interface ToothDetailPanelProps {
+export interface ToothDetailPanelProps {
   onSaveTreatment: (
     toothNumber: number,
     treatmentData: {

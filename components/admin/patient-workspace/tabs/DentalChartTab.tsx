@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { DentalChart } from "../../../dental-chart/DentalChart";
-import { ToothDetailPanel } from "../../../dental-chart/ToothDetailPanel";
+import {
+  DynamicDentalChart,
+  DynamicToothDetailPanel,
+} from "../../../dental-chart/DynamicDentalChart";
 import { useDentalChartStore } from "../../../../lib/store/useDentalChartStore";
 import type { PatientEncounter, SurfaceType } from "../../../../lib/types";
 
@@ -42,12 +44,12 @@ export const DentalChartTab: React.FC<DentalChartTabProps> = ({
       <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden flex flex-col lg:flex-row min-h-[620px] h-[calc(100vh-280px)]">
         {/* Main Interactive Dental Chart Canvas */}
         <div className="flex-1 overflow-hidden h-full">
-          <DentalChart patientId={patientId} patientName={patientName} />
+          <DynamicDentalChart patientId={patientId} patientName={patientName} />
         </div>
 
         {/* Side Panel for Selected Tooth Treatments */}
         {selectedTooth && (
-          <ToothDetailPanel
+          <DynamicToothDetailPanel
             onSaveTreatment={onSaveTreatment}
             isSaving={isSaving}
           />

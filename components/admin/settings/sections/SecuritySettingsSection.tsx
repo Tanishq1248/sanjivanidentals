@@ -29,7 +29,7 @@ import {
   ToggleRight,
   Shield,
 } from "lucide-react";
-import { queryKeys } from "../../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../../lib/query/queryKeys";
 import {
   changePassword,
   validatePasswordStrength,
@@ -616,13 +616,13 @@ export default function SecuritySettingsSection() {
   const { data: clinicInfo } = useQuery({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicInfo,
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const { data: settingsData } = useQuery({
     queryKey: queryKeys.settings.securitySettings,
     queryFn: getSecuritySettings,
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const subscription = getSubscription(clinicInfo);

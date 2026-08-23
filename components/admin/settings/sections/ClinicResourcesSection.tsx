@@ -13,7 +13,7 @@ import {
   Lock,
   Sparkles,
 } from "lucide-react";
-import { queryKeys } from "../../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../../lib/query/queryKeys";
 import {
   getClinicResources,
   saveClinicResources,
@@ -37,13 +37,13 @@ export default function ClinicResourcesSection() {
   const { data: clinicInfo } = useQuery({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicInfo,
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const { data: resourcesData, isLoading } = useQuery({
     queryKey: queryKeys.settings.clinicResources,
     queryFn: getClinicResources,
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const subscription = getSubscription(clinicInfo);

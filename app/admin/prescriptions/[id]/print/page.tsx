@@ -8,7 +8,7 @@ import { getPrescriptionById } from "../../../../../lib/services/prescriptionSer
 import { getPatientById } from "../../../../../lib/services/patientService";
 import { getAppointmentById } from "../../../../../lib/services/appointmentService";
 import { getClinicInfo, formatClinicAddress, getDoctorCredentials } from "../../../../../lib/services/clinicSettingsService";
-import { queryKeys } from "../../../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../../../lib/query/queryKeys";
 import type { Patient, Appointment, Prescription, ClinicBasicInfo } from "../../../../../lib/types";
 
 type PrintPageProps = {
@@ -60,7 +60,7 @@ export default function PrescriptionPrintPage({ params }: PrintPageProps) {
   const { data: clinicInfo } = useQuery<ClinicBasicInfo>({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicInfo,
-    staleTime: 10 * 60 * 1000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const isLoading =

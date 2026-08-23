@@ -19,7 +19,7 @@ import {
   Lock,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "../../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../../lib/query/queryKeys";
 import {
   getMessageTemplates,
   saveMessageTemplates,
@@ -81,7 +81,7 @@ export default function MessageTemplatesSection() {
   const { data: clinicInfo } = useQuery({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicInfo,
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const subscription = getSubscription(clinicInfo);

@@ -12,7 +12,7 @@ import {
   FileText,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "../../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../../lib/query/queryKeys";
 import { getClinicInfo } from "../../../../lib/services/clinicSettingsService";
 import {
   getSubscription,
@@ -30,7 +30,7 @@ export default function BackupSettingsSection() {
   const { data: clinicInfo } = useQuery({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicInfo,
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const subscription = getSubscription(clinicInfo);

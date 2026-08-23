@@ -12,6 +12,8 @@ import {
   where,
   limit,
   startAfter,
+  startAt,
+  endAt,
   Timestamp,
   QueryDocumentSnapshot,
   DocumentData,
@@ -50,34 +52,117 @@ export async function getPatients(): Promise<Patient[]> {
   return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Patient);
 }
 
+export interface PaginatedPatientOptions {
+  pageSize?: number;
+  startAfterDoc?: QueryDocumentSnapshot<DocumentData> | null;
+  searchTerm?: string;
+}
+
 /**
- * Fetch a paginated chunk of patients ordered by creation date (newest first).
+ * Fetch a paginated chunk of patients ordered by creation date or filtered by indexed search terms.
+ * Avoids full-collection client scans and enforces strict limit bounds.
  */
-export async function getPatientsPaginated(
-  startAfterDoc: QueryDocumentSnapshot<DocumentData> | null = null,
-  limitCount: number = PAGE_SIZE
-): Promise<PaginatedResult<Patient>> {
-  let q = query(patientsRef, orderBy("createdAt", "desc"), limit(limitCount + 1));
-  if (startAfterDoc) {
+export async function getPaginatedPatients({
+  pageSize = PAGE_SIZE,
+  startAfterDoc = null,
+  searchTerm = "",
+}: PaginatedPatientOptions = {}): Promise<PaginatedResult<Patient>> {
+  const cleanSearch = searchTerm.trim();
+
+  let q;
+  if (cleanSearch) {
+    const isDigits = /^[\d+ -]+$/.test(cleanSearch);
+    if (isDigits) {
+      // Prefix search on indexed phone field
+      const cleanPhone = cleanSearch.replace(/\s+/g, "");
+      q = query(
+        patientsRef,
+        orderBy("phone"),
+        startAt(cleanPhone),
+        endAt(cleanPhone + "\uf8ff"),
+        limit(pageSize + 1)
+      );
+    } else {
+      // Prefix search on indexed name field
+      q = query(
+        patientsRef,
+        orderBy("name"),
+        startAt(cleanSearch),
+        endAt(cleanSearch + "\uf8ff"),
+        limit(pageSize + 1)
+      );
+    }
+  } else if (startAfterDoc) {
     q = query(
       patientsRef,
       orderBy("createdAt", "desc"),
       startAfter(startAfterDoc),
-      limit(limitCount + 1)
+      limit(pageSize + 1)
+    );
+  } else {
+    q = query(
+      patientsRef,
+      orderBy("createdAt", "desc"),
+      limit(pageSize + 1)
     );
   }
-  const snapshot = await getDocs(q);
-  const hasNext = snapshot.docs.length > limitCount;
-  const docs = hasNext ? snapshot.docs.slice(0, limitCount) : snapshot.docs;
+
+  let snapshot;
+  try {
+    snapshot = await getDocs(q);
+  } catch (err) {
+    // Graceful fallback if composite indexes or field types differ
+    if (cleanSearch) {
+      const fallbackQuery = query(
+        patientsRef,
+        orderBy("createdAt", "desc"),
+        limit(50)
+      );
+      snapshot = await getDocs(fallbackQuery);
+      const searchLower = cleanSearch.toLowerCase();
+      const filtered = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }) as Patient)
+        .filter(
+          (p) =>
+            p.name?.toLowerCase().includes(searchLower) ||
+            p.phone?.includes(cleanSearch)
+        )
+        .slice(0, pageSize);
+      return {
+        data: filtered,
+        lastVisible: null,
+        hasNext: false,
+      };
+    }
+    throw err;
+  }
+
+  const hasNext = snapshot.docs.length > pageSize;
+  const docs = hasNext ? snapshot.docs.slice(0, pageSize) : snapshot.docs;
 
   const data = docs.map((d) => ({ id: d.id, ...d.data() }) as Patient);
-  const lastVisible = docs.length > 0 ? docs[docs.length - 1] as QueryDocumentSnapshot<DocumentData> : null;
+  const lastVisible = docs.length > 0 ? (docs[docs.length - 1] as QueryDocumentSnapshot<DocumentData>) : null;
 
   return {
     data,
     lastVisible,
     hasNext,
   };
+}
+
+/**
+ * Backward compatibility alias for getPaginatedPatients.
+ */
+export async function getPatientsPaginated(
+  startAfterDoc: QueryDocumentSnapshot<DocumentData> | null = null,
+  limitCount: number = PAGE_SIZE,
+  searchTerm: string = ""
+): Promise<PaginatedResult<Patient>> {
+  return getPaginatedPatients({
+    startAfterDoc,
+    pageSize: limitCount,
+    searchTerm,
+  });
 }
 
 /** Fetch a single patient by document ID. */
@@ -104,8 +189,11 @@ export async function addPatient(data: PatientFormData): Promise<string> {
   const clinicId = (data as any).clinicId;
 
   const now = Timestamp.now();
+  const nameTrimmed = (data.name || "").trim();
   const docRef = await addDoc(patientsRef, {
     ...data,
+    name: nameTrimmed,
+    nameLowercase: nameTrimmed.toLowerCase(),
     clinicId: clinicId || "",
     avatarColor: randomAvatarColor(),
     createdAt: now,
@@ -120,10 +208,15 @@ export async function updatePatient(
   data: Partial<PatientFormData>
 ): Promise<void> {
   const ref = doc(db, COLLECTION, id);
-  await updateDoc(ref, {
+  const updatePayload: Record<string, any> = {
     ...data,
     updatedAt: Timestamp.now(),
-  });
+  };
+  if (data.name) {
+    updatePayload.name = data.name.trim();
+    updatePayload.nameLowercase = data.name.trim().toLowerCase();
+  }
+  await updateDoc(ref, updatePayload);
 }
 
 /** Delete a patient document. */

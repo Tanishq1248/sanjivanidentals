@@ -6,7 +6,25 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, AlertCircle, ArrowLeft, Stethoscope } from "lucide-react";
 import { AdminAuthGuard } from "../../../../../../components/auth/AdminAuthGuard";
-import { CasePaperSessionView } from "../../../../../../components/admin/patient-workspace/case-paper-session/CasePaperSessionView";
+import dynamic from "next/dynamic";
+
+const CasePaperSessionView = dynamic(
+  () =>
+    import(
+      "../../../../../../components/admin/patient-workspace/case-paper-session/CasePaperSessionView"
+    ).then((m) => m.CasePaperSessionView),
+  {
+    loading: () => (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          <p className="text-sm font-semibold text-slate-600">Loading Clinical Session Workspace...</p>
+        </div>
+      </div>
+    ),
+    ssr: false,
+  }
+);
 import {
   getPatientById,
   getPatientMedicalProfile,

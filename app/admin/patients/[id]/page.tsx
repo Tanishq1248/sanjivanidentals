@@ -42,17 +42,27 @@ import { useActiveDoctors } from "../../../../lib/hooks/useDoctors";
 import { addInvoice, getInvoicesByPatientId } from "../../../../lib/services/invoiceService";
 import { getAppointmentsByPhone } from "../../../../lib/services/appointmentService";
 import { queryKeys } from "../../../../lib/query/queryKeys";
-import jsPDF from "jspdf";
+import type { jsPDF } from "jspdf";
 import { calculateSubtotal, calculateTax, calculateGrandTotal } from "../../../../lib/services/billingService";
 import { sendInvoiceEmail } from "../../../../lib/services/emailService";
 import { PatientDetailsModalSkeleton } from "../../../../components/ui/Skeletons";
 import { getTreatmentStatus, type PatientMedicalProfile, type PatientEncounter, type EncounterStatus, type Invoice, type Appointment, type SurfaceType } from "../../../../lib/types";
-import { DentalChartModal } from "../../../../components/dental-chart/DentalChartModal";
-import { PrescriptionModal } from "../../../../components/admin/encounters/PrescriptionModal";
-import {
-  CreateCasePaperModal,
-  type CreateCasePaperFormData,
-} from "../../../../components/admin/patient-workspace/modals/CreateCasePaperModal";
+import type { CreateCasePaperFormData } from "../../../../components/admin/patient-workspace/modals/CreateCasePaperModal";
+
+const DentalChartModal = dynamic(
+  () => import("../../../../components/dental-chart/DentalChartModal").then((m) => m.DentalChartModal),
+  { ssr: false }
+);
+
+const PrescriptionModal = dynamic(
+  () => import("../../../../components/admin/encounters/PrescriptionModal").then((m) => m.PrescriptionModal),
+  { ssr: false }
+);
+
+const CreateCasePaperModal = dynamic(
+  () => import("../../../../components/admin/patient-workspace/modals/CreateCasePaperModal").then((m) => m.CreateCasePaperModal),
+  { ssr: false }
+);
 
 /* ─── Loading Skeleton for Dynamic Tab Loading ─── */
 function TabLoadingSkeleton() {
@@ -552,6 +562,7 @@ export default function PatientProfilePage({ params }: PageProps) {
       queryClient.invalidateQueries({ queryKey: queryKeys.patients.encounters(patient.id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.byPatientId(patient.id) });
 
+      const { default: jsPDF } = await import("jspdf");
       const doc = new jsPDF({
         orientation: "portrait",
         unit: "mm",

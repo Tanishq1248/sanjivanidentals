@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { getTeamMembersByRole } from "../services/teamService";
+import { queryKeys, CACHE_POLICIES } from "../query/queryKeys";
 
 export interface ActiveDoctor {
   id: string;
@@ -19,6 +20,7 @@ export interface ActiveDoctor {
 /**
  * Hook to retrieve active doctors configured under Settings > Team Members.
  * Single source of truth for all doctor assignment dropdowns across the application.
+ * Cached globally for 15 minutes to minimize Firestore read volume.
  */
 export function useActiveDoctors() {
   const {
@@ -27,12 +29,12 @@ export function useActiveDoctors() {
     error,
     refetch,
   } = useQuery({
-    queryKey: ["teamMembers", "active-doctors"],
+    queryKey: queryKeys.settings.teamMembers,
     queryFn: async () => {
       // Query Firestore teamMembers collection where role == 'Doctor' and status == 'Active'
       return await getTeamMembersByRole("Doctor");
     },
-    staleTime: 2 * 60 * 1000,
+    ...CACHE_POLICIES.TEAM_MEMBERS,
   });
 
   const doctors: ActiveDoctor[] = teamMembers
@@ -58,11 +60,16 @@ export function useActiveDoctors() {
         specialty: specialty,
         qualification: (doc as any).qualification || specialty,
         registrationNumber: (doc as any).registrationNumber || "",
-        email: doc.email,
-        phone: doc.phone,
+        email: doc.email || "",
+        phone: doc.phone || "",
         active: doc.status === "Active" || !doc.status,
       };
     });
 
-  return { doctors, isLoading, error, refetch };
+  return {
+    doctors,
+    isLoading,
+    error,
+    refetch,
+  };
 }

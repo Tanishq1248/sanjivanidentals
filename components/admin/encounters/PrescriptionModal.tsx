@@ -55,7 +55,7 @@ import {
 import { sendWhatsAppMessage } from "../../../lib/services/whatsappService";
 import { sendPrescriptionEmail } from "../../../lib/services/emailService";
 import { useActiveDoctors } from "../../../lib/hooks/useDoctors";
-import { queryKeys } from "../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../lib/query/queryKeys";
 import {
   DENTAL_MEDICATION_CATALOG,
   type DentalMedicationItem,
@@ -146,7 +146,7 @@ export function PrescriptionModal({
   const { data: clinicInfo } = useQuery({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicSettings,
-    staleTime: 10 * 60 * 1000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   // ── Active Doctors (Single Source of Truth from Settings > Team Members) ──

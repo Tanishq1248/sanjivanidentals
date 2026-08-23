@@ -38,15 +38,22 @@ import {
   Building2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "../../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../../lib/query/queryKeys";
 import {
   getClinicSettings,
   formatClinicAddress,
   getDoctorCredentials,
 } from "../../../../lib/services/clinicSettingsService";
-import { DentalChart } from "../../../dental-chart/DentalChart";
-import { ToothDetailPanel } from "../../../dental-chart/ToothDetailPanel";
-import { PrescriptionModal } from "../../encounters/PrescriptionModal";
+import dynamic from "next/dynamic";
+import {
+  DynamicDentalChart,
+  DynamicToothDetailPanel,
+} from "../../../dental-chart/DynamicDentalChart";
+
+const DynamicPrescriptionModal = dynamic(
+  () => import("../../encounters/PrescriptionModal").then((m) => m.PrescriptionModal),
+  { ssr: false }
+);
 import { useActiveDoctors } from "../../../../lib/hooks/useDoctors";
 import { useDentalChartStore } from "../../../../lib/store/useDentalChartStore";
 import type {
@@ -412,7 +419,7 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
   const { data: clinicSettings } = useQuery<ClinicSettingsData>({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicSettings,
-    staleTime: 10 * 60 * 1000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const clinicName = clinicSettings?.clinicName || "Sanjivani Dental Clinic";
@@ -905,11 +912,11 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
         ────────────────────────────────────────────────────────────────── */}
         <div className="bg-white rounded-2xl border border-outline-variant/15 shadow-sm overflow-hidden flex flex-col lg:flex-row min-h-[480px] sm:min-h-[520px] max-w-full">
           <div className="flex-1 overflow-hidden h-full max-w-full">
-            <DentalChart patientId={patient.id} patientName={patient.name} />
+            <DynamicDentalChart patientId={patient.id} patientName={patient.name} />
           </div>
 
           {selectedTooth && (
-            <ToothDetailPanel
+            <DynamicToothDetailPanel
               onSaveTreatment={onSaveToothTreatment}
               isSaving={isSavingToothTreatment}
             />
@@ -1646,7 +1653,7 @@ export const CasePaperSessionView: React.FC<CasePaperSessionViewProps> = ({
 
       {/* ── Modal: Prescription ── */}
       {isRxModalOpen && (
-        <PrescriptionModal
+        <DynamicPrescriptionModal
           isOpen={isRxModalOpen}
           onClose={() => setIsRxModalOpen(false)}
           encounter={encounter}

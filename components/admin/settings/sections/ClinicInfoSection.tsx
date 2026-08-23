@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Save, Loader2, CheckCircle2, AlertCircle, Building2 } from "lucide-react";
-import { queryKeys } from "../../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../../lib/query/queryKeys";
 import {
   getClinicInfo,
   createOrUpdateClinicInfo,
@@ -19,7 +19,7 @@ export default function ClinicInfoSection() {
   const { data: clinicData, isLoading } = useQuery({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicInfo,
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const [formData, setFormData] = useState<ClinicBasicInfo>({

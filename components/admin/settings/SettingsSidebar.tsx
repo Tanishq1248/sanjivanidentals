@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { SETTINGS_NAV_ITEMS, SettingsNavItem } from "./settingsNavConfig";
 import { ChevronRight, Settings, Sparkles, Zap, ShieldCheck } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../lib/query/queryKeys";
 import { getClinicInfo } from "../../../lib/services/clinicSettingsService";
 import { getSubscription } from "../../../lib/services/featureAccessService";
 import { UpgradeToProModal } from "./UpgradeToProModal";
@@ -20,7 +20,7 @@ export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps
   const { data: clinicInfo } = useQuery({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicInfo,
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const subscription = getSubscription(clinicInfo);

@@ -20,7 +20,7 @@ import {
 import type { Appointment } from "../../../../lib/types";
 import { sendWhatsAppMessage } from "../../../../lib/services/whatsappService";
 import { getClinicResources } from "../../../../lib/services/settingsService";
-import { queryKeys } from "../../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../../lib/query/queryKeys";
 
 interface AppointmentsTabProps {
   appointments: Appointment[];
@@ -56,7 +56,7 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
   const { data: clinicResources } = useQuery({
     queryKey: queryKeys.settings.clinicResources,
     queryFn: getClinicResources,
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const getChairName = (apt: Appointment) => {

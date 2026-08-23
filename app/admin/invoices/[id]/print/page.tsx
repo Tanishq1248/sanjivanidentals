@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2, AlertCircle, Printer, Building2, CheckCircle2 } from "lucide-react";
 import { getInvoiceById, getInvoiceStatusDetails } from "../../../../../lib/services/invoiceService";
 import { getPatientById } from "../../../../../lib/services/patientService";
-import { queryKeys } from "../../../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../../../lib/query/queryKeys";
 import {
   getClinicSettings,
   formatClinicAddress,
@@ -62,7 +62,7 @@ export default function InvoicePrintPage({ params }: PrintPageProps) {
   } = useQuery<ClinicSettingsData>({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicSettings,
-    staleTime: 10 * 60 * 1000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   // Derive loading and error states

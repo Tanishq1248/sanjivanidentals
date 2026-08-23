@@ -25,7 +25,7 @@ import {
   type ChartSubView,
 } from "./types";
 
-interface DentalChartProps {
+export interface DentalChartProps {
   patientId: string;
   patientName: string;
   onClose?: () => void;

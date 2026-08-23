@@ -4,7 +4,7 @@ import React, { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Appointment, AppointmentStatus } from "../../lib/types";
 import { getClinicResources } from "../../lib/services/settingsService";
-import { queryKeys } from "../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../lib/query/queryKeys";
 import {
   CheckCircle2,
   UserCircle,
@@ -62,7 +62,7 @@ export function AppointmentCard({
   const { data: clinicResources } = useQuery({
     queryKey: queryKeys.settings.clinicResources,
     queryFn: getClinicResources,
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const displayChairLabel = useMemo(() => {

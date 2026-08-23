@@ -31,10 +31,11 @@ import { AdminAuthGuard } from "../../../components/auth/AdminAuthGuard";
 import { useAuth } from "../../../lib/context/AuthContext";
 import {
   getPatients,
+  getPatientById,
   addPatient,
   updatePatient,
   deletePatient,
-  getPatientsPaginated,
+  getPaginatedPatients,
   getPatientsCount,
   PAGE_SIZE,
 } from "../../../lib/services/patientService";
@@ -43,8 +44,13 @@ import { REFERRAL_SOURCES } from "../../../lib/types";
 import { useSidebarStore } from "../../../lib/store/useSidebarStore";
 import { usePatientStore } from "../../../lib/store/usePatientStore";
 import { useDashboardStore } from "../../../lib/store/useDashboardStore";
-import { queryKeys } from "../../../lib/query/queryKeys";
-import { PatientDetailsModal } from "../../../components/admin/PatientDetailsModal";
+import { queryKeys, CACHE_POLICIES } from "../../../lib/query/queryKeys";
+import dynamic from "next/dynamic";
+
+const PatientDetailsModal = dynamic(
+  () => import("../../../components/admin/PatientDetailsModal").then((m) => m.PatientDetailsModal),
+  { ssr: false }
+);
 import { TableSkeleton, CardListSkeleton, useDelayLoading } from "../../../components/ui/Skeletons";
 
 /* ─── WhatsApp SVG Icon ─── */
@@ -234,22 +240,19 @@ function PatientsManagement() {
   } = useQuery({
     queryKey: queryKeys.patients.list(currentPage, debouncedSearch),
     queryFn: async () => {
-      if (debouncedSearch.trim() !== "") {
-        // Search mode: fetch all for client-side filtering.
-        const allPatients = await getPatients();
-        return { data: allPatients, hasNext: false, lastVisible: null };
-      }
-      // Paginated mode: cursor lives in local state.
       const cursor = startAfterHistory[currentPage - 1] ?? null;
-      return getPatientsPaginated(cursor, PAGE_SIZE);
+      return getPaginatedPatients({
+        pageSize: PAGE_SIZE,
+        startAfterDoc: cursor,
+        searchTerm: debouncedSearch,
+      });
     },
-    staleTime: 2 * 60 * 1000,
-    gcTime: 5 * 60 * 1000,
+    ...CACHE_POLICIES.PATIENT_REGISTRY,
   });
 
-  // Sync cursor history from query result (only for paginated, non-search pages).
+  // Sync cursor history from query result.
   useEffect(() => {
-    if (!patientListResult || debouncedSearch.trim() !== "") return;
+    if (!patientListResult) return;
     setHasNextPage(patientListResult.hasNext);
     if (patientListResult.lastVisible) {
       setStartAfterHistory((prev) => {
@@ -258,38 +261,28 @@ function PatientsManagement() {
         return copy;
       });
     }
-  }, [patientListResult, currentPage, debouncedSearch]);
+  }, [patientListResult, currentPage]);
 
   const patients: Patient[] = patientListResult?.data ?? [];
 
-  // ── Patient list for referrer search (uses cached all-patients query) ──
-  const { data: allPatientsForSearch = [] } = useQuery<Patient[]>({
-    queryKey: queryKeys.patients.all,
-    queryFn: getPatients,
-    staleTime: 5 * 60_000,
+  // ── Targeted Referrer Patient Search (Indexed, Top 6 Results) ──
+  const { data: referrerSuggestions = [] } = useQuery<Patient[]>({
+    queryKey: ["patients", "referrerSearch", referrerSearch],
+    queryFn: async () => {
+      const q = referrerSearch.trim();
+      if (q.length < 2) return [];
+      const res = await getPaginatedPatients({ searchTerm: q, pageSize: 6 });
+      return res.data;
+    },
+    enabled: referrerSearch.trim().length >= 2,
+    staleTime: 60 * 1000,
   });
-
-  const referrerSuggestions = React.useMemo(() => {
-    const q = referrerSearch.trim().toLowerCase();
-    if (q.length < 2) return [];
-    const digits = q.replace(/\D/g, "");
-    return allPatientsForSearch
-      .filter((p) => {
-        const phoneDigits = p.phone.replace(/\D/g, "");
-        return (
-          (digits && phoneDigits.includes(digits)) ||
-          p.name.toLowerCase().includes(q)
-        );
-      })
-      .slice(0, 6);
-  }, [referrerSearch, allPatientsForSearch]);
 
   // ── Patient count query ─────────────────────────────────────────────────
   const { data: totalCount = 0 } = useQuery({
     queryKey: queryKeys.patients.count(),
     queryFn: getPatientsCount,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const showSkeleton = useDelayLoading(isListLoading, 300);
@@ -489,10 +482,16 @@ function PatientsManagement() {
       referredByPatientId: p.referredByPatientId || "",
     });
     
-    // Find referrer name optimistically to show in UI chip
+    // Find referrer name to show in UI chip
     if (p.referredByPatientId) {
-      const refPatient = allPatientsForSearch.find((x) => x.id === p.referredByPatientId);
-      setReferrerName(refPatient ? refPatient.name : "");
+      const refPatient = patients.find((x) => x.id === p.referredByPatientId);
+      if (refPatient) {
+        setReferrerName(refPatient.name);
+      } else {
+        getPatientById(p.referredByPatientId).then((found) => {
+          if (found) setReferrerName(found.name);
+        });
+      }
     } else {
       setReferrerName("");
     }

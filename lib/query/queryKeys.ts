@@ -180,4 +180,30 @@ export const queryKeys = {
   },
 } as const;
 
+/**
+ * Global caching policies for Firestore data.
+ * - STATIC_METADATA: Clinic info, resources, templates, settings (rarely changes).
+ * - TEAM_MEMBERS: Doctors & team permissions (15 minutes).
+ * - PATIENT_REGISTRY: Paginated patient lists and indices (5 minutes).
+ * - DYNAMIC_DATA: Appointments, queue, and real-time dashboard stats.
+ */
+export const CACHE_POLICIES = {
+  STATIC_METADATA: {
+    staleTime: 1000 * 60 * 30, // 30 minutes
+    gcTime: 1000 * 60 * 60,    // 1 hour
+  },
+  TEAM_MEMBERS: {
+    staleTime: 1000 * 60 * 15, // 15 minutes
+    gcTime: 1000 * 60 * 60,    // 1 hour
+  },
+  PATIENT_REGISTRY: {
+    staleTime: 1000 * 60 * 5,  // 5 minutes
+    gcTime: 1000 * 60 * 15,    // 15 minutes
+  },
+  DYNAMIC_DATA: {
+    staleTime: 1000 * 60 * 1,  // 1 minute
+    gcTime: 1000 * 60 * 5,     // 5 minutes
+  },
+} as const;
+
 

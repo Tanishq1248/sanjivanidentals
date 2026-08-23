@@ -42,9 +42,18 @@ import { AdminAuthGuard } from "../../../components/auth/AdminAuthGuard";
 import { useAuth } from "../../../lib/context/AuthContext";
 import { getPatientByPhone, getPatients } from "../../../lib/services/patientService";
 import { getInvoices, getInvoiceStatusDetails, getInvoiceStatus } from "../../../lib/services/invoiceService";
-import { PatientDetailsModal } from "../../../components/admin/PatientDetailsModal";
-import { PaymentDialog } from "../../../components/admin/PaymentDialog";
-import { queryKeys } from "../../../lib/query/queryKeys";
+import dynamic from "next/dynamic";
+
+const PatientDetailsModal = dynamic(
+  () => import("../../../components/admin/PatientDetailsModal").then((m) => m.PatientDetailsModal),
+  { ssr: false }
+);
+
+const PaymentDialog = dynamic(
+  () => import("../../../components/admin/PaymentDialog").then((m) => m.PaymentDialog),
+  { ssr: false }
+);
+import { queryKeys, CACHE_POLICIES } from "../../../lib/query/queryKeys";
 import { TableSkeleton, CardListSkeleton, StatsCardSkeleton, useDelayLoading } from "../../../components/ui/Skeletons";
 import { getClinicSettings } from "../../../lib/services/clinicSettingsService";
 import type { Patient, Invoice, ClinicSettingsData } from "../../../lib/types";
@@ -147,7 +156,7 @@ function BillingPageContent() {
   const { data: clinicSettings } = useQuery<ClinicSettingsData>({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicSettings,
-    staleTime: 10 * 60 * 1000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const queryClient = useQueryClient();

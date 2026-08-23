@@ -39,8 +39,17 @@ import { CalendarHeader } from "../../../components/calendar/CalendarHeader";
 import { DayView } from "../../../components/calendar/DayView";
 import { WeekView } from "../../../components/calendar/WeekView";
 import { MonthView } from "../../../components/calendar/MonthView";
-import { NewAppointmentModal } from "../../../components/calendar/NewAppointmentModal";
-import { PatientDetailsModal } from "../../../components/admin/PatientDetailsModal";
+import dynamic from "next/dynamic";
+
+const NewAppointmentModal = dynamic(
+  () => import("../../../components/calendar/NewAppointmentModal").then((m) => m.NewAppointmentModal),
+  { ssr: false }
+);
+
+const PatientDetailsModal = dynamic(
+  () => import("../../../components/admin/PatientDetailsModal").then((m) => m.PatientDetailsModal),
+  { ssr: false }
+);
 import { usePatientStore } from "../../../lib/store/usePatientStore";
 import { getPatientByPhone } from "../../../lib/services/patientService";
 import type { Appointment, AppointmentStatus } from "../../../lib/types";

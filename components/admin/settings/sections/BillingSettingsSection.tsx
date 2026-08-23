@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CreditCard, Save, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
-import { queryKeys } from "../../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../../lib/query/queryKeys";
 import {
   getBillingSettings,
   createOrUpdateBillingSettings,
@@ -19,7 +19,7 @@ export default function BillingSettingsSection() {
   const { data: settingsData } = useQuery({
     queryKey: queryKeys.settings.billingSettings,
     queryFn: getBillingSettings,
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const [formData, setFormData] = useState<BillingSettingsData>({

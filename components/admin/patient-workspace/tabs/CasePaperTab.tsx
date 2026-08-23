@@ -29,7 +29,7 @@ import {
   Check,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "../../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../../lib/query/queryKeys";
 import { getClinicSettings, getDoctorCredentials } from "../../../../lib/services/clinicSettingsService";
 import { useActiveDoctors } from "../../../../lib/hooks/useDoctors";
 import type {
@@ -159,7 +159,7 @@ export const CasePaperTab: React.FC<CasePaperTabProps> = ({
   const { data: clinicSettings } = useQuery<ClinicSettingsData>({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicSettings,
-    staleTime: 10 * 60 * 1000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const generateWhatsAppShare = (enc: PatientEncounter, casePaperNum: number) => {

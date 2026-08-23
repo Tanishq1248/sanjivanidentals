@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Users, ShieldCheck, ArrowRight, Sparkles } from "lucide-react";
-import { queryKeys } from "../../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../../lib/query/queryKeys";
 import {
   getTeamMembers,
   addTeamMember,
@@ -48,19 +48,19 @@ export default function TeamManagementSection() {
   const { data: clinicInfo } = useQuery({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicInfo,
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const { data: members = [] } = useQuery({
     queryKey: queryKeys.settings.teamMembers,
     queryFn: () => getTeamMembers(),
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.TEAM_MEMBERS,
   });
 
   const { data: roles = [] } = useQuery({
     queryKey: queryKeys.settings.roles,
     queryFn: getRoles,
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.TEAM_MEMBERS,
   });
 
   const subscription = getSubscription(clinicInfo);

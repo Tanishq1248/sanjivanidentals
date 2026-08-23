@@ -56,11 +56,28 @@ import {
   getClinicResources,
   getClinicInfo,
 } from "../../lib/services/settingsService";
-import { PatientDetailsModal } from "../../components/admin/PatientDetailsModal";
-import { NewPatientModal } from "../../components/admin/NewPatientModal";
-import { CollectPaymentModal } from "../../components/admin/CollectPaymentModal";
-import { NewAppointmentModal } from "../../components/calendar/NewAppointmentModal";
-import { queryKeys } from "../../lib/query/queryKeys";
+import dynamic from "next/dynamic";
+
+const PatientDetailsModal = dynamic(
+  () => import("../../components/admin/PatientDetailsModal").then((m) => m.PatientDetailsModal),
+  { ssr: false }
+);
+
+const NewPatientModal = dynamic(
+  () => import("../../components/admin/NewPatientModal").then((m) => m.NewPatientModal),
+  { ssr: false }
+);
+
+const CollectPaymentModal = dynamic(
+  () => import("../../components/admin/CollectPaymentModal").then((m) => m.CollectPaymentModal),
+  { ssr: false }
+);
+
+const NewAppointmentModal = dynamic(
+  () => import("../../components/calendar/NewAppointmentModal").then((m) => m.NewAppointmentModal),
+  { ssr: false }
+);
+import { queryKeys, CACHE_POLICIES } from "../../lib/query/queryKeys";
 import {
   TableSkeleton,
   CardListSkeleton,
@@ -182,13 +199,13 @@ function AdminDashboard() {
   const { data: clinicResources } = useQuery<ClinicResourcesData>({
     queryKey: queryKeys.settings.clinicResources,
     queryFn: getClinicResources,
-    staleTime: 5 * 60 * 1000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const { data: clinicInfo } = useQuery<ClinicBasicInfo>({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicInfo,
-    staleTime: 10 * 60 * 1000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   // ── 2. Fetch Patients ──────────────────────────────────────────────────

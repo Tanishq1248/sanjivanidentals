@@ -16,7 +16,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "../../../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../../../lib/query/queryKeys";
 import { getClinicSettings } from "../../../../lib/services/clinicSettingsService";
 import type { Invoice, PatientEncounter, Patient, ClinicSettingsData } from "../../../../lib/types";
 import { sendWhatsAppMessage } from "../../../../lib/services/whatsappService";
@@ -67,7 +67,7 @@ export const InvoicesPaymentsTab: React.FC<InvoicesPaymentsTabProps> = ({
   const { data: clinicSettings } = useQuery<ClinicSettingsData>({
     queryKey: queryKeys.settings.clinicInfo,
     queryFn: getClinicSettings,
-    staleTime: 10 * 60 * 1000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const showToast = (msg: string) => {

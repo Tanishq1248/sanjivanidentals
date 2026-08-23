@@ -4,12 +4,12 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { X, Search, Phone, Loader2, CalendarDays, Clock, Armchair, AlertCircle, User, Stethoscope } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createAppointmentByAdmin } from "../../lib/services/appointmentService";
-import { getPatients } from "../../lib/services/patientService";
+import { getPaginatedPatients } from "../../lib/services/patientService";
 import { getClinicResources } from "../../lib/services/settingsService";
 import { useActiveDoctors } from "../../lib/hooks/useDoctors";
 import { DURATION_OPTIONS } from "../../lib/types";
 import type { Patient, AppointmentStatus, Doctor } from "../../lib/types";
-import { queryKeys } from "../../lib/query/queryKeys";
+import { queryKeys, CACHE_POLICIES } from "../../lib/query/queryKeys";
 
 /* ─── Common dental services list ─── */
 const COMMON_SERVICES = [
@@ -45,10 +45,17 @@ export function NewAppointmentModal({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  const { data: patients = [] } = useQuery<Patient[]>({
-    queryKey: queryKeys.patients.all,
-    queryFn: getPatients,
-    staleTime: 2 * 60_000,
+  /* ── Targeted Patient search query (Indexed, top 6) ── */
+  const { data: suggestions = [] } = useQuery<Patient[]>({
+    queryKey: ["patients", "apptSearch", patientSearch],
+    queryFn: async () => {
+      const q = patientSearch.trim();
+      if (q.length < 2 || selectedPatient) return [];
+      const res = await getPaginatedPatients({ searchTerm: q, pageSize: 6 });
+      return res.data;
+    },
+    enabled: patientSearch.trim().length >= 2 && !selectedPatient,
+    staleTime: 60 * 1000,
   });
 
   /* ── Active Doctors (Single Source of Truth from Settings > Team Members) ── */
@@ -63,24 +70,12 @@ export function NewAppointmentModal({
   } = useQuery({
     queryKey: queryKeys.settings.clinicResources,
     queryFn: getClinicResources,
-    staleTime: 5 * 60_000,
+    ...CACHE_POLICIES.STATIC_METADATA,
   });
 
   const activeChairs = useMemo(() => {
     return (clinicResources?.chairs || []).filter((c) => c.active);
   }, [clinicResources]);
-
-  const suggestions = useMemo(() => {
-    const q = patientSearch.trim().toLowerCase();
-    if (q.length < 2 || selectedPatient) return [];
-    const digits = q.replace(/\D/g, "");
-    return patients
-      .filter((p) => {
-        const phoneDigits = p.phone.replace(/\D/g, "");
-        return (digits && phoneDigits.includes(digits)) || p.name.toLowerCase().includes(q);
-      })
-      .slice(0, 6);
-  }, [patientSearch, patients, selectedPatient]);
 
   /* ── Form state ── */
   const [form, setForm] = useState({
