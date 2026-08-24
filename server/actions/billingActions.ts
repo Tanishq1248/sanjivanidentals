@@ -153,8 +153,12 @@ export async function calculateAndCreateInvoice(
         {
           id: `pay-${Date.now()}`,
           date: todayStr,
+          paymentDate: todayStr,
           amount: paidAmount,
+          amountReceived: paidAmount,
           method: paymentMethod,
+          paymentMethod: paymentMethod,
+          paymentType: (status === "PAID" ? "Paid" : "Partial") as any,
           recordedAt: new Date().toISOString() as any,
         }
       ] : [],
@@ -280,8 +284,12 @@ export async function recordInvoicePayment(input: {
       const paymentEntry = {
         id: `pay-${Date.now()}`,
         date: new Date().toISOString().split("T")[0],
+        paymentDate: new Date().toISOString().split("T")[0],
         amount,
+        amountReceived: amount,
         method: paymentMethod || "Cash",
+        paymentMethod: paymentMethod || "Cash",
+        paymentType: (newStatus === "PAID" ? "Paid" : "Partial") as any,
         notes,
         recordedAt: new Date().toISOString(),
       };
@@ -378,8 +386,12 @@ export async function updateInvoicePaymentDetailsAction(input: {
         paymentHistory.push({
           id: `pay-${Date.now()}`,
           date: new Date().toISOString().split("T")[0],
+          paymentDate: new Date().toISOString().split("T")[0],
           amount: amountReceived,
+          amountReceived: amountReceived,
           method: finalMethod,
+          paymentMethod: finalMethod,
+          paymentType: (finalStatus === "PAID" ? "Paid" : "Partial") as any,
           notes,
           recordedAt: new Date().toISOString() as any,
         });
