@@ -112,7 +112,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         sum +
         history.reduce(
           (s: number, pay: any) =>
-            pay.paymentType !== "Generated" ? s + pay.amountReceived : s,
+            pay.paymentType !== "Generated" ? s + (pay.amountReceived ?? pay.amount ?? 0) : s,
           0
         )
       );

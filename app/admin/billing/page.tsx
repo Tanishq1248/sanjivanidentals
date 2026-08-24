@@ -135,10 +135,10 @@ function getDiffDays(dateStr?: string, todayDate?: Date): number {
 
 function getInvoicePaymentMethod(inv: Invoice): string {
   const history = inv.paymentHistory || [];
-  const validHistory = history.filter((p) => p.paymentType !== "Generated" && p.paymentMethod && p.paymentMethod !== "None");
+  const validHistory = history.filter((p) => p.paymentType !== "Generated" && ((p.paymentMethod && p.paymentMethod !== "None") || (p.method && p.method !== "None")));
   if (validHistory.length > 0) {
-    const methods = Array.from(new Set(validHistory.map((p) => p.paymentMethod)));
-    if (methods.length === 1) return methods[0];
+    const methods: string[] = Array.from(new Set(validHistory.map((p) => (p.paymentMethod || p.method || "")).filter((m): m is string => Boolean(m))));
+    if (methods.length === 1 && methods[0]) return methods[0];
     if (methods.length > 1) return "Multiple";
   }
   if ((inv as any).paymentMethod) return (inv as any).paymentMethod;
@@ -245,9 +245,10 @@ function BillingPageContent() {
       // Today's Collection (cash received today)
       if (history.length > 0) {
         history.forEach((pay) => {
-          if (pay.paymentType !== "Generated" && pay.amountReceived > 0) {
+          const received = pay.amountReceived ?? pay.amount ?? 0;
+          if (pay.paymentType !== "Generated" && received > 0) {
             if (pay.paymentDate === todayStr) {
-              todayRevenue += pay.amountReceived;
+              todayRevenue += received;
               todayPaidCount++;
             }
           }
@@ -981,10 +982,10 @@ function BillingPageContent() {
                                                   <span className="font-semibold text-on-surface">
                                                     {pay.paymentType === "Generated"
                                                       ? "Invoice Generated"
-                                                      : `Received ₹${formatINR(pay.amountReceived)} via ${pay.paymentMethod}`}
+                                                      : `Received ₹${formatINR(pay.amountReceived || pay.amount || 0)} via ${pay.paymentMethod || pay.method || "Cash"}`}
                                                   </span>
                                                   <span className="text-[10px] text-on-surface-variant font-medium whitespace-nowrap">
-                                                    {pay.paymentDate}
+                                                    {pay.paymentDate || pay.date}
                                                   </span>
                                                 </div>
                                                 {pay.notes && (

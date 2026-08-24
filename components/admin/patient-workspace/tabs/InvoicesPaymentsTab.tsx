@@ -88,7 +88,7 @@ export const InvoicesPaymentsTab: React.FC<InvoicesPaymentsTabProps> = ({
         sum +
         history.reduce(
           (s: number, pay: any) =>
-            pay.paymentType !== "Generated" ? s + pay.amountReceived : s,
+            pay.paymentType !== "Generated" ? s + (pay.amountReceived ?? pay.amount ?? 0) : s,
           0
         )
       );
@@ -141,11 +141,12 @@ export const InvoicesPaymentsTab: React.FC<InvoicesPaymentsTabProps> = ({
     const history = inv.paymentHistory || [];
     const invNo = inv.id.slice(0, 8).toUpperCase();
     history.forEach((pay: any) => {
-      if (pay.paymentType !== "Generated" && pay.amountReceived > 0) {
+      const received = pay.amountReceived ?? pay.amount ?? 0;
+      if (pay.paymentType !== "Generated" && received > 0) {
         allPayments.push({
-          date: pay.paymentDate,
-          amount: pay.amountReceived,
-          method: pay.paymentMethod,
+          date: pay.paymentDate || pay.date,
+          amount: received,
+          method: pay.paymentMethod || pay.method || "Cash",
           invoiceNo: invNo,
         });
       }

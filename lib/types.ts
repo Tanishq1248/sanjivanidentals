@@ -166,15 +166,15 @@ export interface InvoiceItem {
 }
 
 export interface PaymentHistoryEntry {
+  paymentDate: string; // YYYY-MM-DD
+  paymentMethod: PaymentMethod | string;
+  amountReceived: number;
+  paymentType: "Paid" | "Partial" | "Installment" | "Pending" | "Generated" | "PAID" | "PARTIAL" | "PENDING" | "UNPAID" | string;
+  notes?: string;
   id?: string;
   date?: string; // YYYY-MM-DD
-  paymentDate?: string; // YYYY-MM-DD
   amount?: number;
-  amountReceived?: number;
   method?: PaymentMethod | string;
-  paymentMethod?: PaymentMethod | string;
-  paymentType?: "Paid" | "Partial" | "Installment" | "Pending" | "Generated" | "PAID" | "PARTIAL" | "PENDING" | "UNPAID" | string;
-  notes?: string;
   recordedAt?: string;
 }
 

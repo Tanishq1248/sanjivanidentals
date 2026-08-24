@@ -106,8 +106,9 @@ export async function getFinancialSummary(): Promise<FinancialStats> {
     const history = inv.paymentHistory || [];
     if (history.length > 0) {
       history.forEach((pay) => {
-        if (pay.paymentType !== "Generated" && pay.amountReceived > 0) {
-          totalRevenuePaid += pay.amountReceived;
+        const received = pay.amountReceived ?? pay.amount ?? 0;
+        if (pay.paymentType !== "Generated" && received > 0) {
+          totalRevenuePaid += received;
         }
       });
     } else if (inv.paymentStatus === "Paid" || inv.status === "Paid" || inv.paymentStatus === "PAID" || inv.status === "PAID") {
@@ -135,11 +136,12 @@ export async function getFinancialSummary(): Promise<FinancialStats> {
     const history = inv.paymentHistory || [];
     if (history.length > 0) {
       history.forEach((pay) => {
-        if (pay.paymentType !== "Generated" && pay.amountReceived > 0) {
+        const received = pay.amountReceived ?? pay.amount ?? 0;
+        if (pay.paymentType !== "Generated" && received > 0) {
           const payMonth = (pay.paymentDate || "").substring(0, 7);
           if (payMonth && payMonth.length === 7) {
             const existing = monthMap.get(payMonth) ?? { revenuePaid: 0, revenueBilled: 0, expensesList: [] };
-            existing.revenuePaid += pay.amountReceived;
+            existing.revenuePaid += received;
             monthMap.set(payMonth, existing);
           }
         }
