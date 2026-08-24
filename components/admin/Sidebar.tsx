@@ -26,6 +26,7 @@ import { getInvoices } from "../../lib/services/invoiceService";
 import { getAppointments } from "../../lib/services/appointmentService";
 import { queryKeys } from "../../lib/query/queryKeys";
 import { useSidebarStore } from "../../lib/store/useSidebarStore";
+import { InstallPwaButton } from "../ui/InstallPwaBanner";
 
 export interface NavItem {
   name: string;
@@ -307,6 +308,14 @@ export function Sidebar({ currentPage, onClose }: SidebarProps) {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* ── Install PWA Quick Action ── */}
+      <div className={`py-1.5 border-t border-slate-100 ${isCollapsed ? "px-2" : "px-3"}`}>
+        <InstallPwaButton
+          variant="sidebar"
+          className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+        />
       </div>
 
       {/* ── Secondary CTA: Refer & Earn ── */}

@@ -270,7 +270,7 @@ export async function recordInvoicePayment(input: {
       const newPaid = Math.min(total, currentPaid + amount);
       const newRemaining = Math.max(0, total - newPaid);
 
-      let newStatus: "PAID" | "PARTIAL" | "UNPAID" | "PENDING" = inv.status;
+      let newStatus: "PAID" | "PARTIAL" | "UNPAID" | "PENDING" = (inv.status as "PAID" | "PARTIAL" | "UNPAID" | "PENDING") || "UNPAID";
       if (newRemaining <= 0) {
         newStatus = "PAID";
       } else if (newPaid > 0) {
