@@ -1,6 +1,13 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+} from "react";
 import type { User } from "firebase/auth";
 import { onAuthChange, loginAdmin, logoutAdmin } from "../services/authService";
 import {
@@ -12,6 +19,7 @@ import {
   clearLocalSessionState,
   cleanupExpiredSessions,
 } from "../services/sessionService";
+import { getSecuritySettings } from "../services/securityService";
 
 interface AuthContextValue {
   user: User | null;
@@ -20,43 +28,70 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   /** True when the user was auto-logged out due to inactivity. */
   sessionExpired: boolean;
+  /** Seconds remaining before auto-logout (non-null during final 60 seconds of inactivity). */
+  warningSecondsRemaining: number | null;
+  /** Call to dismiss inactivity warning and refresh the active session. */
+  stayLoggedIn: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-/** How often (ms) to check whether the local inactivity threshold has passed. */
-const INACTIVITY_CHECK_INTERVAL_MS = 60 * 1000; // 60 seconds
+/** How often (ms) to check whether the local inactivity threshold or warning has passed. */
+const INACTIVITY_CHECK_INTERVAL_MS = 1000; // Check every second for smooth countdown
 
 /** Default timeout fallback if settings haven't loaded yet. */
 const DEFAULT_TIMEOUT_MINUTES = 30;
 
 /**
- * DOM events that count as "meaningful user activity".
- * We intentionally exclude mousemove to avoid excessive triggers.
+ * DOM events that count as user activity across Desktop, Tablet, and Mobile.
  */
 const ACTIVITY_EVENTS: (keyof DocumentEventMap)[] = [
   "click",
   "keydown",
   "scroll",
   "focus",
+  "touchstart",
+  "touchmove",
+  "pointerdown",
 ];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [warningSecondsRemaining, setWarningSecondsRemaining] = useState<number | null>(null);
 
-  // Track the last local activity timestamp (in-memory, no Firestore writes)
+  // Track the last local activity timestamp (in-memory)
   const lastLocalActivityRef = useRef<number>(Date.now());
   const inactivityTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isLoggingOutRef = useRef(false);
+  const timeoutMinutesRef = useRef<number>(DEFAULT_TIMEOUT_MINUTES);
+
+  // Fetch security settings to load dynamic timeout
+  const refreshTimeoutSetting = useCallback(async () => {
+    try {
+      const settings = await getSecuritySettings();
+      if (settings?.sessionTimeoutMinutes && settings.sessionTimeoutMinutes > 0) {
+        timeoutMinutesRef.current = settings.sessionTimeoutMinutes;
+      }
+    } catch {
+      timeoutMinutesRef.current = DEFAULT_TIMEOUT_MINUTES;
+    }
+  }, []);
 
   // ─── Activity handler ───────────────────────────────────────────────
-  // Called on DOM activity events. Updates the in-memory timestamp and
-  // calls the throttled Firestore updater.
   const handleActivity = useCallback(() => {
     lastLocalActivityRef.current = Date.now();
-    // Fire-and-forget — throttled internally, max 1 write per 5 min
+    // Clear warning if active
+    setWarningSecondsRemaining((prev) => (prev !== null ? null : prev));
+    // Fire-and-forget — throttled internally (max 1 Firestore write per 5 min)
+    updateSessionActivity().catch(() => {});
+  }, []);
+
+  // ─── Stay Logged In (from countdown warning modal) ────────────────────
+  const stayLoggedIn = useCallback(() => {
+    lastLocalActivityRef.current = Date.now();
+    setWarningSecondsRemaining(null);
     updateSessionActivity().catch(() => {});
   }, []);
 
@@ -66,6 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoggingOutRef.current = true;
 
     console.warn("[Session] Auto-logout triggered due to inactivity.");
+    setWarningSecondsRemaining(null);
     setSessionExpired(true);
 
     try {
@@ -79,34 +115,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Best effort
     }
 
+    clearLocalSessionState();
     isLoggingOutRef.current = false;
+
+    // Navigate to login with inactivity reason param
+    if (typeof window !== "undefined") {
+      window.location.href = "/admin/login?reason=inactivity";
+    }
   }, []);
 
   // ─── Start inactivity monitoring ────────────────────────────────────
   const startInactivityMonitor = useCallback(() => {
-    // Clear any existing timer
     if (inactivityTimerRef.current) {
       clearInterval(inactivityTimerRef.current);
     }
 
     inactivityTimerRef.current = setInterval(async () => {
-      // Skip if we're already in a logout flow
       if (isLoggingOutRef.current) return;
 
       const idleMs = Date.now() - lastLocalActivityRef.current;
-      // Use a generous default; the actual Firestore-backed check is the
-      // source of truth via checkSessionValidity()
-      const timeoutMs = DEFAULT_TIMEOUT_MINUTES * 60 * 1000;
+      const timeoutMs = (timeoutMinutesRef.current || DEFAULT_TIMEOUT_MINUTES) * 60 * 1000;
+      const warningThresholdMs = Math.max(0, timeoutMs - 60 * 1000); // 60s warning window
 
       if (idleMs >= timeoutMs) {
-        // Double-check with Firestore (in case another tab extended it)
+        // Double-check with Firestore before kicking out
         const { valid } = await checkSessionValidity();
         if (!valid) {
           await forceLogout();
         } else {
           // Session was extended elsewhere — reset local timer
           lastLocalActivityRef.current = Date.now();
+          setWarningSecondsRemaining(null);
         }
+      } else if (idleMs >= warningThresholdMs) {
+        // Within 60 seconds of expiration: trigger warning countdown
+        const remainingSec = Math.max(1, Math.ceil((timeoutMs - idleMs) / 1000));
+        setWarningSecondsRemaining(remainingSec);
+      } else {
+        setWarningSecondsRemaining((prev) => (prev !== null ? null : prev));
       }
     }, INACTIVITY_CHECK_INTERVAL_MS);
   }, [forceLogout]);
@@ -117,6 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearInterval(inactivityTimerRef.current);
       inactivityTimerRef.current = null;
     }
+    setWarningSecondsRemaining(null);
   }, []);
 
   // ─── Attach / detach activity listeners ─────────────────────────────
@@ -125,7 +172,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       document.addEventListener(evt, handleActivity, { passive: true });
     });
 
-    // Also listen for visibility change (tab switch back = activity)
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {
         handleActivity();
@@ -146,29 +192,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
 
       if (u) {
+        // Load custom session timeout
+        await refreshTimeoutSetting();
+
         // User is authenticated — validate existing session on reload
         const existingSessionId = getSessionId();
         if (existingSessionId) {
           const { valid } = await checkSessionValidity();
           if (!valid) {
-            // Session expired while tab was closed — force logout
             await forceLogout();
             return;
           }
-          // Session is still valid — reset local activity
           lastLocalActivityRef.current = Date.now();
         }
-        // Note: if no sessionId exists (e.g., first load after login),
-        // the login() flow below will create the session.
 
-        // Start monitoring
         attachActivityListeners();
         startInactivityMonitor();
 
         // Opportunistic cleanup of stale sessions (fire-and-forget)
         cleanupExpiredSessions().catch(() => {});
       } else {
-        // User signed out — cleanup
         stopInactivityMonitor();
         detachActivityListeners();
       }
@@ -185,17 +228,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ─── Login ──────────────────────────────────────────────────────────
   const login = async (email: string, password: string) => {
     setSessionExpired(false);
+    setWarningSecondsRemaining(null);
     const firebaseUser = await loginAdmin(email, password);
 
-    // Create session record after successful Firebase auth
     await createSession(
       firebaseUser.uid,
       firebaseUser.email || "Unknown",
-      "Admin" // Default role; will be refined when role system is fully integrated
+      "Admin"
     );
 
-    // Reset local activity
     lastLocalActivityRef.current = Date.now();
+    await refreshTimeoutSetting();
   };
 
   // ─── Logout ─────────────────────────────────────────────────────────
@@ -215,11 +258,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await logoutAdmin();
     clearLocalSessionState();
     setSessionExpired(false);
+    setWarningSecondsRemaining(null);
     isLoggingOutRef.current = false;
+
+    if (typeof window !== "undefined") {
+      window.location.href = "/admin/login";
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, sessionExpired }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+        sessionExpired,
+        warningSecondsRemaining,
+        stayLoggedIn,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

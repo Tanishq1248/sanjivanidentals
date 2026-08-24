@@ -1,13 +1,16 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Stethoscope, Mail, Lock, AlertCircle, Eye, EyeOff } from "lucide-react";
+import React, { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Stethoscope, Mail, Lock, AlertCircle, Eye, EyeOff, ShieldAlert } from "lucide-react";
 import { useAuth } from "../../../lib/context/AuthContext";
 
-export default function AdminLoginPage() {
-  const { login, user, loading } = useAuth();
+function AdminLoginForm() {
+  const { login, user, loading, sessionExpired } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isReasonInactivity = searchParams.get("reason") === "inactivity" || sessionExpired;
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -32,7 +35,11 @@ export default function AdminLoginPage() {
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Login failed. Please try again.";
-      if (message.includes("invalid-credential") || message.includes("wrong-password") || message.includes("user-not-found")) {
+      if (
+        message.includes("invalid-credential") ||
+        message.includes("wrong-password") ||
+        message.includes("user-not-found")
+      ) {
         setError("Invalid email or password.");
       } else if (message.includes("too-many-requests")) {
         setError("Too many failed attempts. Please try again later.");
@@ -75,6 +82,17 @@ export default function AdminLoginPage() {
         {/* Login Card */}
         <div className="bg-white rounded-2xl border border-outline-variant/10 shadow-lg p-8">
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+            {/* Inactivity Auto-Logout Banner */}
+            {isReasonInactivity && !error && (
+              <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium p-3.5 rounded-xl animate-in fade-in slide-in-from-top-2 duration-300">
+                <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="block font-bold text-amber-950">Session Expired for Security</strong>
+                  You were logged out due to inactivity. Please sign in to resume your clinical session.
+                </div>
+              </div>
+            )}
+
             {/* Error Banner */}
             {error && (
               <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm font-medium px-4 py-3 rounded-lg">
@@ -164,5 +182,21 @@ export default function AdminLoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function AdminLoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-[#f2f5f8]">
+          <div className="w-12 h-12 rounded-xl bg-secondary-container flex items-center justify-center animate-pulse">
+            <Stethoscope className="w-6 h-6 text-primary" />
+          </div>
+        </div>
+      }
+    >
+      <AdminLoginForm />
+    </Suspense>
   );
 }

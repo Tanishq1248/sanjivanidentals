@@ -1,6 +1,7 @@
 import React from "react";
 import { Navbar } from "../../components/layout/Navbar";
 import { Footer } from "../../components/layout/Footer";
+import { PwaStandaloneRedirect } from "../../components/pwa/PwaStandaloneRedirect";
 
 export default function MainLayout({
   children,
@@ -9,6 +10,7 @@ export default function MainLayout({
 }) {
   return (
     <>
+      <PwaStandaloneRedirect />
       <Navbar />
       <main className="flex-grow pt-20">{children}</main>
       <Footer />

@@ -4,10 +4,12 @@ import React from "react";
 import { useAuth } from "../../lib/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Stethoscope } from "lucide-react";
+import { SessionInactivityDialog } from "./SessionInactivityDialog";
 
 /**
  * Wraps admin pages. Redirects to /admin/login if not authenticated.
- * Shows a loading spinner while auth state is resolving.
+ * Shows a loading spinner while auth state is resolving and mounts
+ * the inactivity session timeout warning dialog.
  */
 export function AdminAuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -38,5 +40,11 @@ export function AdminAuthGuard({ children }: { children: React.ReactNode }) {
     return null; // Will redirect via useEffect
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <SessionInactivityDialog />
+      {children}
+    </>
+  );
 }
+
