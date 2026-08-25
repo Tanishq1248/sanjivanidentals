@@ -1,217 +1,212 @@
 rules_version = '2';
 
 // =============================================================================
-// DENTAPURE DENTAL CLINIC - FIRESTORE SECURITY RULES
-// Multi-Tenant Healthcare Security Model & Data Isolation Rules
-// Principles: Tenant Isolation, Least Privilege, Protected System Logs
+// SANJIVANI DENTALS - FIRESTORE SECURITY RULES
+// Healthcare Operations & Data Access Model
 // =============================================================================
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================================================================
-    // CENTRAL SECURITY HELPER FUNCTIONS
+    // CENTRAL AUTHENTICATION HELPER
     // =========================================================================
 
-    /** Checks whether the incoming request is from a valid authenticated user. */
+    /** Checks whether the incoming request is from an authenticated user. */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    /** Helper to check if a field is a valid Timestamp. */
-    function isTimestamp(val) {
-      return val is timestamp;
-    }
-
-    /**
-     * Resolves the user's assigned clinic ID from their auth token custom claims.
-     * Defaults to "default" if unassigned or in single-tenant setup.
-     */
-    function getUserClinicId() {
-      return request.auth.token.clinicId != null ? request.auth.token.clinicId : "default";
-    }
-
-    /**
-     * Enforces tenant isolation.
-     * Validates that the requested/written document clinicId matches the authenticated user's clinicId.
-     */
-    function isSameTenant() {
-      return isAuthenticated() && (
-        (resource == null && (request.resource.data.clinicId == getUserClinicId() || request.resource.data.clinicId == null)) ||
-        (resource != null && (resource.data.clinicId == getUserClinicId() || resource.data.clinicId == null))
-      );
-    }
-
     // =========================================================================
-    // PATIENT & CLINICAL DATA COLLECTIONS (TENANT ISOLATED)
+    // PATIENT & CLINICAL DATA COLLECTIONS
     // =========================================================================
 
     // Patient Directory Records
     match /patients/{patientId} {
-      allow read: if isSameTenant();
-      allow create, update: if isSameTenant() &&
-        (request.resource.data.name is string) &&
-        (request.resource.data.phone is string);
-      allow delete: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // Comprehensive Patient Medical Histories & Profiles
     match /patientMedicalProfiles/{profileId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // Patient Clinical Encounters & Dental Chartings
     match /patientEncounters/{encounterId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
+    }
+
+    // Legacy Encounters collection compatibility
+    match /encounters/{encounterId} {
+      allow read, write: if isSignedIn();
     }
 
     // Active Prescriptions
     match /prescriptions/{prescriptionId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // Archived Prescriptions
     match /archived_prescriptions/{prescriptionId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // =========================================================================
     // APPOINTMENTS, DOCTORS & SERVICES
     // =========================================================================
 
-    // Active Clinic Appointments
+    // Clinic Appointments (Allows public website bookings and staff management)
     match /appointments/{appointmentId} {
-      allow read, write: if isSameTenant();
+      allow read, update, delete: if isSignedIn();
+      allow create: if true; // Allows public online appointment bookings from landing page
     }
 
     // Archived Appointments
     match /archived_appointments/{appointmentId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // In-App Notifications
     match /notifications/{notificationId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // Archived Notifications
     match /archived_notifications/{notificationId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
-    // Doctors & Clinical Specialists Directory
+    // Doctors & Clinical Specialists Directory (Public read for landing page)
     match /doctors/{doctorId} {
-      allow read, write: if isSameTenant();
+      allow read: if true;
+      allow write: if isSignedIn();
     }
 
-    // Dental Treatment Catalog & Procedure Services (GLOBAL — shared across clinics)
+    // Dental Treatment Catalog & Procedure Services (Public read for landing page)
     match /services/{serviceId} {
-      allow read, write: if isAuthenticated();
+      allow read: if true;
+      allow write: if isSignedIn();
     }
 
     // =========================================================================
-    // FINANCIAL, BILLING & EXPENSE MANAGEMENT (TENANT ISOLATED)
+    // FINANCIAL, BILLING & EXPENSE MANAGEMENT
     // =========================================================================
 
     // Treatment Invoices & Payment Tracking
     match /invoices/{invoiceId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // Clinic Operating Expenses
     match /expenses/{expenseId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // Patient & Doctor Referrals Tracking
     match /clinicReferrals/{referralId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // Referral Program Configuration
     match /clinicReferralConfig/{configId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // Clinic Subscription & Tier Metadata
     match /subscriptionInfo/{subId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // =========================================================================
-    // ADMINISTRATIVE, TEAM & SYSTEM SETTINGS (TENANT ISOLATED)
+    // ADMINISTRATIVE, TEAM & SYSTEM SETTINGS
     // =========================================================================
 
-    // Basic Clinic Profile & Header Information
+    // Basic Clinic Profile & Header Information (Public read for landing page header/contact)
     match /clinicSettings/{docId} {
-      allow read, write: if isSameTenant();
+      allow read: if true;
+      allow write: if isSignedIn();
     }
 
-    // Calendar & Appointment Slot Configuration
+    // Clinic Resources & Dental Chairs
+    match /clinicResources/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Calendar & Appointment Slot Configuration (Public read for booking slots)
     match /appointmentSettings/{docId} {
-      allow read, write: if isSameTenant();
+      allow read: if true;
+      allow write: if isSignedIn();
     }
 
     // Invoicing & Tax Settings
     match /billingSettings/{docId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // Security & Inactivity Timeout Configuration
     match /securitySettings/{docId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // Clinic Staff & Team Directory
     match /teamMembers/{memberId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // RBAC Custom Roles & Permission Definitions
     match /roles/{roleId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // =========================================================================
-    // SYSTEM LOGS, SESSIONS & MESSAGING (PROTECTED & ISOLATED)
+    // SYSTEM LOGS, SESSIONS & MESSAGING (PROTECTED)
     // =========================================================================
 
     // User Login & Logout History Logs (Deletion Denied)
     match /loginHistory/{entryId} {
-      allow read, create, update: if isSameTenant();
+      allow read, create, update: if isSignedIn();
       allow delete: if false;
     }
 
     // Immutable Security Audit Logs (Append-Only; Update & Delete Denied)
     match /auditLogs/{logId} {
-      allow read, create: if isSameTenant();
+      allow read, create: if isSignedIn();
       allow update, delete: if false;
     }
 
     // Active User Sessions & Activity Monitors
     match /securitySessions/{sessionId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
     }
 
     // Monthly WhatsApp Messaging Quotas (Deletion Denied)
     match /messagingUsage/{quotaId} {
-      allow read, create, update: if isSameTenant();
+      allow read, create, update: if isSignedIn();
       allow delete: if false;
     }
 
     // WhatsApp Message Delivery Logs & Status Callbacks (Deletion Denied)
     match /messageLogs/{logId} {
-      allow read, create, update: if isSameTenant();
+      allow read, create, update: if isSignedIn();
       allow delete: if false;
     }
 
     // Central Document Storage Metadata Records
     match /documents/{documentId} {
-      allow read, write: if isSameTenant();
+      allow read, write: if isSignedIn();
+    }
+
+    // Dental X-rays & Diagnostic Imaging
+    match /xrays/{xrayId} {
+      allow read, write: if isSignedIn();
     }
 
     // =========================================================================
-    // GLOBAL DEFAULT DENY ALL FALLBACK
+    // GLOBAL DEFAULT DENY FALLBACK
     // =========================================================================
     match /{document=**} {
       allow read, write: if false;

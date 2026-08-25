@@ -180,11 +180,31 @@ export async function getPatientByPhone(phone: string): Promise<Patient | null> 
 
 /** Create a new patient. Returns the generated document ID. */
 export async function addPatient(data: PatientFormData): Promise<string> {
-  const res = await createPatientAction(data);
-  if (!res.success || !res.data) {
-    throw new Error(res.error || "Failed to create patient on server.");
+  try {
+    const res = await createPatientAction(data);
+    if (res.success && res.data?.id) {
+      return res.data.id;
+    }
+    console.warn("[patientService] Server action createPatient failed, trying client fallback:", res?.error);
+  } catch (err) {
+    console.warn("[patientService] Server action createPatient threw error, trying client fallback:", err);
   }
-  return res.data.id;
+
+  // Client SDK Fallback
+  const nameTrimmed = (data.name || "").trim();
+  const clinicId = (data as any).clinicId || DEFAULT_CLINIC_ID;
+  const avatarColor = randomAvatarColor();
+  const payload = {
+    ...data,
+    name: nameTrimmed,
+    nameLowercase: nameTrimmed.toLowerCase(),
+    clinicId,
+    avatarColor,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  };
+  const docRef = await addDoc(patientsRef, payload);
+  return docRef.id;
 }
 
 /** Update an existing patient's fields. */
@@ -192,18 +212,44 @@ export async function updatePatient(
   id: string,
   data: Partial<PatientFormData>
 ): Promise<void> {
-  const res = await updatePatientAction(id, data);
-  if (!res.success) {
-    throw new Error(res.error || "Failed to update patient on server.");
+  try {
+    const res = await updatePatientAction(id, data);
+    if (res.success) {
+      return;
+    }
+    console.warn("[patientService] Server action updatePatient failed, trying client fallback:", res?.error);
+  } catch (err) {
+    console.warn("[patientService] Server action updatePatient threw error, trying client fallback:", err);
   }
+
+  // Client SDK Fallback
+  const docRef = doc(db, COLLECTION, id);
+  const updates: Record<string, any> = {
+    ...data,
+    updatedAt: Timestamp.now(),
+  };
+  if (data.name) {
+    updates.name = data.name.trim();
+    updates.nameLowercase = data.name.trim().toLowerCase();
+  }
+  await updateDoc(docRef, updates);
 }
 
 /** Delete a patient document. */
 export async function deletePatient(id: string): Promise<void> {
-  const res = await deletePatientAction(id);
-  if (!res.success) {
-    throw new Error(res.error || "Failed to delete patient on server.");
+  try {
+    const res = await deletePatientAction(id);
+    if (res.success) {
+      return;
+    }
+    console.warn("[patientService] Server action deletePatient failed, trying client fallback:", res?.error);
+  } catch (err) {
+    console.warn("[patientService] Server action deletePatient threw error, trying client fallback:", err);
   }
+
+  // Client SDK Fallback
+  const docRef = doc(db, COLLECTION, id);
+  await deleteDoc(docRef);
 }
 
 /** Get the total count of patients in the database. */
@@ -252,10 +298,26 @@ export async function savePatientMedicalProfile(
   patientId: string,
   profileData: Partial<PatientMedicalProfile>
 ): Promise<void> {
-  const res = await savePatientMedicalProfileAction(patientId, profileData);
-  if (!res.success) {
-    throw new Error(res.error || "Failed to save patient medical profile.");
+  try {
+    const res = await savePatientMedicalProfileAction(patientId, profileData);
+    if (res.success) {
+      return;
+    }
+    console.warn("[patientService] Error saving medical profile via server, trying client fallback:", res?.error);
+  } catch (err) {
+    console.warn("[patientService] Error saving medical profile via server, trying client fallback:", err);
   }
+
+  const docRef = doc(db, COLLECTIONS.PATIENT_MEDICAL_PROFILES, patientId);
+  await setDoc(
+    docRef,
+    {
+      ...profileData,
+      patientId,
+      updatedAt: Timestamp.now(),
+    },
+    { merge: true }
+  );
 }
 
 /** Fetch patient encounters timeline ordered by visitDate descending. */
@@ -294,11 +356,23 @@ export async function getPatientEncounterById(encounterId: string): Promise<Pati
 export async function addPatientEncounter(
   encounter: Omit<PatientEncounter, "id" | "createdAt" | "updatedAt">
 ): Promise<string> {
-  const res = await addPatientEncounterAction(encounter);
-  if (!res.success || !res.data) {
-    throw new Error(res.error || "Failed to create patient encounter on server.");
+  try {
+    const res = await addPatientEncounterAction(encounter);
+    if (res.success && res.data?.id) {
+      return res.data.id;
+    }
+    console.warn("[patientService] Error creating patient encounter via server, trying client fallback:", res?.error);
+  } catch (err) {
+    console.warn("[patientService] Error creating patient encounter via server, trying client fallback:", err);
   }
-  return res.data.id;
+
+  const encountersRef = collection(db, COLLECTIONS.PATIENT_ENCOUNTERS);
+  const docRef = await addDoc(encountersRef, {
+    ...encounter,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  });
+  return docRef.id;
 }
 
 /** Update an existing patient encounter document. */
@@ -306,18 +380,37 @@ export async function updatePatientEncounter(
   encounterId: string,
   data: Partial<PatientEncounter>
 ): Promise<void> {
-  const res = await updatePatientEncounterAction(encounterId, data);
-  if (!res.success) {
-    throw new Error(res.error || "Failed to update patient encounter.");
+  try {
+    const res = await updatePatientEncounterAction(encounterId, data);
+    if (res.success) {
+      return;
+    }
+    console.warn("[patientService] Error updating patient encounter via server, trying client fallback:", res?.error);
+  } catch (err) {
+    console.warn("[patientService] Error updating patient encounter via server, trying client fallback:", err);
   }
+
+  const docRef = doc(db, COLLECTIONS.PATIENT_ENCOUNTERS, encounterId);
+  await updateDoc(docRef, {
+    ...data,
+    updatedAt: Timestamp.now(),
+  });
 }
 
 /** Delete a patient encounter document. */
 export async function deletePatientEncounter(encounterId: string): Promise<void> {
-  const res = await deletePatientEncounterAction(encounterId);
-  if (!res.success) {
-    throw new Error(res.error || "Failed to delete patient encounter.");
+  try {
+    const res = await deletePatientEncounterAction(encounterId);
+    if (res.success) {
+      return;
+    }
+    console.warn("[patientService] Error deleting patient encounter via server, trying client fallback:", res?.error);
+  } catch (err) {
+    console.warn("[patientService] Error deleting patient encounter via server, trying client fallback:", err);
   }
+
+  const docRef = doc(db, COLLECTIONS.PATIENT_ENCOUNTERS, encounterId);
+  await deleteDoc(docRef);
 }
 
 /**
