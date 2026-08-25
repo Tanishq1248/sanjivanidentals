@@ -33,13 +33,17 @@ export async function POST(request: NextRequest) {
 
     const id = await createAppointment(body);
 
-    // Create a notification for the admin
-    await createNotification({
-      type: "new_booking",
-      title: "New Appointment Request",
-      message: `${body.patientName} requested an appointment on ${body.date} at ${body.time} for ${body.service}.`,
-      appointmentId: id,
-    });
+    // Create a notification for the admin (best-effort, non-blocking)
+    try {
+      await createNotification({
+        type: "new_booking",
+        title: "New Appointment Request",
+        message: `${body.patientName} requested an appointment on ${body.date} at ${body.time} for ${body.service}.`,
+        appointmentId: id,
+      });
+    } catch (notifErr) {
+      console.warn("[API /appointments] Failed to create admin notification:", notifErr);
+    }
 
     return NextResponse.json(
       { id, message: "Appointment created" },

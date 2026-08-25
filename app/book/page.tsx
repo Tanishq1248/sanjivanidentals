@@ -74,14 +74,18 @@ export default function BookingPage() {
         clinicId: "clinic-1",
       });
 
-      // Create notification for admin
-      await createNotification({
-        type: "new_booking",
-        title: "New Appointment Request",
-        message: `${form.name} requested an appointment on ${form.date} at ${form.time} for ${form.reason}.`,
-        appointmentId,
-        clinicId: "clinic-1",
-      });
+      // Create notification for admin (best-effort)
+      try {
+        await createNotification({
+          type: "new_booking",
+          title: "New Appointment Request",
+          message: `${form.name} requested an appointment on ${form.date} at ${form.time} for ${form.reason}.`,
+          appointmentId,
+          clinicId: "clinic-1",
+        });
+      } catch (notifErr) {
+        console.warn("[BookingPage] Admin notification failed to send:", notifErr);
+      }
 
       setSubmitted(true);
     } catch (err) {

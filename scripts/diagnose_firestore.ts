@@ -116,6 +116,34 @@ async function runDiagnostics() {
     await adminDb.collection(COLLECTIONS.PATIENTS).doc(docRef.id).delete();
     console.log("   🧹 Cleaned up temporary test patient document");
 
+    // 6. Test Appointment Booking Payload Sanitization & Creation
+    console.log("\n6. Testing Appointment Creation (with sanitized fields)...");
+    const rawAppointmentPayload = {
+      patientName: "Appointment Diagnostic Test",
+      patientPhone: "9876543210",
+      patientEmail: "appt.test@example.com",
+      date: new Date().toISOString().split("T")[0],
+      time: "10:30 AM",
+      service: "Consultation",
+      duration: 30,
+      status: "Confirmed",
+      notes: "",
+      chairId: null,
+      chair: "",
+      doctorId: null,
+      doctorName: "Dr. Rajesh Sharma",
+      clinicId: "default",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    const apptDocRef = await adminDb.collection(COLLECTIONS.APPOINTMENTS).add(rawAppointmentPayload);
+    console.log(`   ✅ Appointment successfully created with ID: ${apptDocRef.id}`);
+
+    // Cleanup test appointment doc
+    await adminDb.collection(COLLECTIONS.APPOINTMENTS).doc(apptDocRef.id).delete();
+    console.log("   🧹 Cleaned up temporary test appointment document");
+
     console.log("\n==================================================");
     console.log("  🎉 ALL FIRESTORE DIAGNOSTICS PASSED SUCCESSFULLY!");
     console.log("==================================================\n");

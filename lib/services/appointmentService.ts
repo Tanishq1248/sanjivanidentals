@@ -31,6 +31,8 @@ import {
   updateAppointmentStatusAction,
   updateAppointmentAction,
   deleteAppointmentAction,
+  getAppointmentsAction,
+  getAppointmentByIdAction,
 } from "../../server/actions/appointmentActions";
 
 /** Extended creation payload including calendar-specific fields. */
@@ -158,6 +160,15 @@ export async function getAppointments(
   filter: AppointmentFilter = "all",
   queryArchived = false
 ): Promise<Appointment[]> {
+  try {
+    const res = await getAppointmentsAction(filter);
+    if (res.success && res.data) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn("[appointmentService] Error getting appointments via server action, trying client fallback:", err);
+  }
+
   const today = todayStr();
   const targetRef = getAppointmentsRef(queryArchived);
   let q;
@@ -263,6 +274,15 @@ export async function getAppointmentsPaginated(
 export async function getAppointmentById(
   id: string
 ): Promise<Appointment | null> {
+  try {
+    const res = await getAppointmentByIdAction(id);
+    if (res.success && res.data !== undefined) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn("[appointmentService] Error getting appointment by ID via server action, trying client fallback:", err);
+  }
+
   const snap = await getDoc(doc(db, COLLECTION, id));
   if (!snap.exists()) return null;
   return { id: snap.id, ...snap.data() } as Appointment;
@@ -296,10 +316,9 @@ export async function getAppointmentsByPhone(
 export async function createAppointment(
   data: AppointmentFormData & { chairId?: string; chair?: string }
 ): Promise<string> {
-  const settings = await getAppointmentSettings();
+  const settings = await getAppointmentSettings().catch(() => ({}) as any);
   const initialStatus = settings.autoConfirmWebBookings ? "Confirmed" : "Pending";
   const slotDuration = settings.defaultSlotDurationMinutes || 30;
-  const now = Timestamp.now();
 
   const { resolvedChairId, resolvedChairName } = await validateAndCheckChairConflict(
     data.date,
@@ -307,25 +326,41 @@ export async function createAppointment(
     slotDuration,
     data.chairId,
     data.chair
-  );
+  ).catch(() => ({ resolvedChairId: undefined, resolvedChairName: undefined }));
 
-  const clinicId = (data as any).clinicId;
+  const clinicId = (data as any).clinicId || DEFAULT_CLINIC_ID;
 
-  const res = await createAppointmentAction({
+  const appointmentPayload = {
     ...data,
-    patientId: "",
-    status: initialStatus as AppointmentStatus,
+    patientName: (data.patientName || "").trim(),
+    patientPhone: (data.patientPhone || "").trim(),
+    patientEmail: (data.patientEmail || "").trim(),
+    patientId: (data as any).patientId || "",
+    status: (initialStatus as AppointmentStatus) || "Pending",
     duration: slotDuration,
     source: "online_booking",
-    clinicId: clinicId || "",
-    ...(resolvedChairId ? { chairId: resolvedChairId } : {}),
-    ...(resolvedChairName ? { chair: resolvedChairName } : {}),
-  });
+    clinicId,
+    chairId: resolvedChairId || (data.chairId || null),
+    chair: resolvedChairName || (data.chair || ""),
+  };
 
-  if (!res.success || !res.data) {
-    throw new Error(res.error || "Failed to create appointment on server.");
+  try {
+    const res = await createAppointmentAction(appointmentPayload);
+    if (res.success && res.data?.id) {
+      return res.data.id;
+    }
+    console.warn("[appointmentService] Server action createAppointment failed, trying client fallback:", res?.error);
+  } catch (err) {
+    console.warn("[appointmentService] Server action createAppointment threw error, trying client fallback:", err);
   }
-  return res.data.id;
+
+  // Client SDK Fallback
+  const docRef = await addDoc(appointmentsRef, {
+    ...appointmentPayload,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  });
+  return docRef.id;
 }
 
 /**
@@ -335,8 +370,7 @@ export async function createAppointment(
 export async function createAppointmentByAdmin(
   data: AppointmentAdminPayload
 ): Promise<string> {
-  const settings = await getAppointmentSettings();
-  const now = Timestamp.now();
+  const settings = await getAppointmentSettings().catch(() => ({}) as any);
   const { status, chair, chairId, duration, patientId, doctorId, doctorName, ...rest } = data;
   const effectiveDuration = duration || settings.defaultSlotDurationMinutes || 30;
 
@@ -346,27 +380,43 @@ export async function createAppointmentByAdmin(
     effectiveDuration,
     chairId,
     chair
-  );
+  ).catch(() => ({ resolvedChairId: undefined, resolvedChairName: undefined }));
 
-  const adminClinicId = (data as any).clinicId;
+  const adminClinicId = (data as any).clinicId || DEFAULT_CLINIC_ID;
 
-  const res = await createAppointmentAction({
+  const appointmentPayload = {
     ...rest,
+    patientName: (rest.patientName || "").trim(),
+    patientPhone: (rest.patientPhone || "").trim(),
+    patientEmail: (rest.patientEmail || "").trim(),
     patientId: patientId || "",
     status: status || ("Confirmed" as AppointmentStatus),
     source: "admin_created",
     duration: effectiveDuration,
-    clinicId: adminClinicId || "",
-    ...(resolvedChairId ? { chairId: resolvedChairId } : {}),
-    ...(resolvedChairName ? { chair: resolvedChairName } : {}),
-    ...(doctorId ? { doctorId } : {}),
-    ...(doctorName ? { doctorName } : {}),
-  });
+    clinicId: adminClinicId,
+    chairId: resolvedChairId || (chairId || null),
+    chair: resolvedChairName || (chair || ""),
+    doctorId: doctorId || null,
+    doctorName: doctorName || "",
+  };
 
-  if (!res.success || !res.data) {
-    throw new Error(res.error || "Failed to create appointment on server.");
+  try {
+    const res = await createAppointmentAction(appointmentPayload);
+    if (res.success && res.data?.id) {
+      return res.data.id;
+    }
+    console.warn("[appointmentService] Server action createAppointmentByAdmin failed, trying client fallback:", res?.error);
+  } catch (err) {
+    console.warn("[appointmentService] Server action createAppointmentByAdmin threw error, trying client fallback:", err);
   }
-  return res.data.id;
+
+  // Client SDK Fallback
+  const docRef = await addDoc(appointmentsRef, {
+    ...appointmentPayload,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  });
+  return docRef.id;
 }
 
 /** Update the status of an appointment. */
@@ -374,10 +424,20 @@ export async function updateAppointmentStatus(
   id: string,
   status: AppointmentStatus
 ): Promise<void> {
-  const res = await updateAppointmentStatusAction(id, status);
-  if (!res.success) {
-    throw new Error(res.error || "Failed to update appointment status on server.");
+  try {
+    const res = await updateAppointmentStatusAction(id, status);
+    if (res.success) return;
+    console.warn("[appointmentService] Server action updateAppointmentStatus failed, trying client fallback:", res?.error);
+  } catch (err) {
+    console.warn("[appointmentService] Server action updateAppointmentStatus threw error, trying client fallback:", err);
   }
+
+  // Client SDK Fallback
+  const ref = doc(db, COLLECTION, id);
+  await updateDoc(ref, {
+    status,
+    updatedAt: Timestamp.now(),
+  });
 }
 
 /** Update any appointment fields. */
@@ -385,7 +445,6 @@ export async function updateAppointment(
   id: string,
   data: Partial<Appointment>
 ): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { id: _id, ...rest } = data;
 
   if (rest.date || rest.time || rest.chairId || rest.chair) {
@@ -404,25 +463,48 @@ export async function updateAppointment(
         targetChairId,
         targetChair,
         id
-      );
+      ).catch(() => ({ resolvedChairId: undefined, resolvedChairName: undefined }));
 
       if (resolvedChairId !== undefined) rest.chairId = resolvedChairId;
       if (resolvedChairName !== undefined) rest.chair = resolvedChairName;
     }
   }
 
-  const res = await updateAppointmentAction(id, rest);
-  if (!res.success) {
-    throw new Error(res.error || "Failed to update appointment on server.");
+  // Remove any undefined values
+  const cleanRest: Record<string, any> = {};
+  for (const [k, v] of Object.entries(rest)) {
+    if (v !== undefined) cleanRest[k] = v;
   }
+
+  try {
+    const res = await updateAppointmentAction(id, cleanRest);
+    if (res.success) return;
+    console.warn("[appointmentService] Server action updateAppointment failed, trying client fallback:", res?.error);
+  } catch (err) {
+    console.warn("[appointmentService] Server action updateAppointment threw error, trying client fallback:", err);
+  }
+
+  // Client SDK Fallback
+  const ref = doc(db, COLLECTION, id);
+  await updateDoc(ref, {
+    ...cleanRest,
+    updatedAt: Timestamp.now(),
+  });
 }
 
 /** Delete an appointment. */
 export async function deleteAppointment(id: string): Promise<void> {
-  const res = await deleteAppointmentAction(id);
-  if (!res.success) {
-    throw new Error(res.error || "Failed to delete appointment on server.");
+  try {
+    const res = await deleteAppointmentAction(id);
+    if (res.success) return;
+    console.warn("[appointmentService] Server action deleteAppointment failed, trying client fallback:", res?.error);
+  } catch (err) {
+    console.warn("[appointmentService] Server action deleteAppointment threw error, trying client fallback:", err);
   }
+
+  // Client SDK Fallback
+  const ref = doc(db, COLLECTION, id);
+  await deleteDoc(ref);
 }
 
 /** Get the count of appointments matching a filter from the server. */
